@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -v \"^$\")",
+      "Read(//tmp/**)",
+      "Bash(jar tf *)",
+      "Bash(unzip -l /home/radu/.gradle/caches/modules-2/files-2.1/com.patrykandpatrick.vico/compose/1.14.0/765b2adae664ca06d7e81adf2f334da1c37aef0f/compose-1.14.0-sources.jar)",
+      "Bash(unzip -p /home/radu/.gradle/caches/modules-2/files-2.1/com.patrykandpatrick.vico/compose/1.14.0/765b2adae664ca06d7e81adf2f334da1c37aef0f/compose-1.14.0-sources.jar com/patrykandpatrick/vico/compose/axis/horizontal/HorizontalAxis.kt)",
+      "Bash(unzip -p /home/radu/.gradle/caches/modules-2/files-2.1/com.patrykandpatrick.vico/compose/1.14.0/765b2adae664ca06d7e81adf2f334da1c37aef0f/compose-1.14.0-sources.jar com/patrykandpatrick/vico/compose/axis/vertical/VerticalAxis.kt)",
+      "Bash(unzip -p /home/radu/.gradle/caches/modules-2/files-2.1/com.patrykandpatrick.vico/compose/1.14.0/765b2adae664ca06d7e81adf2f334da1c37aef0f/compose-1.14.0-sources.jar com/patrykandpatrick/vico/compose/chart/line/LineChart.kt)",
+      "Bash(unzip -l /home/radu/.gradle/caches/modules-2/files-2.1/com.patrykandpatrick.vico/core/1.14.0/dc819ca917f89ad3d4aa007cb9ce5a667146cf86/core-1.14.0-sources.jar)",
+      "Bash(unzip *)"
+    ]
+  }
+}
