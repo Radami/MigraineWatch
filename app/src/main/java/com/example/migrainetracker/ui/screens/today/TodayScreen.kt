@@ -70,7 +70,7 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun TodayScreen(
-    onPressureTap: () -> Unit,
+    onAlertTap: (AlertWindow) -> Unit,
     onLogTap: () -> Unit,
     onChangeLocation: () -> Unit,
     viewModel: TodayViewModel = hiltViewModel()
@@ -119,7 +119,7 @@ fun TodayScreen(
                 exit = fadeOut()
             ) {
                 state.alertWindows.firstOrNull()?.let { alert ->
-                    AlertBanner(alert = alert, onClick = onPressureTap)
+                    AlertBanner(alert = alert, onClick = { onAlertTap(alert) })
                 }
             }
         }

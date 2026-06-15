@@ -1,5 +1,6 @@
 package com.example.migrainetracker.ui.navigation
 
+import android.content.Intent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -9,12 +10,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.migrainetracker.AlertDetailActivity
 import com.example.migrainetracker.ui.screens.calendar.CalendarScreen
 import com.example.migrainetracker.ui.screens.calendar.LogEntryScreen
 import com.example.migrainetracker.ui.screens.onboarding.OnboardingScreen
@@ -25,6 +28,7 @@ import com.example.migrainetracker.ui.screens.today.TodayScreen
 @Composable
 fun AppNavigation(startDestination: String) {
     val navController = rememberNavController()
+    val context = LocalContext.current
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
@@ -75,7 +79,16 @@ fun AppNavigation(startDestination: String) {
             }
             composable(Screen.Today.route) {
                 TodayScreen(
-                    onPressureTap = { navController.navigate(Screen.Pressure.route) },
+                    onAlertTap = { alert ->
+                        context.startActivity(
+                            Intent(context, AlertDetailActivity::class.java).apply {
+                                putExtra("startEpoch", alert.start.epochSecond)
+                                putExtra("endEpoch", alert.end.epochSecond)
+                                putExtra("delta", alert.delta)
+                                putExtra("direction", alert.direction)
+                            }
+                        )
+                    },
                     onLogTap = {
                         navController.navigate(
                             Screen.LogEntry.withDate(java.time.LocalDate.now().toString())
