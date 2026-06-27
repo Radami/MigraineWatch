@@ -115,18 +115,25 @@ fun AlertDetailChart(
 ) {
     if (readings.isEmpty()) return
 
-    val alertDurationSeconds = (alertEndEpoch - alertStartEpoch).coerceAtLeast(1L)
-    val alertDurationHours = alertDurationSeconds / 3600f
-    // Cap so 5 × interval ≤ 48 h
-    val intervalHours = minOf(alertDurationHours, 48f / 5f)
-    val intervalSeconds = (intervalHours * 3600f).toLong()
+    val intervalSeconds = 12 * 3600L
     val alertCenterEpoch = (alertStartEpoch + alertEndEpoch) / 2L
+    val zoneId = ZoneId.systemDefault()
 
-    // 6 points at indices 0..5; centre of the chart sits between indices 2 and 3 (at 2.5).
-    // Point i → epoch = alertCenter + (i − 2.5) × interval
-    val entries = remember(readings, alertCenterEpoch, intervalSeconds) {
-        (0..5).mapNotNull { i ->
-            val anchorEpoch = alertCenterEpoch + ((i.toDouble() - 2.5) * intervalSeconds).toLong()
+    // Anchor the chart so it shows 6 intervals (7 points) = 72 hours.
+    // Centered around the full day of the alert: index 3 should be noon of the alert day.
+    val alertDateTime = Instant.ofEpochSecond(alertCenterEpoch).atZone(zoneId)
+    val snappedCenterEpoch = alertDateTime.toLocalDate()
+        .atTime(12, 0)
+        .atZone(zoneId)
+        .toEpochSecond()
+
+    val chartStartEpoch = snappedCenterEpoch - 3 * intervalSeconds
+    val chartTotalSeconds = 6 * intervalSeconds
+
+    // 7 points at indices 0..6; points land exactly on 00:00 or 12:00.
+    val entries = remember(readings, chartStartEpoch) {
+        (0..6).mapNotNull { i ->
+            val anchorEpoch = chartStartEpoch + i * intervalSeconds
             readings.minByOrNull { abs(it.dateTime.epochSecond - anchorEpoch) }
                 ?.let { FloatEntry(i.toFloat(), it.pressureMsl) }
         }
@@ -137,19 +144,12 @@ fun AlertDetailChart(
         modelProducer.setEntries(listOf(entries))
     }
 
-    // Chart edges in epoch seconds
-    val chartStartEpoch = alertCenterEpoch - (2.5 * intervalSeconds).toLong()
-    val chartTotalSeconds = 5.0 * intervalSeconds
-
     // Fractional [0..1] positions of the alert window and current time within the chart.
-    // showNow is checked before coerceIn so that out-of-range values don't appear as edge hits.
-    val alertStartFraction = ((alertStartEpoch - chartStartEpoch) / chartTotalSeconds)
-        .toFloat().coerceIn(0f, 1f)
-    val alertEndFraction = ((alertEndEpoch - chartStartEpoch) / chartTotalSeconds)
-        .toFloat().coerceIn(0f, 1f)
+    val alertStartFraction = ((alertStartEpoch - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
+    val alertEndFraction = ((alertEndEpoch - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
     val nowEpoch = Instant.now().epochSecond
-    val showNow = nowEpoch > chartStartEpoch && nowEpoch < chartStartEpoch + chartTotalSeconds.toLong()
-    val nowFraction = ((nowEpoch - chartStartEpoch) / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
+    val showNow = nowEpoch > chartStartEpoch && nowEpoch < chartStartEpoch + chartTotalSeconds
+    val nowFraction = ((nowEpoch - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
 
     val isDark = isSystemInDarkTheme()
     val lineColor = if (isDark) ChartMeasuredDark else ChartMeasuredLight
@@ -161,23 +161,22 @@ fun AlertDetailChart(
     val dataMax = allY.maxOrNull() ?: return
     val yPadding = maxOf((dataMax - dataMin) * 0.2f, 2f)
 
-    // Show day name alongside hour when the chart spans more than one calendar day
     val timeFormatter = remember {
-        DateTimeFormatter.ofPattern("ha", Locale.ENGLISH).withZone(ZoneId.systemDefault())
+        DateTimeFormatter.ofPattern("a", Locale.ENGLISH).withZone(zoneId)
     }
-    val dayFormatter = remember(intervalHours) {
-        if (intervalHours >= 6f) DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH).withZone(ZoneId.systemDefault())
-        else null
+    val dateFormatter = remember {
+        DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH).withZone(zoneId)
     }
-    val xFormatter = remember(alertCenterEpoch, intervalSeconds, dayFormatter, timeFormatter) {
+    val xFormatter = remember(chartStartEpoch, timeFormatter, dateFormatter) {
         AxisValueFormatter<AxisPosition.Horizontal.Bottom> { value, _ ->
-            val anchorEpoch = alertCenterEpoch + ((value.toDouble() - 2.5) * intervalSeconds).toLong()
-            val instant = Instant.ofEpochSecond(anchorEpoch)
-            if (dayFormatter != null) {
-                "${dayFormatter.format(instant)}\n${timeFormatter.format(instant)}"
-            } else {
-                timeFormatter.format(instant)
-            }
+            val i = value.roundToInt()
+            val anchorEpoch = chartStartEpoch + i * intervalSeconds
+            val instant = Instant.ofEpochSecond(anchorEpoch).atZone(zoneId)
+            
+            val dayStr = dateFormatter.format(instant)
+            val timeStr = timeFormatter.format(instant)
+            
+            "$dayStr\n$timeStr"
         }
     }
     val yFormatter = remember {
@@ -215,7 +214,7 @@ fun AlertDetailChart(
                 bottomAxis = rememberBottomAxis(
                     label = axisLabelComponent(lineCount = 2),
                     valueFormatter = xFormatter,
-                    itemPlacer = remember { AxisItemPlacer.Horizontal.default(spacing = 1, shiftExtremeTicks = false, addExtremeLabelPadding = true) }
+                    itemPlacer = remember { AxisItemPlacer.Horizontal.default(spacing = 1, shiftExtremeTicks = false, addExtremeLabelPadding = false) }
                 ),
                 modifier = Modifier.fillMaxSize()
             )
