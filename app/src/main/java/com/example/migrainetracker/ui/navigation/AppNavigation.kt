@@ -79,13 +79,18 @@ fun AppNavigation(startDestination: String) {
             }
             composable(Screen.Today.route) {
                 TodayScreen(
-                    onAlertTap = { alert ->
+                    onAlertTap = { alerts ->
+                        val first = alerts.first()
                         context.startActivity(
                             Intent(context, AlertDetailActivity::class.java).apply {
-                                putExtra("startEpoch", alert.start.epochSecond)
-                                putExtra("endEpoch", alert.end.epochSecond)
-                                putExtra("delta", alert.delta)
-                                putExtra("direction", alert.direction)
+                                putExtra("startEpoch", first.start.epochSecond)
+                                putExtra("endEpoch", first.end.epochSecond)
+                                putExtra("delta", first.delta)
+                                putExtra("direction", first.direction)
+                                putExtra("allStartEpochs", alerts.map { it.start.epochSecond }.toLongArray())
+                                putExtra("allEndEpochs", alerts.map { it.end.epochSecond }.toLongArray())
+                                putExtra("allDeltas", alerts.map { it.delta }.toFloatArray())
+                                putExtra("allDirections", alerts.joinToString(",") { it.direction })
                             }
                         )
                     },

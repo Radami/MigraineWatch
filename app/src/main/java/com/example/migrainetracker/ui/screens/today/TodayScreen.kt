@@ -70,7 +70,7 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun TodayScreen(
-    onAlertTap: (AlertWindow) -> Unit,
+    onAlertTap: (List<AlertWindow>) -> Unit,
     onLogTap: () -> Unit,
     onChangeLocation: () -> Unit,
     viewModel: TodayViewModel = hiltViewModel()
@@ -118,8 +118,9 @@ fun TodayScreen(
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
-                state.alertWindows.firstOrNull()?.let { alert ->
-                    AlertBanner(alert = alert, onClick = { onAlertTap(alert) })
+                val alerts = state.alertWindows
+                if (alerts.isNotEmpty()) {
+                    AlertBanner(alerts = alerts, onClick = { onAlertTap(alerts) })
                 }
             }
         }
@@ -140,11 +141,16 @@ fun TodayScreen(
 }
 
 @Composable
-private fun AlertBanner(alert: AlertWindow, onClick: () -> Unit) {
+private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
+    val first = alerts.first()
     val timeFormatter = remember { DateTimeFormatter.ofPattern("EEE HH:mm") }
     val zone = remember { ZoneId.systemDefault() }
-    val timeLabel = remember(alert) {
-        alert.start.atZone(zone).format(timeFormatter)
+    val timeLabel = remember(first) { first.start.atZone(zone).format(timeFormatter) }
+    val eventSummary = "${String.format("%.1f", first.delta)} hPa ${first.direction} around $timeLabel"
+    val message = if (alerts.size == 1) {
+        "Elevated risk · $eventSummary"
+    } else {
+        "Elevated risk · Multiple events · Next: $eventSummary"
     }
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -164,7 +170,7 @@ private fun AlertBanner(alert: AlertWindow, onClick: () -> Unit) {
             )
             Spacer(Modifier.width(12.dp))
             Text(
-                "Elevated risk · ${String.format("%.1f", alert.delta)} hPa ${alert.direction} around $timeLabel",
+                message,
                 color = MaterialTheme.colorScheme.onErrorContainer,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f)

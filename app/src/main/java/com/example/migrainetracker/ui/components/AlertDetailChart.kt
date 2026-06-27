@@ -1,26 +1,38 @@
 package com.example.migrainetracker.ui.components
 
+import android.graphics.DashPathEffect
+import android.graphics.Paint
+import android.graphics.RectF
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.migrainetracker.data.model.PressureReading
 import com.example.migrainetracker.ui.theme.ChartMeasuredDark
 import com.example.migrainetracker.ui.theme.ChartMeasuredLight
 import com.example.migrainetracker.ui.theme.ChartNowLineDark
 import com.example.migrainetracker.ui.theme.ChartNowLineLight
+import com.patrykandpatrick.vico.compose.axis.axisLabelComponent
 import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
 import com.patrykandpatrick.vico.compose.chart.Chart
@@ -28,6 +40,8 @@ import com.patrykandpatrick.vico.compose.chart.line.lineChart
 import com.patrykandpatrick.vico.core.axis.AxisItemPlacer
 import com.patrykandpatrick.vico.core.axis.AxisPosition
 import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter
+import com.patrykandpatrick.vico.core.chart.decoration.Decoration
+import com.patrykandpatrick.vico.core.chart.draw.ChartDrawContext
 import com.patrykandpatrick.vico.core.chart.line.LineChart
 import com.patrykandpatrick.vico.core.chart.values.AxisValuesOverrider
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
@@ -38,6 +52,48 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+private class AlertDetailDecoration(
+    private val alertStartFraction: Float,
+    private val alertEndFraction: Float,
+    private val alertHighlightColorArgb: Int,
+    private val showNow: Boolean,
+    private val nowFraction: Float,
+    private val nowLineColorArgb: Int,
+) : Decoration {
+
+    private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = alertHighlightColorArgb
+    }
+
+    private val nowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = nowLineColorArgb
+    }
+
+    private var initialisedDensity = 0f
+
+    private fun ensureNowPaintDensity(density: Float) {
+        if (initialisedDensity == density) return
+        initialisedDensity = density
+        nowPaint.strokeWidth = 2f * density
+        nowPaint.pathEffect = DashPathEffect(floatArrayOf(10f * density, 6f * density), 0f)
+    }
+
+    override fun onDrawBehindChart(context: ChartDrawContext, bounds: RectF) {
+        val startX = bounds.left + alertStartFraction * bounds.width()
+        val endX = bounds.left + alertEndFraction * bounds.width()
+        context.canvas.drawRect(startX, bounds.top, endX, bounds.bottom, highlightPaint)
+    }
+
+    override fun onDrawAboveChart(context: ChartDrawContext, bounds: RectF) {
+        if (!showNow) return
+        ensureNowPaintDensity(context.density)
+        val x = bounds.left + nowFraction * bounds.width()
+        context.canvas.drawLine(x, bounds.top, x, bounds.bottom, nowPaint)
+    }
+}
 
 /**
  * A chart centered on an alert window rather than the current time.
@@ -85,14 +141,15 @@ fun AlertDetailChart(
     val chartStartEpoch = alertCenterEpoch - (2.5 * intervalSeconds).toLong()
     val chartTotalSeconds = 5.0 * intervalSeconds
 
-    // Fractional [0..1] positions of the alert window and current time within the chart
+    // Fractional [0..1] positions of the alert window and current time within the chart.
+    // showNow is checked before coerceIn so that out-of-range values don't appear as edge hits.
     val alertStartFraction = ((alertStartEpoch - chartStartEpoch) / chartTotalSeconds)
         .toFloat().coerceIn(0f, 1f)
     val alertEndFraction = ((alertEndEpoch - chartStartEpoch) / chartTotalSeconds)
         .toFloat().coerceIn(0f, 1f)
     val nowEpoch = Instant.now().epochSecond
-    val nowFraction = ((nowEpoch - chartStartEpoch) / chartTotalSeconds)
-        .toFloat().coerceIn(0f, 1f)
+    val showNow = nowEpoch > chartStartEpoch && nowEpoch < chartStartEpoch + chartTotalSeconds.toLong()
+    val nowFraction = ((nowEpoch - chartStartEpoch) / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
 
     val isDark = isSystemInDarkTheme()
     val lineColor = if (isDark) ChartMeasuredDark else ChartMeasuredLight
@@ -105,63 +162,120 @@ fun AlertDetailChart(
     val yPadding = maxOf((dataMax - dataMin) * 0.2f, 2f)
 
     // Show day name alongside hour when the chart spans more than one calendar day
-    val labelPattern = if (intervalHours < 6f) "ha" else "EEE ha"
-    val labelFormatter = remember(labelPattern) {
-        DateTimeFormatter.ofPattern(labelPattern, Locale.ENGLISH).withZone(ZoneId.systemDefault())
+    val timeFormatter = remember {
+        DateTimeFormatter.ofPattern("ha", Locale.ENGLISH).withZone(ZoneId.systemDefault())
     }
-    val xFormatter = remember(alertCenterEpoch, intervalSeconds, labelFormatter) {
+    val dayFormatter = remember(intervalHours) {
+        if (intervalHours >= 6f) DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH).withZone(ZoneId.systemDefault())
+        else null
+    }
+    val xFormatter = remember(alertCenterEpoch, intervalSeconds, dayFormatter, timeFormatter) {
         AxisValueFormatter<AxisPosition.Horizontal.Bottom> { value, _ ->
             val anchorEpoch = alertCenterEpoch + ((value.toDouble() - 2.5) * intervalSeconds).toLong()
-            labelFormatter.format(Instant.ofEpochSecond(anchorEpoch))
+            val instant = Instant.ofEpochSecond(anchorEpoch)
+            if (dayFormatter != null) {
+                "${dayFormatter.format(instant)}\n${timeFormatter.format(instant)}"
+            } else {
+                timeFormatter.format(instant)
+            }
         }
     }
     val yFormatter = remember {
         AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ -> "${value.roundToInt()}" }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(200.dp)
-    ) {
-        Chart(
-            chart = lineChart(
-                lines = listOf(LineChart.LineSpec(lineColor = lineColor.toArgb())),
-                axisValuesOverrider = AxisValuesOverrider.fixed(
-                    minY = dataMin - yPadding,
-                    maxY = dataMax + yPadding
-                )
-            ),
-            chartModelProducer = modelProducer,
-            startAxis = rememberStartAxis(valueFormatter = yFormatter),
-            bottomAxis = rememberBottomAxis(
-                valueFormatter = xFormatter,
-                itemPlacer = remember { AxisItemPlacer.Horizontal.default(spacing = 1) }
-            ),
-            modifier = Modifier.fillMaxSize()
+    val decoration = remember(alertStartFraction, alertEndFraction, alertHighlightColor, showNow, nowFraction, nowLineColor) {
+        AlertDetailDecoration(
+            alertStartFraction = alertStartFraction,
+            alertEndFraction = alertEndFraction,
+            alertHighlightColorArgb = alertHighlightColor.copy(alpha = 0.15f).toArgb(),
+            showNow = showNow,
+            nowFraction = nowFraction,
+            nowLineColorArgb = nowLineColor.copy(alpha = 0.5f).toArgb(),
         )
+    }
 
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            // Semi-transparent alert window band
-            val startX = alertStartFraction * size.width
-            val endX = alertEndFraction * size.width
-            drawRect(
-                color = alertHighlightColor.copy(alpha = 0.15f),
-                topLeft = Offset(startX, 0f),
-                size = Size(endX - startX, size.height)
+    Column(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+        ) {
+            Chart(
+                chart = lineChart(
+                    lines = listOf(LineChart.LineSpec(lineColor = lineColor.toArgb())),
+                    decorations = listOf(decoration),
+                    axisValuesOverrider = AxisValuesOverrider.fixed(
+                        minY = dataMin - yPadding,
+                        maxY = dataMax + yPadding
+                    )
+                ),
+                chartModelProducer = modelProducer,
+                startAxis = rememberStartAxis(valueFormatter = yFormatter),
+                bottomAxis = rememberBottomAxis(
+                    label = axisLabelComponent(lineCount = 2),
+                    valueFormatter = xFormatter,
+                    itemPlacer = remember { AxisItemPlacer.Horizontal.default(spacing = 1, shiftExtremeTicks = false, addExtremeLabelPadding = true) }
+                ),
+                modifier = Modifier.fillMaxSize()
             )
+        }
 
-            // "Now" dashed line — only draw if it falls within the chart window
-            if (nowFraction > 0f && nowFraction < 1f) {
-                val nowX = nowFraction * size.width
+        Spacer(Modifier.height(8.dp))
+        AlertDetailLegend(
+            lineColor = lineColor,
+            alertHighlightColor = alertHighlightColor,
+            nowLineColor = nowLineColor,
+            showNow = showNow,
+        )
+    }
+}
+
+@Composable
+private fun AlertDetailLegend(
+    lineColor: androidx.compose.ui.graphics.Color,
+    alertHighlightColor: androidx.compose.ui.graphics.Color,
+    nowLineColor: androidx.compose.ui.graphics.Color,
+    showNow: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Canvas(modifier = Modifier.size(width = 24.dp, height = 2.dp)) {
+            drawLine(
+                color = lineColor,
+                start = Offset(0f, size.height / 2),
+                end = Offset(size.width, size.height / 2),
+                strokeWidth = 2.dp.toPx()
+            )
+        }
+        Spacer(Modifier.width(4.dp))
+        Text("pressure", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+
+        Spacer(Modifier.width(12.dp))
+
+        Canvas(modifier = Modifier.size(width = 24.dp, height = 10.dp)) {
+            drawRect(color = alertHighlightColor.copy(alpha = 0.15f))
+        }
+        Spacer(Modifier.width(4.dp))
+        Text("alert window", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+
+        if (showNow) {
+            Spacer(Modifier.width(12.dp))
+            Canvas(modifier = Modifier.size(width = 24.dp, height = 2.dp)) {
                 drawLine(
                     color = nowLineColor.copy(alpha = 0.5f),
-                    start = Offset(nowX, 0f),
-                    end = Offset(nowX, size.height),
+                    start = Offset(0f, size.height / 2),
+                    end = Offset(size.width, size.height / 2),
                     strokeWidth = 2.dp.toPx(),
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f))
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f))
                 )
             }
+            Spacer(Modifier.width(4.dp))
+            Text("now", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
         }
     }
 }

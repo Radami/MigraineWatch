@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.migrainetracker.data.model.PressureReading
 import com.example.migrainetracker.data.preferences.UserPreferences
 import com.example.migrainetracker.data.repository.PressureRepository
+import com.example.migrainetracker.domain.AlertWindow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +24,7 @@ data class AlertDetailUiState(
     val alertEndEpoch: Long = 0L,
     val delta: Float = 0f,
     val direction: String = "",
+    val allAlerts: List<AlertWindow> = emptyList(),
     val locationName: String = "",
     val isLoading: Boolean = true
 )
@@ -39,12 +41,28 @@ class AlertDetailViewModel @Inject constructor(
     private val delta: Float = checkNotNull(savedStateHandle["delta"])
     private val direction: String = checkNotNull(savedStateHandle["direction"])
 
+    private val allAlerts: List<AlertWindow> = run {
+        val starts = savedStateHandle.get<LongArray>("allStartEpochs") ?: longArrayOf(startEpoch)
+        val ends = savedStateHandle.get<LongArray>("allEndEpochs") ?: longArrayOf(endEpoch)
+        val deltas = savedStateHandle.get<FloatArray>("allDeltas") ?: floatArrayOf(delta)
+        val directions = savedStateHandle.get<String>("allDirections")?.split(",") ?: listOf(direction)
+        starts.indices.map { i ->
+            AlertWindow(
+                start = Instant.ofEpochSecond(starts[i]),
+                end = Instant.ofEpochSecond(ends.getOrElse(i) { endEpoch }),
+                delta = deltas.getOrElse(i) { delta },
+                direction = directions.getOrElse(i) { direction }
+            )
+        }
+    }
+
     private val _uiState = MutableStateFlow(
         AlertDetailUiState(
             alertStartEpoch = startEpoch,
             alertEndEpoch = endEpoch,
             delta = delta,
-            direction = direction
+            direction = direction,
+            allAlerts = allAlerts
         )
     )
     val uiState: StateFlow<AlertDetailUiState> = _uiState.asStateFlow()

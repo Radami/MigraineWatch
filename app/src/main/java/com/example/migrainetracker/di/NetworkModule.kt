@@ -4,6 +4,7 @@ import com.example.migrainetracker.BuildConfig
 import com.example.migrainetracker.data.remote.GeocodingApi
 import com.example.migrainetracker.data.remote.OpenMeteoApi
 import com.example.migrainetracker.data.remote.OpenMeteoArchiveApi
+import com.example.migrainetracker.data.remote.mock.MockDataInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -28,11 +29,16 @@ object NetworkModule {
         coerceInputValues = true
     }
 
+    const val USE_MOCK_DATA = false
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
         .apply {
             if (BuildConfig.DEBUG) {
+
+                if (USE_MOCK_DATA) {
+                    addInterceptor(MockDataInterceptor())
+                }
                 addInterceptor(HttpLoggingInterceptor().apply {
                     level = HttpLoggingInterceptor.Level.BASIC
                 })

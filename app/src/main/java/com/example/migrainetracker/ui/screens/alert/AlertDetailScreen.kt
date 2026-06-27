@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.migrainetracker.domain.AlertWindow
 import com.example.migrainetracker.ui.components.AlertDetailChart
 import java.time.Instant
 import java.time.ZoneId
@@ -78,8 +79,21 @@ fun AlertDetailScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                item {
-                    AlertSummaryCard(state = state)
+                val alerts = state.allAlerts.ifEmpty {
+                    listOf(AlertWindow(
+                        start = Instant.ofEpochSecond(state.alertStartEpoch),
+                        end = Instant.ofEpochSecond(state.alertEndEpoch),
+                        delta = state.delta,
+                        direction = state.direction
+                    ))
+                }
+                alerts.forEachIndexed { index, alert ->
+                    item(key = alert.start.epochSecond) {
+                        AlertSummaryCard(
+                            alert = alert,
+                            locationName = if (index == 0) state.locationName else ""
+                        )
+                    }
                 }
                 item {
                     AlertChartCard(state = state)
@@ -90,18 +104,14 @@ fun AlertDetailScreen(
 }
 
 @Composable
-private fun AlertSummaryCard(state: AlertDetailUiState) {
+private fun AlertSummaryCard(alert: AlertWindow, locationName: String) {
     val timeFormatter = remember {
         DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)
             .withZone(ZoneId.systemDefault())
     }
-    val startFormatted = remember(state.alertStartEpoch) {
-        timeFormatter.format(Instant.ofEpochSecond(state.alertStartEpoch))
-    }
-    val endFormatted = remember(state.alertEndEpoch) {
-        timeFormatter.format(Instant.ofEpochSecond(state.alertEndEpoch))
-    }
-    val directionLabel = if (state.direction == "drop") "pressure drop" else "pressure rise"
+    val startFormatted = remember(alert.start) { timeFormatter.format(alert.start) }
+    val endFormatted = remember(alert.end) { timeFormatter.format(alert.end) }
+    val directionLabel = if (alert.direction == "drop") "pressure drop" else "pressure rise"
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -123,7 +133,7 @@ private fun AlertSummaryCard(state: AlertDetailUiState) {
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(
-                    "${String.format("%.1f", state.delta)} hPa $directionLabel",
+                    "${String.format("%.1f", alert.delta)} hPa $directionLabel",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onErrorContainer
@@ -139,10 +149,10 @@ private fun AlertSummaryCard(state: AlertDetailUiState) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
                 )
-                if (state.locationName.isNotEmpty()) {
+                if (locationName.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        state.locationName,
+                        locationName,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.6f)
                     )
