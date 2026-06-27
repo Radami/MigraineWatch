@@ -87,16 +87,13 @@ fun AlertDetailScreen(
                         direction = state.direction
                     ))
                 }
-                alerts.forEachIndexed { index, alert ->
+                alerts.forEach { alert ->
                     item(key = alert.start.epochSecond) {
-                        AlertSummaryCard(
-                            alert = alert,
-                            locationName = if (index == 0) state.locationName else ""
-                        )
+                        AlertSummaryCard(alert = alert)
                     }
                 }
                 item {
-                    AlertChartCard(state = state)
+                    AlertChartCard(state = state, allAlerts = alerts)
                 }
             }
         }
@@ -104,7 +101,7 @@ fun AlertDetailScreen(
 }
 
 @Composable
-private fun AlertSummaryCard(alert: AlertWindow, locationName: String) {
+private fun AlertSummaryCard(alert: AlertWindow) {
     val timeFormatter = remember {
         DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)
             .withZone(ZoneId.systemDefault())
@@ -149,21 +146,13 @@ private fun AlertSummaryCard(alert: AlertWindow, locationName: String) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
                 )
-                if (locationName.isNotEmpty()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        locationName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.6f)
-                    )
-                }
             }
         }
     }
 }
 
 @Composable
-private fun AlertChartCard(state: AlertDetailUiState) {
+private fun AlertChartCard(state: AlertDetailUiState, allAlerts: List<AlertWindow>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -175,7 +164,7 @@ private fun AlertChartCard(state: AlertDetailUiState) {
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                "Shaded area shows the detected risk window",
+                "Shaded areas show the detected risk windows",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
@@ -185,6 +174,7 @@ private fun AlertChartCard(state: AlertDetailUiState) {
                     readings = state.readings,
                     alertStartEpoch = state.alertStartEpoch,
                     alertEndEpoch = state.alertEndEpoch,
+                    allAlerts = allAlerts,
                     modifier = Modifier.fillMaxWidth()
                 )
             } else {

@@ -150,7 +150,7 @@ private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
     val message = if (alerts.size == 1) {
         "Elevated risk · $eventSummary"
     } else {
-        "Elevated risk · Multiple events · Next: $eventSummary"
+        "Elevated risk · Multiple events\nNext: $eventSummary"
     }
     Surface(
         shape = RoundedCornerShape(12.dp),

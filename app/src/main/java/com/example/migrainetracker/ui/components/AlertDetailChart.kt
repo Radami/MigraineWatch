@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.migrainetracker.data.model.PressureReading
+import com.example.migrainetracker.domain.AlertWindow
 import com.example.migrainetracker.ui.theme.ChartMeasuredDark
 import com.example.migrainetracker.ui.theme.ChartMeasuredLight
 import com.example.migrainetracker.ui.theme.ChartNowLineDark
@@ -54,9 +55,8 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private class AlertDetailDecoration(
-    private val alertStartFraction: Float,
-    private val alertEndFraction: Float,
-    private val alertHighlightColorArgb: Int,
+    private val alertFractions: List<Pair<Float, Float>>,
+    private val alertHighlightColors: List<Int>,
     private val showNow: Boolean,
     private val nowFraction: Float,
     private val nowLineColorArgb: Int,
@@ -64,7 +64,6 @@ private class AlertDetailDecoration(
 
     private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = alertHighlightColorArgb
     }
 
     private val nowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -82,9 +81,12 @@ private class AlertDetailDecoration(
     }
 
     override fun onDrawBehindChart(context: ChartDrawContext, bounds: RectF) {
-        val startX = bounds.left + alertStartFraction * bounds.width()
-        val endX = bounds.left + alertEndFraction * bounds.width()
-        context.canvas.drawRect(startX, bounds.top, endX, bounds.bottom, highlightPaint)
+        alertFractions.forEachIndexed { i, fraction ->
+            val startX = bounds.left + fraction.first * bounds.width()
+            val endX = bounds.left + fraction.second * bounds.width()
+            highlightPaint.color = alertHighlightColors.getOrElse(i) { alertHighlightColors.last() }
+            context.canvas.drawRect(startX, bounds.top, endX, bounds.bottom, highlightPaint)
+        }
     }
 
     override fun onDrawAboveChart(context: ChartDrawContext, bounds: RectF) {
@@ -111,6 +113,7 @@ fun AlertDetailChart(
     readings: List<PressureReading>,
     alertStartEpoch: Long,
     alertEndEpoch: Long,
+    allAlerts: List<AlertWindow>,
     modifier: Modifier = Modifier
 ) {
     if (readings.isEmpty()) return
@@ -144,9 +147,15 @@ fun AlertDetailChart(
         modelProducer.setEntries(listOf(entries))
     }
 
-    // Fractional [0..1] positions of the alert window and current time within the chart.
-    val alertStartFraction = ((alertStartEpoch - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
-    val alertEndFraction = ((alertEndEpoch - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
+    // Fractional [0..1] positions of all alert windows within the chart.
+    val alertFractions = remember(allAlerts, chartStartEpoch, chartTotalSeconds) {
+        allAlerts.map { alert ->
+            val start = ((alert.start.epochSecond - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
+            val end = ((alert.end.epochSecond - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
+            Pair(start, end)
+        }
+    }
+
     val nowEpoch = Instant.now().epochSecond
     val showNow = nowEpoch > chartStartEpoch && nowEpoch < chartStartEpoch + chartTotalSeconds
     val nowFraction = ((nowEpoch - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
@@ -154,7 +163,17 @@ fun AlertDetailChart(
     val isDark = isSystemInDarkTheme()
     val lineColor = if (isDark) ChartMeasuredDark else ChartMeasuredLight
     val nowLineColor = if (isDark) ChartNowLineDark else ChartNowLineLight
-    val alertHighlightColor = MaterialTheme.colorScheme.error
+    
+    val alertColors = listOf(
+        MaterialTheme.colorScheme.error,
+        MaterialTheme.colorScheme.tertiary,
+        MaterialTheme.colorScheme.secondary
+    )
+    val alertHighlightColors = remember(allAlerts, alertColors) {
+        allAlerts.mapIndexed { i, _ -> 
+            alertColors[i % alertColors.size].copy(alpha = 0.15f).toArgb()
+        }
+    }
 
     val allY = entries.map { it.y }
     val dataMin = allY.minOrNull() ?: return
@@ -183,11 +202,10 @@ fun AlertDetailChart(
         AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ -> "${value.roundToInt()}" }
     }
 
-    val decoration = remember(alertStartFraction, alertEndFraction, alertHighlightColor, showNow, nowFraction, nowLineColor) {
+    val decoration = remember(alertFractions, alertHighlightColors, showNow, nowFraction, nowLineColor) {
         AlertDetailDecoration(
-            alertStartFraction = alertStartFraction,
-            alertEndFraction = alertEndFraction,
-            alertHighlightColorArgb = alertHighlightColor.copy(alpha = 0.15f).toArgb(),
+            alertFractions = alertFractions,
+            alertHighlightColors = alertHighlightColors,
             showNow = showNow,
             nowFraction = nowFraction,
             nowLineColorArgb = nowLineColor.copy(alpha = 0.5f).toArgb(),
@@ -223,9 +241,10 @@ fun AlertDetailChart(
         Spacer(Modifier.height(8.dp))
         AlertDetailLegend(
             lineColor = lineColor,
-            alertHighlightColor = alertHighlightColor,
+            alertColors = alertColors,
             nowLineColor = nowLineColor,
             showNow = showNow,
+            alertCount = allAlerts.size
         )
     }
 }
@@ -233,9 +252,10 @@ fun AlertDetailChart(
 @Composable
 private fun AlertDetailLegend(
     lineColor: androidx.compose.ui.graphics.Color,
-    alertHighlightColor: androidx.compose.ui.graphics.Color,
+    alertColors: List<androidx.compose.ui.graphics.Color>,
     nowLineColor: androidx.compose.ui.graphics.Color,
     showNow: Boolean,
+    alertCount: Int
 ) {
     Row(
         modifier = Modifier
@@ -254,13 +274,14 @@ private fun AlertDetailLegend(
         Spacer(Modifier.width(4.dp))
         Text("pressure", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
 
-        Spacer(Modifier.width(12.dp))
-
-        Canvas(modifier = Modifier.size(width = 24.dp, height = 10.dp)) {
-            drawRect(color = alertHighlightColor.copy(alpha = 0.15f))
+        repeat(alertCount) { i ->
+            Spacer(Modifier.width(12.dp))
+            Canvas(modifier = Modifier.size(width = 24.dp, height = 10.dp)) {
+                drawRect(color = alertColors[i % alertColors.size].copy(alpha = 0.15f))
+            }
+            Spacer(Modifier.width(4.dp))
+            Text("alert ${i + 1}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
         }
-        Spacer(Modifier.width(4.dp))
-        Text("alert window", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
 
         if (showNow) {
             Spacer(Modifier.width(12.dp))

@@ -29,7 +29,7 @@ object NetworkModule {
         coerceInputValues = true
     }
 
-    const val USE_MOCK_DATA = false
+    const val USE_MOCK_DATA = true
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
