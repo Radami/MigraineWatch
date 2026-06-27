@@ -1,5 +1,9 @@
 package com.example.migrainetracker.ui.components
 
+import android.graphics.DashPathEffect
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -36,6 +40,8 @@ import com.patrykandpatrick.vico.compose.chart.line.lineChart
 import com.patrykandpatrick.vico.core.axis.AxisItemPlacer
 import com.patrykandpatrick.vico.core.axis.AxisPosition
 import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter
+import com.patrykandpatrick.vico.core.chart.decoration.Decoration
+import com.patrykandpatrick.vico.core.chart.draw.ChartDrawContext
 import com.patrykandpatrick.vico.core.chart.line.LineChart
 import com.patrykandpatrick.vico.core.chart.values.AxisValuesOverrider
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
@@ -47,6 +53,87 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+private data class BandEntry(val index: Int, val minY: Float, val maxY: Float)
+
+/**
+ * Draws the min/max shaded band (behind the chart line) and the "now" dashed line (above it)
+ * using Vico's Decoration API, which provides exact chart data-area bounds.
+ */
+private class ChartOverlayDecoration(
+    private val showBand: Boolean,
+    private val bandEntries: List<BandEntry>,
+    private val yMin: Float,
+    private val yMax: Float,
+    private val bandColorArgb: Int,
+    private val nowFraction: Float,
+    private val nowLineColorArgb: Int,
+) : Decoration {
+
+    // Group consecutive entries so gaps in data don't produce incorrect slanted polygon faces.
+    private val bandRuns: List<List<BandEntry>> = buildList {
+        var current = mutableListOf<BandEntry>()
+        for (entry in bandEntries) {
+            if (current.isEmpty() || entry.index == current.last().index + 1) {
+                current.add(entry)
+            } else {
+                if (current.isNotEmpty()) add(current)
+                current = mutableListOf(entry)
+            }
+        }
+        if (current.isNotEmpty()) add(current)
+    }
+
+    private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = bandColorArgb
+    }
+
+    private val nowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = nowLineColorArgb
+    }
+
+    // Density-dependent now-line properties are initialised lazily on first draw.
+    private var initialisedDensity = 0f
+
+    private fun ensureNowPaintDensity(density: Float) {
+        if (initialisedDensity == density) return
+        initialisedDensity = density
+        nowPaint.strokeWidth = 2f * density
+        nowPaint.pathEffect = DashPathEffect(floatArrayOf(10f * density, 6f * density), 0f)
+    }
+
+    override fun onDrawBehindChart(context: ChartDrawContext, bounds: RectF) {
+        if (!showBand || bandRuns.isEmpty()) return
+        val yRange = yMax - yMin
+        // In Android Canvas, Y increases downward: bounds.top = maxY, bounds.bottom = minY.
+        fun valueToY(v: Float) = bounds.bottom - (v - yMin) / yRange * bounds.height()
+        fun indexToX(i: Int) = bounds.left + (i / 7f) * bounds.width()
+
+        val path = Path()
+        for (run in bandRuns) {
+            path.reset()
+            run.forEachIndexed { i, entry ->
+                val x = indexToX(entry.index)
+                val y = valueToY(entry.maxY)
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            run.reversed().forEach { entry ->
+                path.lineTo(indexToX(entry.index), valueToY(entry.minY))
+            }
+            path.close()
+            context.canvas.drawPath(path, bandPaint)
+        }
+    }
+
+    override fun onDrawAboveChart(context: ChartDrawContext, bounds: RectF) {
+        ensureNowPaintDensity(context.density)
+        // nowFraction = (3 + fractionInStep) / 7, same formula as indexToX — both use bounds.width().
+        val x = bounds.left + nowFraction * bounds.width()
+        context.canvas.drawLine(x, bounds.top, x, bounds.bottom, nowPaint)
+    }
+}
 
 /**
  * @param stepHours interval between the 8 chart points: 3 for the 24 h chip, 6 for 48 h, 24 for 7 days.
@@ -64,35 +151,51 @@ fun PressureChart(
     val stepSeconds = stepHours.toLong() * 3600L
     val nowEpoch = Instant.now().epochSecond
 
-    // For the daily step, snap to local-timezone midnight so labels and anchor hours are consistent
-    // regardless of the device's UTC offset. For sub-day steps, floor to the nearest step boundary.
+    // For the daily step, snap to local-timezone noon so the day label sits at the midpoint of each
+    // calendar day. This makes the "now" line fall near the current day's label rather than halfway
+    // to the next day's label (which midnight anchoring would cause in the morning hours).
+    // For sub-day steps, floor to the nearest step boundary.
     val snappedNowEpoch = if (stepHours >= 24) {
         LocalDate.now(ZoneId.systemDefault())
-            .atStartOfDay(ZoneId.systemDefault())
+            .atTime(12, 0)
+            .atZone(ZoneId.systemDefault())
             .toEpochSecond()
     } else {
         (nowEpoch / stepSeconds) * stepSeconds
     }
 
+    // Merged list used by all three derived entry computations — allocated once per cache miss.
+    val all = remember(historical, forecast) { historical + forecast }
+
     // Chart indices 0..7 map to time offsets -3..+4 steps from snappedNow.
     // Historical: indices 0..3 (up to and including snappedNow)
     // Forecast:   indices 3..7 (snappedNow onward) — index 3 is shared so the lines connect.
-    val historicalEntries = remember(historical, forecast, snappedNowEpoch, stepSeconds) {
-        val all = historical + forecast
+    val historicalEntries = remember(all, snappedNowEpoch, stepSeconds) {
         (0..3).mapNotNull { i ->
             val anchorEpoch = snappedNowEpoch + (i - 3) * stepSeconds
             all.minByOrNull { abs(it.dateTime.epochSecond - anchorEpoch) }
                 ?.let { FloatEntry(i.toFloat(), it.pressureMsl) }
         }
     }
-    val forecastEntries = remember(historical, forecast, snappedNowEpoch, stepSeconds) {
-        val all = historical + forecast
+    val forecastEntries = remember(all, snappedNowEpoch, stepSeconds) {
         (3..7).mapNotNull { i ->
             val anchorEpoch = snappedNowEpoch + (i - 3) * stepSeconds
             all.minByOrNull { abs(it.dateTime.epochSecond - anchorEpoch) }
                 ?.let { FloatEntry(i.toFloat(), it.pressureMsl) }
         }
     }
+
+    val bandEntries = if (stepHours >= 24) {
+        remember(all, snappedNowEpoch, stepSeconds) {
+            val half = stepSeconds / 2
+            (0..7).mapNotNull { i ->
+                val anchorEpoch = snappedNowEpoch + (i - 3) * stepSeconds
+                val inWindow = all.filter { abs(it.dateTime.epochSecond - anchorEpoch) <= half }
+                if (inWindow.size < 2) null
+                else BandEntry(i, inWindow.minOf { it.pressureMsl }, inWindow.maxOf { it.pressureMsl })
+            }
+        }
+    } else emptyList()
 
     val modelProducer = remember { ChartEntryModelProducer() }
     LaunchedEffect(historicalEntries, forecastEntries) {
@@ -103,10 +206,17 @@ fun PressureChart(
     val measuredColor = if (isDark) ChartMeasuredDark else ChartMeasuredLight
     val nowLineColor = if (isDark) ChartNowLineDark else ChartNowLineLight
 
-    val allY = (historicalEntries + forecastEntries).map { it.y }
-    val dataMin = allY.minOrNull() ?: return
-    val dataMax = allY.maxOrNull() ?: return
+    val dataMin = if (bandEntries.isNotEmpty())
+        bandEntries.minOf { it.minY }
+    else
+        (historicalEntries + forecastEntries).minOfOrNull { it.y } ?: return
+    val dataMax = if (bandEntries.isNotEmpty())
+        bandEntries.maxOf { it.maxY }
+    else
+        (historicalEntries + forecastEntries).maxOfOrNull { it.y } ?: return
     val yPadding = maxOf((dataMax - dataMin) * 0.2f, 2f)
+    val yMin = dataMin - yPadding
+    val yMax = dataMax + yPadding
 
     // "ha" → "3PM"/"9AM" for hourly steps, "EEE" (Mon/Tue/…) for the 7-day chip
     val labelPattern = if (stepHours < 24) "ha" else "EEE"
@@ -124,9 +234,23 @@ fun PressureChart(
         AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ -> "${value.toInt()}" }
     }
 
-    // Dashed "now" line: actual current time as a fractional position between index 3 and 4
+    // Dashed "now" line: actual current time as a fractional position between index 3 and 4.
+    // Uses the same (i / 7f) formula as indexToX in the Decoration, so it stays aligned with the band.
     val fractionInStep = (nowEpoch - snappedNowEpoch).toFloat() / stepSeconds
-    val nowFraction = (3f + fractionInStep) / 7f   // 7 intervals between 8 points (indices 0..7)
+    val nowFraction = (3f + fractionInStep) / 7f
+
+    val showBand = bandEntries.size >= 2
+    val decoration = remember(showBand, bandEntries, yMin, yMax, measuredColor, nowFraction, nowLineColor) {
+        ChartOverlayDecoration(
+            showBand = showBand,
+            bandEntries = bandEntries,
+            yMin = yMin,
+            yMax = yMax,
+            bandColorArgb = measuredColor.copy(alpha = 0.2f).toArgb(),
+            nowFraction = nowFraction,
+            nowLineColorArgb = nowLineColor.copy(alpha = 0.5f).toArgb(),
+        )
+    }
 
     Column(modifier = modifier) {
         Box(
@@ -134,15 +258,17 @@ fun PressureChart(
                 .fillMaxWidth()
                 .height(200.dp)
         ) {
+            val lineColor = if (showBand) android.graphics.Color.TRANSPARENT else measuredColor.toArgb()
             Chart(
                 chart = lineChart(
                     lines = listOf(
-                        LineChart.LineSpec(lineColor = measuredColor.toArgb()),
-                        LineChart.LineSpec(lineColor = measuredColor.toArgb())
+                        LineChart.LineSpec(lineColor = lineColor),
+                        LineChart.LineSpec(lineColor = lineColor)
                     ),
+                    decorations = listOf(decoration),
                     axisValuesOverrider = AxisValuesOverrider.fixed(
-                        minY = dataMin - yPadding,
-                        maxY = dataMax + yPadding
+                        minY = yMin,
+                        maxY = yMax
                     )
                 ),
                 chartModelProducer = modelProducer,
@@ -153,29 +279,20 @@ fun PressureChart(
                 ),
                 modifier = Modifier.fillMaxSize()
             )
-
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val nowX = nowFraction * size.width
-                drawLine(
-                    color = nowLineColor.copy(alpha = 0.5f),
-                    start = Offset(nowX, 0f),
-                    end = Offset(nowX, size.height),
-                    strokeWidth = 2.dp.toPx(),
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f))
-                )
-            }
         }
 
         if (showLegend) {
             Spacer(Modifier.height(8.dp))
-            ChartLegend(nowLineColor = nowLineColor)
+            ChartLegend(nowLineColor = nowLineColor, showBand = showBand, bandColor = measuredColor)
         }
     }
 }
 
 @Composable
 private fun ChartLegend(
-    nowLineColor: androidx.compose.ui.graphics.Color
+    nowLineColor: androidx.compose.ui.graphics.Color,
+    showBand: Boolean,
+    bandColor: androidx.compose.ui.graphics.Color,
 ) {
     Row(
         modifier = Modifier
@@ -184,6 +301,10 @@ private fun ChartLegend(
         verticalAlignment = Alignment.CenterVertically
     ) {
         LegendItem(color = nowLineColor, label = "now", dashed = true)
+        if (showBand) {
+            Spacer(Modifier.width(12.dp))
+            LegendBandItem(color = bandColor, label = "daily range")
+        }
     }
 }
 
@@ -202,6 +323,18 @@ private fun LegendItem(
             strokeWidth = 2.dp.toPx(),
             pathEffect = effect
         )
+    }
+    Spacer(Modifier.width(4.dp))
+    Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+}
+
+@Composable
+private fun LegendBandItem(
+    color: androidx.compose.ui.graphics.Color,
+    label: String
+) {
+    Canvas(modifier = Modifier.size(width = 24.dp, height = 10.dp)) {
+        drawRect(color = color.copy(alpha = 0.2f))
     }
     Spacer(Modifier.width(4.dp))
     Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
