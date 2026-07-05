@@ -28,8 +28,6 @@ enum class TimeRange(val label: String, val hours: Long) {
 
 data class PressureUiState(
     val currentPressure: Float? = null,
-    val maxForecastDrop: Float = 0f,
-    val trendLabel: String = "",
     val historical: List<PressureReading> = emptyList(),
     val forecast: List<PressureReading> = emptyList(),
     val next12Hours: List<PressureReading> = emptyList(),
@@ -84,20 +82,13 @@ class PressureViewModel @Inject constructor(
                                 it.dateTime.isBefore(now.plus(12, ChronoUnit.HOURS))
                             }
 
-                            val (alerts, maxDrop) = withContext(Dispatchers.Default) {
-                                Pair(
-                                    AlertDetector.detect(fore, settings.alertThresholdHpa),
-                                    AlertDetector.maxForecastDrop(fore)
-                                )
+                            val alerts = withContext(Dispatchers.Default) {
+                                AlertDetector.detect(fore, settings.alertThresholdHpa)
                             }
-
-                            val trend = buildTrendLabel(hist, fore)
 
                             _uiState.value = PressureUiState(
                                 currentPressure = hist.lastOrNull()?.pressureMsl
                                     ?: fore.firstOrNull()?.pressureMsl,
-                                maxForecastDrop = maxDrop,
-                                trendLabel = trend,
                                 historical = hist,
                                 forecast = fore,
                                 next12Hours = next12,
@@ -113,14 +104,4 @@ class PressureViewModel @Inject constructor(
         }
     }
 
-    private fun buildTrendLabel(hist: List<PressureReading>, fore: List<PressureReading>): String {
-        val recent = hist.takeLast(6)
-        if (recent.size < 2) return ""
-        val delta = recent.last().pressureMsl - recent.first().pressureMsl
-        return when {
-            delta < -3f -> "Falling · front incoming"
-            delta > 3f -> "Rising · clearing"
-            else -> "Steady"
-        }
-    }
 }

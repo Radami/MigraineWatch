@@ -65,26 +65,4 @@ object AlertDetector {
         }
     }
 
-    fun maxForecastDrop(forecast: List<PressureReading>): Float {
-        if (forecast.size < 2) return 0f
-        val windowMillis = 24L * 60 * 60 * 1000
-        var maxDrop = 0f
-        for (i in forecast.indices) {
-            val windowEnd = forecast[i].dateTime.toEpochMilli() + windowMillis
-            val window = forecast.filter { r ->
-                r.dateTime.toEpochMilli() >= forecast[i].dateTime.toEpochMilli() &&
-                    r.dateTime.toEpochMilli() <= windowEnd
-            }
-            if (window.size < 2) continue
-            val maxP = window.maxOf { it.pressureMsl }
-            val maxIdx = window.indexOfFirst { it.pressureMsl == maxP }
-            val subsequent = window.drop(maxIdx)
-            if (subsequent.isNotEmpty()) {
-                val minP = subsequent.minOf { it.pressureMsl }
-                val drop = maxP - minP
-                if (drop > maxDrop) maxDrop = drop
-            }
-        }
-        return maxDrop
-    }
 }

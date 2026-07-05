@@ -42,6 +42,7 @@ import com.patrykandpatrick.vico.core.axis.AxisPosition
 import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter
 import com.patrykandpatrick.vico.core.chart.decoration.Decoration
 import com.patrykandpatrick.vico.core.chart.draw.ChartDrawContext
+import com.patrykandpatrick.vico.core.chart.layout.HorizontalLayout
 import com.patrykandpatrick.vico.core.chart.line.LineChart
 import com.patrykandpatrick.vico.core.chart.values.AxisValuesOverrider
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
@@ -57,6 +58,22 @@ import kotlin.math.roundToInt
 private data class BandEntry(val index: Int, val minY: Float, val maxY: Float)
 
 /**
+ * Pressure at exactly [epoch], linearly interpolated between the two surrounding readings
+ * ([readings] must be sorted by time). Returns null outside the data range, so a missing
+ * stretch of data drops the chart point instead of silently reusing a reading from a
+ * different time.
+ */
+private fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
+    val after = readings.firstOrNull { it.dateTime.epochSecond >= epoch } ?: return null
+    if (after.dateTime.epochSecond == epoch) return after.pressureMsl
+    val before = readings.lastOrNull { it.dateTime.epochSecond <= epoch } ?: return null
+    val t0 = before.dateTime.epochSecond
+    val t1 = after.dateTime.epochSecond
+    val fraction = (epoch - t0).toFloat() / (t1 - t0)
+    return before.pressureMsl + fraction * (after.pressureMsl - before.pressureMsl)
+}
+
+/**
  * Draws the min/max shaded band (behind the chart line) and the "now" dashed line (above it)
  * using Vico's Decoration API, which provides exact chart data-area bounds.
  */
@@ -66,7 +83,7 @@ private class ChartOverlayDecoration(
     private val yMin: Float,
     private val yMax: Float,
     private val bandColorArgb: Int,
-    private val nowFraction: Float,
+    private val nowX: Float,
     private val nowLineColorArgb: Int,
 ) : Decoration {
 
@@ -104,23 +121,32 @@ private class ChartOverlayDecoration(
         nowPaint.pathEffect = DashPathEffect(floatArrayOf(10f * density, 6f * density), 0f)
     }
 
+    // Maps a chart x-value to a pixel position via Vico's horizontal dimensions — the same
+    // formula Vico uses to place line points — so the overlays stay aligned with the data
+    // in both FullWidth (hourly) and Segmented (daily) layouts.
+    private fun ChartDrawContext.dataX(x: Float, bounds: RectF): Float {
+        val chartValues = chartValuesProvider.getChartValues()
+        return bounds.left + horizontalDimensions.startPadding +
+            (x - chartValues.minX) / chartValues.xStep * horizontalDimensions.xSpacing -
+            horizontalScroll
+    }
+
     override fun onDrawBehindChart(context: ChartDrawContext, bounds: RectF) {
         if (!showBand || bandRuns.isEmpty()) return
         val yRange = yMax - yMin
         // In Android Canvas, Y increases downward: bounds.top = maxY, bounds.bottom = minY.
         fun valueToY(v: Float) = bounds.bottom - (v - yMin) / yRange * bounds.height()
-        fun indexToX(i: Int) = bounds.left + (i / 7f) * bounds.width()
 
         val path = Path()
         for (run in bandRuns) {
             path.reset()
             run.forEachIndexed { i, entry ->
-                val x = indexToX(entry.index)
+                val x = context.dataX(entry.index.toFloat(), bounds)
                 val y = valueToY(entry.maxY)
                 if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
             run.reversed().forEach { entry ->
-                path.lineTo(indexToX(entry.index), valueToY(entry.minY))
+                path.lineTo(context.dataX(entry.index.toFloat(), bounds), valueToY(entry.minY))
             }
             path.close()
             context.canvas.drawPath(path, bandPaint)
@@ -129,8 +155,7 @@ private class ChartOverlayDecoration(
 
     override fun onDrawAboveChart(context: ChartDrawContext, bounds: RectF) {
         ensureNowPaintDensity(context.density)
-        // nowFraction = (3 + fractionInStep) / 7, same formula as indexToX — both use bounds.width().
-        val x = bounds.left + nowFraction * bounds.width()
+        val x = context.dataX(nowX, bounds)
         context.canvas.drawLine(x, bounds.top, x, bounds.bottom, nowPaint)
     }
 }
@@ -173,15 +198,13 @@ fun PressureChart(
     val historicalEntries = remember(all, snappedNowEpoch, stepSeconds) {
         (0..3).mapNotNull { i ->
             val anchorEpoch = snappedNowEpoch + (i - 3) * stepSeconds
-            all.minByOrNull { abs(it.dateTime.epochSecond - anchorEpoch) }
-                ?.let { FloatEntry(i.toFloat(), it.pressureMsl) }
+            pressureAt(all, anchorEpoch)?.let { FloatEntry(i.toFloat(), it) }
         }
     }
     val forecastEntries = remember(all, snappedNowEpoch, stepSeconds) {
         (3..7).mapNotNull { i ->
             val anchorEpoch = snappedNowEpoch + (i - 3) * stepSeconds
-            all.minByOrNull { abs(it.dateTime.epochSecond - anchorEpoch) }
-                ?.let { FloatEntry(i.toFloat(), it.pressureMsl) }
+            pressureAt(all, anchorEpoch)?.let { FloatEntry(i.toFloat(), it) }
         }
     }
 
@@ -234,20 +257,18 @@ fun PressureChart(
         AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ -> "${value.toInt()}" }
     }
 
-    // Dashed "now" line: actual current time as a fractional position between index 3 and 4.
-    // Uses the same (i / 7f) formula as indexToX in the Decoration, so it stays aligned with the band.
-    val fractionInStep = (nowEpoch - snappedNowEpoch).toFloat() / stepSeconds
-    val nowFraction = (3f + fractionInStep) / 7f
+    // Dashed "now" line: actual current time as a fractional x-value between index 3 and 4.
+    val nowX = 3f + (nowEpoch - snappedNowEpoch).toFloat() / stepSeconds
 
     val showBand = bandEntries.size >= 2
-    val decoration = remember(showBand, bandEntries, yMin, yMax, measuredColor, nowFraction, nowLineColor) {
+    val decoration = remember(showBand, bandEntries, yMin, yMax, measuredColor, nowX, nowLineColor) {
         ChartOverlayDecoration(
             showBand = showBand,
             bandEntries = bandEntries,
             yMin = yMin,
             yMax = yMax,
             bandColorArgb = measuredColor.copy(alpha = 0.2f).toArgb(),
-            nowFraction = nowFraction,
+            nowX = nowX,
             nowLineColorArgb = nowLineColor.copy(alpha = 0.5f).toArgb(),
         )
     }
@@ -275,21 +296,37 @@ fun PressureChart(
                 startAxis = rememberStartAxis(valueFormatter = yFormatter),
                 bottomAxis = rememberBottomAxis(
                     valueFormatter = xFormatter,
-                    itemPlacer = remember { AxisItemPlacer.Horizontal.default(spacing = 1) }
+                    itemPlacer = remember(stepHours) {
+                        AxisItemPlacer.Horizontal.default(
+                            spacing = 1,
+                            shiftExtremeTicks = false,
+                            addExtremeLabelPadding = stepHours < 24
+                        )
+                    }
                 ),
+                // Hourly labels mark exact instants, so they sit on the gridlines (FullWidth);
+                // day labels describe a whole day, so they sit centred between them (Segmented,
+                // whose cell edges fall on midnights because the daily points are noon-snapped).
+                horizontalLayout = if (stepHours < 24) HorizontalLayout.FullWidth() else HorizontalLayout.Segmented,
                 modifier = Modifier.fillMaxSize()
             )
         }
 
         if (showLegend) {
             Spacer(Modifier.height(8.dp))
-            ChartLegend(nowLineColor = nowLineColor, showBand = showBand, bandColor = measuredColor)
+            ChartLegend(
+                lineColor = measuredColor,
+                nowLineColor = nowLineColor,
+                showBand = showBand,
+                bandColor = measuredColor
+            )
         }
     }
 }
 
 @Composable
 private fun ChartLegend(
+    lineColor: androidx.compose.ui.graphics.Color,
     nowLineColor: androidx.compose.ui.graphics.Color,
     showBand: Boolean,
     bandColor: androidx.compose.ui.graphics.Color,
@@ -300,6 +337,11 @@ private fun ChartLegend(
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // The pressure line is only drawn when the band isn't (24 h / 48 h ranges).
+        if (!showBand) {
+            LegendItem(color = lineColor, label = "pressure")
+            Spacer(Modifier.width(12.dp))
+        }
         LegendItem(color = nowLineColor, label = "now", dashed = true)
         if (showBand) {
             Spacer(Modifier.width(12.dp))

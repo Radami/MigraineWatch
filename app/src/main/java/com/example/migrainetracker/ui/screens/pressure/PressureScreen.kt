@@ -23,6 +23,7 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -89,40 +90,22 @@ fun PressureScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Column {
-                            Text(
-                                "Pressure history",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            if (state.trendLabel.isNotEmpty()) {
-                                Text(
-                                    state.trendLabel,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                state.currentPressure?.let { "${it.toInt()} hPa" } ?: "—",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (state.maxForecastDrop > 0f) {
-                                Text(
-                                    "↘ ${String.format("%.1f", state.maxForecastDrop)} hPa / 24h",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        "Pressure history",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        // What the chart shows for each chip: 8 points from −3 to +4 steps
+                        // around now, at 3 h / 6 h / 24 h per step.
+                        when (state.selectedRange) {
+                            TimeRange.Hours24 -> "9 hrs back · 12 hrs ahead"
+                            TimeRange.Hours48 -> "18 hrs back · 24 hrs ahead"
+                            TimeRange.Days7 -> "3 days back · 4 days ahead"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
 
                     Spacer(Modifier.height(16.dp))
 
@@ -132,6 +115,10 @@ fun PressureScreen(
                                 selected = state.selectedRange == range,
                                 onClick = { viewModel.selectRange(range) },
                                 label = { Text(range.label) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                ),
                                 modifier = Modifier.semantics {
                                     contentDescription = "Time range ${range.label}"
                                 }
