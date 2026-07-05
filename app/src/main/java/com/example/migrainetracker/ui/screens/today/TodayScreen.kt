@@ -67,6 +67,7 @@ import com.example.migrainetracker.ui.theme.SeverityMild
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 @Composable
 fun TodayScreen(
@@ -212,20 +213,11 @@ private fun PressureCard(state: TodayUiState) {
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        state.currentPressure?.let { "${it.toInt()} hPa" } ?: "—",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (state.maxForecastDrop > 0f) {
-                        Text(
-                            "↘ ${String.format("%.1f", state.maxForecastDrop)} hPa / 24h",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
+                Text(
+                    state.currentPressure?.let { "${it.roundToInt()} hPa" } ?: "—",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
             }
             Spacer(Modifier.height(12.dp))
             if (state.historical.isNotEmpty() || state.forecast.isNotEmpty()) {

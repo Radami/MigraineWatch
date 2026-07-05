@@ -27,7 +27,6 @@ import javax.inject.Inject
 
 data class TodayUiState(
     val currentPressure: Float? = null,
-    val maxForecastDrop: Float = 0f,
     val historical: List<PressureReading> = emptyList(),
     val forecast: List<PressureReading> = emptyList(),
     val alertWindows: List<AlertWindow> = emptyList(),
@@ -57,10 +56,10 @@ class TodayViewModel @Inject constructor(
     }
 
     private fun observeData() {
-        val now = Instant.now()
         // Query 4 days back for the chart, but 7 days ahead for full forecast analysis
-        val from = now.minus(4, ChronoUnit.DAYS)
-        val to = now.plus(7, ChronoUnit.DAYS)
+        val queryStart = Instant.now()
+        val from = queryStart.minus(4, ChronoUnit.DAYS)
+        val to = queryStart.plus(7, ChronoUnit.DAYS)
 
         val today = LocalDate.now()
         val rangeStart = today.minusDays(6)
@@ -74,6 +73,9 @@ class TodayViewModel @Inject constructor(
             ) { readings, entries, settings ->
                 Triple(readings, entries, settings)
             }.collectLatest { (readings, entries, settings) ->
+                // Re-evaluate "now" on every emission so the current pressure and the
+                // historical/forecast split don't go stale while the screen stays open.
+                val now = Instant.now()
                 val hist = readings.filter { it.dateTime.isBefore(now) }
                 val fore = readings.filter { !it.dateTime.isBefore(now) }
 
@@ -82,11 +84,8 @@ class TodayViewModel @Inject constructor(
                 val alertInput = readings.filter {
                     !it.dateTime.isBefore(now.minus(24, ChronoUnit.HOURS))
                 }
-                val (alerts, maxDrop) = withContext(Dispatchers.Default) {
-                    Pair(
-                        AlertDetector.detect(alertInput, settings.alertThresholdHpa),
-                        AlertDetector.maxForecastDrop(fore)
-                    )
+                val alerts = withContext(Dispatchers.Default) {
+                    AlertDetector.detect(alertInput, settings.alertThresholdHpa)
                 }
 
                 val entriesMap = (0..6).associate { d ->
@@ -109,7 +108,6 @@ class TodayViewModel @Inject constructor(
                 _uiState.value = TodayUiState(
                     currentPressure = hist.lastOrNull()?.pressureMsl
                         ?: fore.firstOrNull()?.pressureMsl,
-                    maxForecastDrop = maxDrop,
                     historical = hist,
                     forecast = fore,
                     alertWindows = alerts,
