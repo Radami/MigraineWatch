@@ -77,12 +77,11 @@ class AlertDetailViewModel @Inject constructor(
     }
 
     private fun observeData() {
-        val alertCenterEpoch = (startEpoch + endEpoch) / 2L
-        // Fetch ±30 h around the alert centre — generous enough to cover the max chart window
-        // of ±24 h (2.5 × max interval of 9.6 h) plus a small buffer for data lookup.
-        val bufferSeconds = 30L * 3600L
-        val from = Instant.ofEpochSecond(alertCenterEpoch - bufferSeconds)
-        val to = Instant.ofEpochSecond(alertCenterEpoch + bufferSeconds)
+        // The chart is anchored to "now": it starts at most 24 h in the past and ends at
+        // most 60 h ahead. Fetch a couple of extra hours each side for data lookup.
+        val nowEpoch = Instant.now().epochSecond
+        val from = Instant.ofEpochSecond(nowEpoch - 26L * 3600L)
+        val to = Instant.ofEpochSecond(nowEpoch + 62L * 3600L)
 
         viewModelScope.launch {
             combine(

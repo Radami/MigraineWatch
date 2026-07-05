@@ -77,9 +77,14 @@ class TodayViewModel @Inject constructor(
                 val hist = readings.filter { it.dateTime.isBefore(now) }
                 val fore = readings.filter { !it.dateTime.isBefore(now) }
 
+                // Detect over the past 24 h as well, so a pressure event that is already
+                // underway is reported with its true start rather than clipped at "now".
+                val alertInput = readings.filter {
+                    !it.dateTime.isBefore(now.minus(24, ChronoUnit.HOURS))
+                }
                 val (alerts, maxDrop) = withContext(Dispatchers.Default) {
                     Pair(
-                        AlertDetector.detect(fore, settings.alertThresholdHpa),
+                        AlertDetector.detect(alertInput, settings.alertThresholdHpa),
                         AlertDetector.maxForecastDrop(fore)
                     )
                 }

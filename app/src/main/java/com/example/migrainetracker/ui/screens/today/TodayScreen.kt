@@ -101,7 +101,9 @@ fun TodayScreen(
                             labelColor = MaterialTheme.colorScheme.primary,
                             leadingIconContentColor = MaterialTheme.colorScheme.primary
                         ),
-                        modifier = Modifier.padding(vertical = 4.dp)
+                        modifier = Modifier
+                            .padding(vertical = 4.dp)
+                            .semantics { contentDescription = "Location" }
                     )
                 }
                 Text(

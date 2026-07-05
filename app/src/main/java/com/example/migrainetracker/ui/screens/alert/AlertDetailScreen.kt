@@ -37,6 +37,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.migrainetracker.domain.AlertWindow
 import com.example.migrainetracker.ui.components.AlertDetailChart
+import com.example.migrainetracker.ui.theme.alertColorPalette
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -87,9 +88,9 @@ fun AlertDetailScreen(
                         direction = state.direction
                     ))
                 }
-                alerts.forEach { alert ->
+                alerts.forEachIndexed { index, alert ->
                     item(key = alert.start.epochSecond) {
-                        AlertSummaryCard(alert = alert)
+                        AlertSummaryCard(alert = alert, index = index)
                     }
                 }
                 item {
@@ -101,7 +102,7 @@ fun AlertDetailScreen(
 }
 
 @Composable
-private fun AlertSummaryCard(alert: AlertWindow) {
+private fun AlertSummaryCard(alert: AlertWindow, index: Int) {
     val timeFormatter = remember {
         DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)
             .withZone(ZoneId.systemDefault())
@@ -110,10 +111,15 @@ private fun AlertSummaryCard(alert: AlertWindow) {
     val endFormatted = remember(alert.end) { timeFormatter.format(alert.end) }
     val directionLabel = if (alert.direction == "drop") "pressure drop" else "pressure rise"
 
+    // Shares the chart's fixed per-alert palette, so each card visually matches its
+    // risk window in the chart.
+    val palette = alertColorPalette()
+    val (_, containerColor, contentColor) = palette[index % palette.size]
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer
+            containerColor = containerColor
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -124,7 +130,7 @@ private fun AlertSummaryCard(alert: AlertWindow) {
             Icon(
                 Icons.Default.Warning,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onErrorContainer,
+                tint = contentColor,
                 modifier = Modifier.size(32.dp)
             )
             Spacer(Modifier.width(12.dp))
@@ -133,18 +139,18 @@ private fun AlertSummaryCard(alert: AlertWindow) {
                     "${String.format("%.1f", alert.delta)} hPa $directionLabel",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onErrorContainer
+                    color = contentColor
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     startFormatted,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                    color = contentColor.copy(alpha = 0.8f)
                 )
                 Text(
                     "through $endFormatted",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                    color = contentColor.copy(alpha = 0.8f)
                 )
             }
         }
@@ -172,8 +178,6 @@ private fun AlertChartCard(state: AlertDetailUiState, allAlerts: List<AlertWindo
             if (state.readings.isNotEmpty()) {
                 AlertDetailChart(
                     readings = state.readings,
-                    alertStartEpoch = state.alertStartEpoch,
-                    alertEndEpoch = state.alertEndEpoch,
                     allAlerts = allAlerts,
                     modifier = Modifier.fillMaxWidth()
                 )
