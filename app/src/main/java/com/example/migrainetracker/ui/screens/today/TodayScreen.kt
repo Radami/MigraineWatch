@@ -78,7 +78,9 @@ fun TodayScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val today = remember { LocalDate.now() }
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy") }
+    val timeFormatter = remember {
+        DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy, HH:mm").withZone(ZoneId.systemDefault())
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -108,9 +110,9 @@ fun TodayScreen(
                     )
                 }
                 Text(
-                    today.format(dateFormatter),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    "Updated ${state.lastUpdated?.let { timeFormatter.format(it) } ?: "—"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }
         }
