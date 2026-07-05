@@ -43,6 +43,7 @@ import com.patrykandpatrick.vico.core.axis.AxisPosition
 import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter
 import com.patrykandpatrick.vico.core.chart.decoration.Decoration
 import com.patrykandpatrick.vico.core.chart.draw.ChartDrawContext
+import com.patrykandpatrick.vico.core.chart.layout.HorizontalLayout
 import com.patrykandpatrick.vico.core.chart.line.LineChart
 import com.patrykandpatrick.vico.core.chart.values.AxisValuesOverrider
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
@@ -55,10 +56,10 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private class AlertDetailDecoration(
-    private val alertFractions: List<Pair<Float, Float>>,
+    private val alertRanges: List<Pair<Float, Float>>,
     private val alertHighlightColors: List<Int>,
     private val showNow: Boolean,
-    private val nowFraction: Float,
+    private val nowX: Float,
     private val nowLineColorArgb: Int,
 ) : Decoration {
 
@@ -81,9 +82,15 @@ private class AlertDetailDecoration(
     }
 
     override fun onDrawBehindChart(context: ChartDrawContext, bounds: RectF) {
-        alertFractions.forEachIndexed { i, fraction ->
-            val startX = bounds.left + fraction.first * bounds.width()
-            val endX = bounds.left + fraction.second * bounds.width()
+        val hd = context.horizontalDimensions
+        val chartValues = context.chartValuesProvider.getChartValues()
+
+        fun getX(xValue: Float): Float =
+            bounds.left + hd.startPadding + (xValue - chartValues.minX) / chartValues.xStep * hd.xSpacing - context.horizontalScroll
+
+        alertRanges.forEachIndexed { i, range ->
+            val startX = getX(range.first)
+            val endX = getX(range.second)
             highlightPaint.color = alertHighlightColors.getOrElse(i) { alertHighlightColors.last() }
             context.canvas.drawRect(startX, bounds.top, endX, bounds.bottom, highlightPaint)
         }
@@ -92,7 +99,10 @@ private class AlertDetailDecoration(
     override fun onDrawAboveChart(context: ChartDrawContext, bounds: RectF) {
         if (!showNow) return
         ensureNowPaintDensity(context.density)
-        val x = bounds.left + nowFraction * bounds.width()
+        val hd = context.horizontalDimensions
+        val chartValues = context.chartValuesProvider.getChartValues()
+
+        val x = bounds.left + hd.startPadding + (nowX - chartValues.minX) / chartValues.xStep * hd.xSpacing - context.horizontalScroll
         context.canvas.drawLine(x, bounds.top, x, bounds.bottom, nowPaint)
     }
 }
@@ -147,18 +157,18 @@ fun AlertDetailChart(
         modelProducer.setEntries(listOf(entries))
     }
 
-    // Fractional [0..1] positions of all alert windows within the chart.
-    val alertFractions = remember(allAlerts, chartStartEpoch, chartTotalSeconds) {
+    // X-axis values (indices) of all alert windows within the chart.
+    val alertRanges = remember(allAlerts, chartStartEpoch) {
         allAlerts.map { alert ->
-            val start = ((alert.start.epochSecond - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
-            val end = ((alert.end.epochSecond - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
+            val start = (alert.start.epochSecond - chartStartEpoch).toFloat() / intervalSeconds
+            val end = (alert.end.epochSecond - chartStartEpoch).toFloat() / intervalSeconds
             Pair(start, end)
         }
     }
 
     val nowEpoch = Instant.now().epochSecond
     val showNow = nowEpoch > chartStartEpoch && nowEpoch < chartStartEpoch + chartTotalSeconds
-    val nowFraction = ((nowEpoch - chartStartEpoch).toDouble() / chartTotalSeconds).toFloat().coerceIn(0f, 1f)
+    val nowX = (nowEpoch - chartStartEpoch).toFloat() / intervalSeconds
 
     val isDark = isSystemInDarkTheme()
     val lineColor = if (isDark) ChartMeasuredDark else ChartMeasuredLight
@@ -202,12 +212,12 @@ fun AlertDetailChart(
         AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ -> "${value.roundToInt()}" }
     }
 
-    val decoration = remember(alertFractions, alertHighlightColors, showNow, nowFraction, nowLineColor) {
+    val decoration = remember(alertRanges, alertHighlightColors, showNow, nowX, nowLineColor) {
         AlertDetailDecoration(
-            alertFractions = alertFractions,
+            alertRanges = alertRanges,
             alertHighlightColors = alertHighlightColors,
             showNow = showNow,
-            nowFraction = nowFraction,
+            nowX = nowX,
             nowLineColorArgb = nowLineColor.copy(alpha = 0.5f).toArgb(),
         )
     }
@@ -232,8 +242,9 @@ fun AlertDetailChart(
                 bottomAxis = rememberBottomAxis(
                     label = axisLabelComponent(lineCount = 2),
                     valueFormatter = xFormatter,
-                    itemPlacer = remember { AxisItemPlacer.Horizontal.default(spacing = 1, shiftExtremeTicks = false, addExtremeLabelPadding = false) }
+                    itemPlacer = remember { AxisItemPlacer.Horizontal.default(spacing = 1, shiftExtremeTicks = false, addExtremeLabelPadding = true) }
                 ),
+                horizontalLayout = HorizontalLayout.FullWidth(),
                 modifier = Modifier.fillMaxSize()
             )
         }

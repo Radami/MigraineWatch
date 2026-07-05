@@ -75,7 +75,7 @@ class PressureRepository @Inject constructor(
                 timezone = timezone
             )
             val fetchedAt = Instant.now()
-            val readings = parseResponse(response, fetchedAt, timezone)
+            val readings = parseResponse(response, fetchedAt, response.timezone.ifBlank { timezone })
 
             val historical = readings.filter { it.dateTime.isBefore(now) }
             val forecast = readings.filter { !it.dateTime.isBefore(now) }
