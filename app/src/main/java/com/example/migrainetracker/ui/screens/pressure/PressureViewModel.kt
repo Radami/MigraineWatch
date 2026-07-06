@@ -30,7 +30,7 @@ data class PressureUiState(
     val currentPressure: Float? = null,
     val historical: List<PressureReading> = emptyList(),
     val forecast: List<PressureReading> = emptyList(),
-    val next12Hours: List<PressureReading> = emptyList(),
+    val pastEvents: List<AlertWindow> = emptyList(),
     val alertWindows: List<AlertWindow> = emptyList(),
     val alertThresholdHpa: Float = 6f,
     val selectedRange: TimeRange = TimeRange.Days7,
@@ -71,19 +71,28 @@ class PressureViewModel @Inject constructor(
             ) { range, settings -> Pair(range, settings) }
                 .collectLatest { (range, settings) ->
                     val now = Instant.now()
-                    val from = now.minus(range.hours, ChronoUnit.HOURS)
+                    // Always query the full stored history (30 days), not just the selected
+                    // chart range: the "Last 3 events" card scans all of it. The chart only
+                    // samples the instants it needs, so the wider list doesn't affect it.
+                    val from = now.minus(30, ChronoUnit.DAYS)
                     val to = now.plus(7, ChronoUnit.DAYS)
 
                     pressureRepository.getReadingsInRange(from, to)
                         .collectLatest { readings ->
                             val hist = readings.filter { it.dateTime.isBefore(now) }
                             val fore = readings.filter { !it.dateTime.isBefore(now) }
-                            val next12 = fore.filter {
-                                it.dateTime.isBefore(now.plus(12, ChronoUnit.HOURS))
-                            }
 
-                            val alerts = withContext(Dispatchers.Default) {
-                                AlertDetector.detect(fore, settings.alertThresholdHpa)
+                            val (alerts, pastEvents) = withContext(Dispatchers.Default) {
+                                Pair(
+                                    AlertDetector.detect(fore, settings.alertThresholdHpa),
+                                    // Detect over the full series so an event that is still
+                                    // underway keeps its true end (in the future) and is
+                                    // excluded — it's a current alert, not history.
+                                    AlertDetector.detect(readings, settings.alertThresholdHpa)
+                                        .filter { it.end.isBefore(now) }
+                                        .sortedByDescending { it.end }
+                                        .take(3)
+                                )
                             }
 
                             _uiState.value = PressureUiState(
@@ -91,7 +100,7 @@ class PressureViewModel @Inject constructor(
                                     ?: fore.firstOrNull()?.pressureMsl,
                                 historical = hist,
                                 forecast = fore,
-                                next12Hours = next12,
+                                pastEvents = pastEvents,
                                 alertWindows = alerts,
                                 alertThresholdHpa = settings.alertThresholdHpa,
                                 selectedRange = range,

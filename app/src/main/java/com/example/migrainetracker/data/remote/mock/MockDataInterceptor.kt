@@ -91,7 +91,19 @@ class MockDataInterceptor : Interceptor {
                     // drop starts 12 h in the past so the app is mid-event at launch. 15 hPa
                     // keeps every event above the 10 hPa threshold even when the ±2 hPa
                     // sine variance works against the ramp.
+                    //
+                    // Two completed drop-and-recovery excursions further in the past (ending
+                    // ~4.5 and ~8 days ago) populate the "Last 3 events" card; each one
+                    // produces a drop event and a rise event.
                     when {
+                        i < -250 -> 0f
+                        i <= -226 -> -15f * (i + 250) / 24f
+                        i <= -224 -> -15f
+                        i <= -200 -> -15f + 15f * (i + 224) / 24f
+                        i < -160 -> 0f
+                        i <= -136 -> -15f * (i + 160) / 24f
+                        i <= -134 -> -15f
+                        i <= -110 -> -15f + 15f * (i + 134) / 24f
                         i < -12 -> 0f
                         i <= 12 -> -15f * (i + 12) / 24f
                         i <= 14 -> -15f

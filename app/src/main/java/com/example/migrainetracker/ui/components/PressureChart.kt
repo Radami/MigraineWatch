@@ -4,6 +4,7 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.text.Layout
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,7 @@ import com.example.migrainetracker.ui.theme.ChartMeasuredDark
 import com.example.migrainetracker.ui.theme.ChartMeasuredLight
 import com.example.migrainetracker.ui.theme.ChartNowLineDark
 import com.example.migrainetracker.ui.theme.ChartNowLineLight
+import com.patrykandpatrick.vico.compose.axis.axisLabelComponent
 import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
 import com.patrykandpatrick.vico.compose.chart.Chart
@@ -246,11 +248,30 @@ fun PressureChart(
     val labelFormatter = remember(labelPattern) {
         DateTimeFormatter.ofPattern(labelPattern, Locale.ENGLISH).withZone(ZoneId.systemDefault())
     }
-    val xFormatter = remember(snappedNowEpoch, stepSeconds, labelFormatter) {
+    val dayFormatter = remember {
+        DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH).withZone(ZoneId.systemDefault())
+    }
+    val xFormatter = remember(snappedNowEpoch, stepSeconds, labelFormatter, dayFormatter, stepHours) {
+        val zone = ZoneId.systemDefault()
         AxisValueFormatter<AxisPosition.Horizontal.Bottom> { value, _ ->
             val offset = value.roundToInt() - 3          // chart index → step offset (-3..4)
             val anchorEpoch = snappedNowEpoch + offset * stepSeconds
-            labelFormatter.format(Instant.ofEpochSecond(anchorEpoch))
+            val label = labelFormatter.format(Instant.ofEpochSecond(anchorEpoch))
+            if (stepHours >= 24) {
+                label
+            } else {
+                // Hourly windows can cross midnight, where bare hour labels turn ambiguous.
+                // Mark day transitions: the first label and any label on a new calendar day
+                // get the day name on a second line.
+                val day = Instant.ofEpochSecond(anchorEpoch).atZone(zone).toLocalDate()
+                val previousDay =
+                    Instant.ofEpochSecond(anchorEpoch - stepSeconds).atZone(zone).toLocalDate()
+                if (offset == -3 || day != previousDay) {
+                    "$label\n${dayFormatter.format(Instant.ofEpochSecond(anchorEpoch))}"
+                } else {
+                    label
+                }
+            }
         }
     }
     val yFormatter = remember {
@@ -295,6 +316,12 @@ fun PressureChart(
                 chartModelProducer = modelProducer,
                 startAxis = rememberStartAxis(valueFormatter = yFormatter),
                 bottomAxis = rememberBottomAxis(
+                    // Two lines so hourly labels can carry the day name at day transitions;
+                    // centred so the short day name sits under the middle of the hour.
+                    label = axisLabelComponent(
+                        lineCount = 2,
+                        textAlignment = Layout.Alignment.ALIGN_CENTER
+                    ),
                     valueFormatter = xFormatter,
                     itemPlacer = remember(stepHours) {
                         AxisItemPlacer.Horizontal.default(
@@ -337,15 +364,14 @@ private fun ChartLegend(
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // The pressure line is only drawn when the band isn't (24 h / 48 h ranges).
-        if (!showBand) {
-            LegendItem(color = lineColor, label = "pressure")
-            Spacer(Modifier.width(12.dp))
-        }
+        // "now" always leads, so the legend stays stable when switching chart ranges.
         LegendItem(color = nowLineColor, label = "now", dashed = true)
+        Spacer(Modifier.width(12.dp))
+        // The pressure line is only drawn when the band isn't (24 h / 48 h ranges).
         if (showBand) {
-            Spacer(Modifier.width(12.dp))
             LegendBandItem(color = bandColor, label = "daily range")
+        } else {
+            LegendItem(color = lineColor, label = "pressure")
         }
     }
 }

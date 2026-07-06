@@ -12,18 +12,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -38,10 +38,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.migrainetracker.data.model.PressureReading
+import com.example.migrainetracker.domain.AlertWindow
 import com.example.migrainetracker.ui.components.PressureChart
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun PressureScreen(
@@ -51,10 +52,15 @@ fun PressureScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val timeFormatter = remember { DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy, HH:mm").withZone(ZoneId.systemDefault()) }
 
+    val listState = rememberLazyListState()
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        // When everything fits on screen there is nothing to scroll to; disable dragging
+        // (and its overscroll stretch) so the screen feels as static as the Today screen.
+        userScrollEnabled = listState.canScrollForward || listState.canScrollBackward
     ) {
         item {
             Column {
@@ -144,77 +150,78 @@ fun PressureScreen(
             }
         }
 
-        if (state.next12Hours.isNotEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Last 3 events",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Past events that would have triggered an alert at " +
+                            "${formatThreshold(state.alertThresholdHpa)} hPa",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    if (state.pastEvents.isEmpty()) {
                         Text(
-                            "Next 12 hours",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
+                            "No pressure events above " +
+                                "${formatThreshold(state.alertThresholdHpa)} hPa " +
+                                "in the past 30 days",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                         )
-                        Spacer(Modifier.height(12.dp))
-                        Next12HoursStrip(
-                            readings = state.next12Hours,
-                            threshold = state.alertThresholdHpa,
-                            currentPressure = state.currentPressure
-                        )
+                    } else {
+                        Column {
+                            state.pastEvents.forEachIndexed { index, event ->
+                                if (index > 0) {
+                                    HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                                }
+                                PastEventRow(event)
+                            }
+                        }
                     }
                 }
             }
         }
-
-        // Removed bottom updated text item
     }
 }
 
+private fun formatThreshold(threshold: Float): String =
+    if (threshold == threshold.toInt().toFloat()) threshold.toInt().toString()
+    else String.format("%.1f", threshold)
+
 @Composable
-private fun Next12HoursStrip(
-    readings: List<PressureReading>,
-    threshold: Float,
-    currentPressure: Float?
-) {
-    val hourFormatter = remember { DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()) }
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(readings) { reading ->
-            val delta = currentPressure?.let { reading.pressureMsl - it } ?: 0f
-            val isAlert = Math.abs(delta) >= threshold
-            Card(
-                modifier = Modifier.width(72.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isAlert)
-                        MaterialTheme.colorScheme.errorContainer
-                    else
-                        MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        hourFormatter.format(reading.dateTime),
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                    Text(
-                        "${reading.pressureMsl.toInt()}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Icon(
-                        imageVector = if (isAlert) Icons.Default.Warning else Icons.Default.CheckCircle,
-                        contentDescription = if (isAlert) "Alert" else "Within threshold",
-                        modifier = Modifier.height(16.dp),
-                        tint = if (isAlert) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
+private fun PastEventRow(event: AlertWindow) {
+    val formatter = remember {
+        DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)
+            .withZone(ZoneId.systemDefault())
+    }
+    val directionLabel = if (event.direction == "drop") "pressure drop" else "pressure rise"
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = if (event.direction == "drop") Icons.AutoMirrored.Filled.TrendingDown
+            else Icons.AutoMirrored.Filled.TrendingUp,
+            contentDescription = directionLabel,
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(
+                "${String.format("%.1f", event.delta)} hPa $directionLabel",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "${formatter.format(event.start)} → ${formatter.format(event.end)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
         }
     }
 }

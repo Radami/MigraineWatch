@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -69,10 +70,15 @@ fun CalendarScreen(
     val today = remember { LocalDate.now() }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    val listState = rememberLazyListState()
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        // When everything fits on screen there is nothing to scroll to; disable dragging
+        // (and its overscroll stretch) so the screen feels as static as the Today screen.
+        userScrollEnabled = listState.canScrollForward || listState.canScrollBackward
     ) {
         item {
             Card(

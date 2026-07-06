@@ -333,6 +333,22 @@ private fun AlertDetailLegend(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        // "now" always leads, matching the PressureChart legend, so the legend reads the
+        // same way across every chart in the app.
+        if (showNow) {
+            LegendItem("now") {
+                Canvas(modifier = Modifier.size(width = 24.dp, height = 2.dp)) {
+                    drawLine(
+                        color = nowLineColor.copy(alpha = 0.5f),
+                        start = Offset(0f, size.height / 2),
+                        end = Offset(size.width, size.height / 2),
+                        strokeWidth = 2.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f))
+                    )
+                }
+            }
+        }
+
         LegendItem("pressure") {
             Canvas(modifier = Modifier.size(width = 24.dp, height = 2.dp)) {
                 drawLine(
@@ -348,20 +364,6 @@ private fun AlertDetailLegend(
             LegendItem("alert ${i + 1}") {
                 Canvas(modifier = Modifier.size(width = 24.dp, height = 10.dp)) {
                     drawRect(color = alertColors[i % alertColors.size].copy(alpha = 0.15f))
-                }
-            }
-        }
-
-        if (showNow) {
-            LegendItem("now") {
-                Canvas(modifier = Modifier.size(width = 24.dp, height = 2.dp)) {
-                    drawLine(
-                        color = nowLineColor.copy(alpha = 0.5f),
-                        start = Offset(0f, size.height / 2),
-                        end = Offset(size.width, size.height / 2),
-                        strokeWidth = 2.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f))
-                    )
                 }
             }
         }
