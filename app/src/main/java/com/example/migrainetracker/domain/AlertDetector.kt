@@ -23,9 +23,16 @@ object AlertDetector {
             val endMillis = startMillis + windowMillis
             val window = readings.filter { it.dateTime.toEpochMilli() in startMillis..endMillis }
             if (window.size < 2) continue
-            val delta = window.maxOf { it.pressureMsl } - window.minOf { it.pressureMsl }
+            val maxReading = window.maxByOrNull { it.pressureMsl }!!
+            val minReading = window.minByOrNull { it.pressureMsl }!!
+            val delta = maxReading.pressureMsl - minReading.pressureMsl
             if (delta < thresholdHpa) continue
-            val direction = if (window.last().pressureMsl < window.first().pressureMsl) "drop" else "rise"
+            // Direction comes from the position of the extremes (peak before trough = drop),
+            // matching how step 3 labels the final event. Comparing the window's first and
+            // last reading instead is fragile with noisy data: neighbouring windows over the
+            // same event can flip label, escape the merge in step 2, and end up pinned to the
+            // same extremes — i.e. duplicate alerts.
+            val direction = if (maxReading.dateTime <= minReading.dateTime) "drop" else "rise"
             raw.add(RawWindow(startMillis, endMillis, delta, direction))
         }
         if (raw.isEmpty()) return emptyList()
@@ -51,7 +58,7 @@ object AlertDetector {
         // Step 3: pin each event's start/end to the actual pressure extremes within the merged
         // window so the displayed times reflect when pressure peaked and troughed, not the
         // sliding-window boundaries.
-        return mergedRaw.map { w ->
+        val pinned = mergedRaw.map { w ->
             val window = readings.filter { it.dateTime.toEpochMilli() in w.startMillis..w.endMillis }
             val maxReading = window.maxByOrNull { it.pressureMsl }!!
             val minReading = window.minByOrNull { it.pressureMsl }!!
@@ -62,7 +69,24 @@ object AlertDetector {
                 Triple(minReading.dateTime, maxReading.dateTime, "rise")
             }
             AlertWindow(start, end, delta, direction)
+        }.sortedBy { it.start }
+
+        // Step 4: pinning can land two windows on overlapping (or identical) extremes when the
+        // data is irregular, which would report the same physical event twice. Collapse
+        // overlapping same-direction events into one.
+        val result = mutableListOf<AlertWindow>()
+        for (alert in pinned) {
+            val prev = result.lastOrNull()
+            if (prev != null && alert.direction == prev.direction && !alert.start.isAfter(prev.end)) {
+                result[result.lastIndex] = prev.copy(
+                    end = maxOf(prev.end, alert.end),
+                    delta = maxOf(prev.delta, alert.delta)
+                )
+            } else {
+                result.add(alert)
+            }
         }
+        return result
     }
 
 }

@@ -11,7 +11,11 @@ import java.time.Instant
 @Dao
 interface PressureReadingDao {
 
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    // REPLACE so a refresh rewrites every hour it fetched and the stored series always comes
+    // from a single fetch. With IGNORE, historical rows from earlier runs survived and got
+    // stitched to fresh forecast data — the mock re-anchors its pattern to "now" on every
+    // fetch, so runs on previous days left behind an inconsistent series.
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHistorical(readings: List<PressureReading>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

@@ -89,7 +89,9 @@ fun AlertDetailScreen(
                     ))
                 }
                 alerts.forEachIndexed { index, alert ->
-                    item(key = alert.start.epochSecond) {
+                    // Include the index so the key stays unique even if two alerts ever share
+                    // a start time — a duplicate LazyColumn key is a hard crash.
+                    item(key = "$index-${alert.start.epochSecond}") {
                         AlertSummaryCard(alert = alert, index = index)
                     }
                 }
