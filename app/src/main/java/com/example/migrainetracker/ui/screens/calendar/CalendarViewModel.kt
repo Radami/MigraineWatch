@@ -25,18 +25,17 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
-data class MonthStats(
-    val totalEpisodes: Int = 0,
-    val severeCount: Int = 0,
-    val afterDropCount: Int = 0,
-    val totalDropCount: Int = 0
-)
-
 data class CalendarUiState(
     val currentMonth: YearMonth = YearMonth.now(),
     val entriesInMonth: Map<LocalDate, SymptomEntry> = emptyMap(),
-    val pressureDropDays: Set<LocalDate> = emptySet(),
-    val stats: MonthStats = MonthStats(),
+    // Days touched by a pressure event, mapped to the dominant direction ("drop"/"rise")
+    // on that day — the direction whose events overlap the day the longest.
+    val pressureEventDays: Map<LocalDate, String> = emptyMap(),
+    // Entry counts per severity for the statistics card. All periods are relative to
+    // today, not to the month being browsed in the calendar.
+    val monthLogCounts: Map<Severity, Int> = emptyMap(),
+    val lastMonthLogCounts: Map<Severity, Int> = emptyMap(),
+    val last12MonthsLogCounts: Map<Severity, Int> = emptyMap(),
     val selectedEntry: SymptomEntry? = null,
     val showBottomSheet: Boolean = false
 )
@@ -83,31 +82,39 @@ class CalendarViewModel @Inject constructor(
                 val fromInstant = from.atStartOfDay(ZoneId.systemDefault()).toInstant()
                 val toInstant = to.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
 
+                val today = LocalDate.now()
+                val statsFrom = today.minusMonths(12)
+
                 combine(
                     symptomRepository.getEntriesInRange(from, to),
-                    pressureRepository.getReadingsInRange(fromInstant, toInstant)
-                ) { entries, readings -> Pair(entries, readings) }
-                    .collectLatest { (entries, readings) ->
+                    pressureRepository.getReadingsInRange(fromInstant, toInstant),
+                    symptomRepository.getEntriesInRange(statsFrom, today)
+                ) { entries, readings, statsEntries -> Triple(entries, readings, statsEntries) }
+                    .collectLatest { (entries, readings, statsEntries) ->
                         val entriesMap = entries.associateBy { it.date }
 
-                        val dropDays = withContext(Dispatchers.Default) {
-                            computeDropDays(readings, settings.alertThresholdHpa, ZoneId.systemDefault())
+                        val eventDays = withContext(Dispatchers.Default) {
+                            computeEventDays(readings, settings.alertThresholdHpa, ZoneId.systemDefault())
                         }
 
-                        val episodeEntries = entries.filter { it.severity != Severity.CLEAR }
-                        val severeCount = entries.count { it.severity == Severity.MIGRAINE }
-                        val afterDropCount = episodeEntries.count { e -> dropDays.contains(e.date) }
+                        val thisMonth = YearMonth.now()
+                        val lastMonth = thisMonth.minusMonths(1)
+                        val monthLogCounts = statsEntries
+                            .filter { YearMonth.from(it.date) == thisMonth }
+                            .groupingBy { it.severity }.eachCount()
+                        val lastMonthLogCounts = statsEntries
+                            .filter { YearMonth.from(it.date) == lastMonth }
+                            .groupingBy { it.severity }.eachCount()
+                        // The fetched range is exactly the rolling 12-month window.
+                        val last12MonthsLogCounts = statsEntries.groupingBy { it.severity }.eachCount()
 
                         _uiState.value = CalendarUiState(
                             currentMonth = month,
                             entriesInMonth = entriesMap,
-                            pressureDropDays = dropDays,
-                            stats = MonthStats(
-                                totalEpisodes = episodeEntries.size,
-                                severeCount = severeCount,
-                                afterDropCount = afterDropCount,
-                                totalDropCount = dropDays.size
-                            ),
+                            pressureEventDays = eventDays,
+                            monthLogCounts = monthLogCounts,
+                            lastMonthLogCounts = lastMonthLogCounts,
+                            last12MonthsLogCounts = last12MonthsLogCounts,
                             showBottomSheet = _uiState.value.showBottomSheet,
                             selectedEntry = _uiState.value.selectedEntry
                         )
@@ -116,21 +123,29 @@ class CalendarViewModel @Inject constructor(
         }
     }
 
-    private fun computeDropDays(
+    private fun computeEventDays(
         readings: List<PressureReading>,
         threshold: Float,
         zone: ZoneId
-    ): Set<LocalDate> {
+    ): Map<LocalDate, String> {
         val alerts = AlertDetector.detect(readings, threshold)
-        return buildSet {
-            alerts.forEach { alert ->
-                var d = alert.start.atZone(zone).toLocalDate()
-                val end = alert.end.atZone(zone).toLocalDate()
-                while (!d.isAfter(end)) {
-                    add(d)
-                    d = d.plusDays(1)
-                }
+        // Accumulate how long each direction's events overlap each day; a day touched by
+        // several events (e.g. a drop ending and a rise starting) shows only the dominant
+        // one, so day cells never need two icons.
+        val overlaps = mutableMapOf<LocalDate, MutableMap<String, Long>>()
+        alerts.forEach { alert ->
+            var day = alert.start.atZone(zone).toLocalDate()
+            val lastDay = alert.end.atZone(zone).toLocalDate()
+            while (!day.isAfter(lastDay)) {
+                val dayStart = day.atStartOfDay(zone).toInstant()
+                val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant()
+                val overlapSeconds =
+                    minOf(alert.end, dayEnd).epochSecond - maxOf(alert.start, dayStart).epochSecond
+                val perDirection = overlaps.getOrPut(day) { mutableMapOf() }
+                perDirection.merge(alert.direction, overlapSeconds, Long::plus)
+                day = day.plusDays(1)
             }
         }
+        return overlaps.mapValues { (_, directions) -> directions.maxBy { it.value }.key }
     }
 }

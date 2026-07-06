@@ -3,9 +3,12 @@ package com.example.migrainetracker.ui.screens.calendar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,26 +22,32 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,14 +98,17 @@ fun CalendarScreen(
                     MonthCalendar(
                         month = state.currentMonth,
                         entries = state.entriesInMonth,
-                        pressureDropDays = state.pressureDropDays,
+                        pressureEventDays = state.pressureEventDays,
                         today = today,
                         onPrevMonth = viewModel::previousMonth,
                         onNextMonth = viewModel::nextMonth,
                         onDayTap = { date ->
                             val entry = state.entriesInMonth[date]
-                            if (entry != null) viewModel.showDayDetail(entry)
-                            else onLogEntry(date)
+                            when {
+                                entry != null -> viewModel.showDayDetail(entry)
+                                // Symptoms can't be logged ahead of time.
+                                !date.isAfter(today) -> onLogEntry(date)
+                            }
                         }
                     )
                     Spacer(Modifier.height(16.dp))
@@ -106,36 +118,11 @@ fun CalendarScreen(
         }
 
         item {
-            SummaryStatsRow(stats = state.stats)
-        }
-
-        if (state.entriesInMonth.isNotEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            "Month log",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        val sortedEntries = state.entriesInMonth.values.sortedByDescending { it.date }
-                        sortedEntries.forEachIndexed { index, entry ->
-                            EntryRow(
-                                entry = entry,
-                                hasDrop = state.pressureDropDays.contains(entry.date),
-                                onClick = { viewModel.showDayDetail(entry) }
-                            )
-                            if (index < sortedEntries.lastIndex) {
-                                HorizontalDivider()
-                            }
-                        }
-                    }
-                }
-            }
+            StatsCard(
+                monthLogCounts = state.monthLogCounts,
+                lastMonthLogCounts = state.lastMonthLogCounts,
+                last12MonthsLogCounts = state.last12MonthsLogCounts
+            )
         }
     }
 
@@ -147,7 +134,6 @@ fun CalendarScreen(
             ) {
                 DayDetailSheet(
                     entry = entry,
-                    hasDrop = state.pressureDropDays.contains(entry.date),
                     onClose = viewModel::dismissBottomSheet,
                     onEdit = {
                         viewModel.dismissBottomSheet()
@@ -163,7 +149,7 @@ fun CalendarScreen(
 private fun MonthCalendar(
     month: YearMonth,
     entries: Map<LocalDate, SymptomEntry>,
-    pressureDropDays: Set<LocalDate>,
+    pressureEventDays: Map<LocalDate, String>,
     today: LocalDate,
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
@@ -228,12 +214,11 @@ private fun MonthCalendar(
                         val date = month.atDay(dayNum)
                         val entry = entries[date]
                         val isToday = date == today
-                        val hasDrop = pressureDropDays.contains(date)
                         DayCell(
                             day = dayNum,
                             entry = entry,
                             isToday = isToday,
-                            hasDrop = hasDrop,
+                            eventDirection = pressureEventDays[date],
                             onClick = { onDayTap(date) },
                             modifier = Modifier.weight(1f)
                         )
@@ -250,16 +235,11 @@ private fun DayCell(
     day: Int,
     entry: SymptomEntry?,
     isToday: Boolean,
-    hasDrop: Boolean,
+    eventDirection: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bgColor: Color = when (entry?.severity) {
-        Severity.CLEAR -> SeverityClear
-        Severity.MILD, Severity.AURA -> SeverityMild
-        Severity.MIGRAINE -> SeverityMigraine
-        null -> Color.Transparent
-    }
+    val bgColor: Color = entry?.severity?.toColor() ?: Color.Transparent
     val severityLabel = entry?.severity?.name ?: "No entry"
 
     Column(
@@ -282,37 +262,48 @@ private fun DayCell(
             style = MaterialTheme.typography.labelSmall,
             color = if (entry != null) Color.White else MaterialTheme.colorScheme.onSurface
         )
-        if (hasDrop) {
-            Box(
-                modifier = Modifier
-                    .size(4.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.tertiary)
-                    .semantics { contentDescription = "Pressure drop" }
+        if (eventDirection != null) {
+            // White on filled severity circles for contrast, tertiary on plain days.
+            val trendTint = if (entry != null) Color.White else MaterialTheme.colorScheme.tertiary
+            Icon(
+                imageVector = if (eventDirection == "drop") Icons.AutoMirrored.Filled.TrendingDown
+                else Icons.AutoMirrored.Filled.TrendingUp,
+                contentDescription = if (eventDirection == "drop") "Pressure drop" else "Pressure rise",
+                tint = trendTint,
+                modifier = Modifier.size(10.dp)
             )
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CalendarLegend() {
-    Row(
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        LegendItem(color = SeverityMild, label = "Mild/Aura")
+        LegendItem(color = SeverityClear, label = "Clear")
+        LegendItem(color = SeverityMild, label = "Mild")
+        LegendItem(color = SeverityAura, label = "Aura")
         LegendItem(color = SeverityMigraine, label = "Migraine")
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.tertiary)
-            )
-            Spacer(Modifier.width(4.dp))
-            Text("Pressure drop", style = MaterialTheme.typography.labelSmall)
-        }
+        LegendTrendItem(icon = Icons.AutoMirrored.Filled.TrendingDown, label = "Drop")
+        LegendTrendItem(icon = Icons.AutoMirrored.Filled.TrendingUp, label = "Rise")
+    }
+}
+
+@Composable
+private fun LegendTrendItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.size(12.dp)
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -330,80 +321,83 @@ private fun LegendItem(color: Color, label: String) {
     }
 }
 
-@Composable
-private fun SummaryStatsRow(stats: MonthStats) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        StatCard("Episodes", stats.totalEpisodes.toString())
-        StatCard("Severe", stats.severeCount.toString())
-        StatCard("After drop", "${stats.afterDropCount}/${stats.totalDropCount}")
-    }
+private enum class StatsPeriod(val label: String) {
+    ThisMonth("This month"),
+    LastMonth("Last month"),
+    Last12Months("Last 12 months")
 }
 
 @Composable
-private fun StatCard(label: String, value: String) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(label, style = MaterialTheme.typography.labelSmall)
-        }
-    }
-}
-
-@Composable
-private fun EntryRow(
-    entry: SymptomEntry,
-    hasDrop: Boolean,
-    onClick: () -> Unit
+private fun StatsCard(
+    monthLogCounts: Map<Severity, Int>,
+    lastMonthLogCounts: Map<Severity, Int>,
+    last12MonthsLogCounts: Map<Severity, Int>
 ) {
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("EEE d MMM") }
-    val severityColor = entry.severity.toColor()
+    var period by rememberSaveable { mutableStateOf(StatsPeriod.ThisMonth) }
+    val counts = when (period) {
+        StatsPeriod.ThisMonth -> monthLogCounts
+        StatsPeriod.LastMonth -> lastMonthLogCounts
+        StatsPeriod.Last12Months -> last12MonthsLogCounts
+    }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                entry.date.format(dateFormatter),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium
+                "Statistics",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
             )
-        }
-        Spacer(Modifier.width(8.dp))
-        SuggestionChip(
-            onClick = onClick,
-            label = { Text(entry.severity.name.lowercase().replaceFirstChar { it.uppercase() }) },
-            colors = androidx.compose.material3.SuggestionChipDefaults.suggestionChipColors(
-                containerColor = severityColor.copy(alpha = 0.15f)
-            )
-        )
-        if (hasDrop) {
-            Spacer(Modifier.width(4.dp))
-            SuggestionChip(
-                onClick = onClick,
-                label = { Text("↓ Drop") },
-                colors = androidx.compose.material3.SuggestionChipDefaults.suggestionChipColors(
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                )
-            )
-        }
-        entry.triggers.take(1).forEach { trigger ->
-            Spacer(Modifier.width(4.dp))
-            SuggestionChip(
-                onClick = onClick,
-                label = { Text(trigger) }
-            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatsPeriod.entries.forEach { p ->
+                    FilterChip(
+                        selected = period == p,
+                        onClick = { period = p },
+                        label = { Text(p.label, style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(28.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Severity.entries.forEach { severity ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            (counts[severity] ?: 0).toString(),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(severity.toColor())
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                severity.name.lowercase().replaceFirstChar { it.uppercase() },
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -411,7 +405,6 @@ private fun EntryRow(
 @Composable
 private fun DayDetailSheet(
     entry: SymptomEntry,
-    hasDrop: Boolean,
     onClose: () -> Unit,
     onEdit: () -> Unit
 ) {
