@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -72,7 +71,6 @@ import kotlin.math.roundToInt
 @Composable
 fun TodayScreen(
     onAlertTap: (List<AlertWindow>) -> Unit,
-    onLogTap: () -> Unit,
     onChangeLocation: () -> Unit,
     viewModel: TodayViewModel = hiltViewModel()
 ) {
@@ -138,8 +136,7 @@ fun TodayScreen(
             SymptomLogCard(
                 weekEntries = state.weekEntries,
                 pressureDropDays = state.pressureDropDays,
-                today = today,
-                onLogTap = onLogTap
+                today = today
             )
         }
     }
@@ -264,8 +261,7 @@ private fun PressureCard(state: TodayUiState) {
 private fun SymptomLogCard(
     weekEntries: Map<LocalDate, SymptomEntry?>,
     pressureDropDays: Set<LocalDate>,
-    today: LocalDate,
-    onLogTap: () -> Unit
+    today: LocalDate
 ) {
     val monthFormatter = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
     Card(
@@ -294,13 +290,6 @@ private fun SymptomLogCard(
                 pressureDropDays = pressureDropDays,
                 today = today
             )
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = onLogTap,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Log today's symptoms")
-            }
         }
     }
 }

@@ -2,6 +2,9 @@ package com.example.migrainetracker.ui.navigation
 
 import android.content.Intent
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -35,6 +38,21 @@ fun AppNavigation(startDestination: String) {
     val showBottomBar = currentDestination?.route in bottomNavItems.map { it.screen.route }
 
     Scaffold(
+        floatingActionButton = {
+            // One shared log-symptoms FAB for the three main tabs. The Scaffold slot keeps
+            // it pinned to the bottom-right corner, floating above scrolling content.
+            if (showBottomBar) {
+                FloatingActionButton(
+                    onClick = {
+                        navController.navigate(
+                            Screen.LogEntry.withDate(java.time.LocalDate.now().toString())
+                        )
+                    }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Log today's symptoms")
+                }
+            }
+        },
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar {
@@ -92,11 +110,6 @@ fun AppNavigation(startDestination: String) {
                                 putExtra("allDeltas", alerts.map { it.delta }.toFloatArray())
                                 putExtra("allDirections", alerts.joinToString(",") { it.direction })
                             }
-                        )
-                    },
-                    onLogTap = {
-                        navController.navigate(
-                            Screen.LogEntry.withDate(java.time.LocalDate.now().toString())
                         )
                     },
                     onChangeLocation = { navController.navigate(Screen.Onboarding.route) }
