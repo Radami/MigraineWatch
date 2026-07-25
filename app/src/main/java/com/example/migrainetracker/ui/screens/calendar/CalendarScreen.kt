@@ -259,7 +259,7 @@ private fun DayCell(
     ) {
         Text(
             day.toString(),
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelLarge,
             color = if (entry != null) Color.White else MaterialTheme.colorScheme.onSurface
         )
         if (eventDirection != null) {
@@ -270,7 +270,7 @@ private fun DayCell(
                 else Icons.AutoMirrored.Filled.TrendingUp,
                 contentDescription = if (eventDirection == "drop") "Pressure drop" else "Pressure rise",
                 tint = trendTint,
-                modifier = Modifier.size(10.dp)
+                modifier = Modifier.size(14.dp)
             )
         }
     }
