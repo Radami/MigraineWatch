@@ -1,7 +1,16 @@
 package com.example.migrainetracker.ui.screens.settings
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,14 +27,20 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -35,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.migrainetracker.BuildConfig
 import com.example.migrainetracker.data.preferences.AlertSensitivity
@@ -45,6 +61,32 @@ import com.example.migrainetracker.ui.theme.ChartMeasuredLight
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    if (BuildConfig.DEBUG) {
+        // Collected at the screen root rather than inside the debug section: a LazyColumn item
+        // that scrolls out of view is disposed, and would take the subscription with it.
+        LaunchedEffect(Unit) {
+            viewModel.debugMessages.collect { message ->
+                // The newest outcome is the interesting one, so it replaces rather than queues.
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        SettingsList(viewModel)
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun SettingsList(viewModel: SettingsViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val trackingSince by viewModel.trackingSince.collectAsStateWithLifecycle()
 
@@ -134,13 +176,31 @@ fun SettingsScreen(
         item { HorizontalDivider() }
         item { SectionHeader("Notifications") }
         item {
+            // Android 13 needs the runtime grant before anything reaches the tray. Asking on
+            // the way in would be asking before the user has any reason to say yes, so the
+            // request is attached to switching alerts on.
+            val permissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { granted ->
+                viewModel.setNotificationsEnabled(granted)
+            }
+            val context = LocalContext.current
+
             SettingsRow(
                 title = "Pressure drop alerts",
                 subtitle = "Push when a drop crosses your threshold",
                 trailing = {
                     Switch(
                         checked = state.notificationsEnabled,
-                        onCheckedChange = viewModel::setNotificationsEnabled,
+                        onCheckedChange = { enabled ->
+                            when {
+                                !enabled -> viewModel.setNotificationsEnabled(false)
+                                notificationsPermitted(context) -> viewModel.setNotificationsEnabled(true)
+                                // The switch stays off until the grant comes back, so it never
+                                // claims alerts are on while the system is dropping them.
+                                else -> permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        },
                         modifier = Modifier.semantics {
                             contentDescription = "Pressure drop alerts toggle"
                         }
@@ -157,6 +217,54 @@ fun SettingsScreen(
                 trailing = null
             )
         }
+
+        if (BuildConfig.DEBUG) {
+            item { HorizontalDivider() }
+            item { SectionHeader("Debug") }
+            item {
+                // Drives the alert pipeline over whatever forecast is loaded. The mock data is
+                // built to cover every sensitivity preset on its own, so there is nothing to
+                // set up first — DebugAlertReceiver can still swap the forecast shape over adb
+                // in the rare case a different one is wanted.
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    // Short labels and tight padding so the three fit one row; the full action
+                    // is spelled out in each content description. FlowRow rather than Row so
+                    // they wrap instead of clipping at large font scales.
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(DEBUG_ACTION_SPACING)) {
+                        TextButton(
+                            onClick = viewModel::runAlertCheckNow,
+                            contentPadding = DebugActionPadding,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Run alert check now"
+                            }
+                        ) {
+                            Text("Run check")
+                        }
+                        // Bypasses the 12-hour lead time; the only way to see the tray without
+                        // waiting out an event.
+                        TextButton(
+                            onClick = viewModel::previewNextAlert,
+                            contentPadding = DebugActionPadding,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Send next alert now"
+                            }
+                        ) {
+                            Text("Send alert")
+                        }
+                        // Makes already-announced events announceable again.
+                        TextButton(
+                            onClick = viewModel::clearNotificationHistory,
+                            contentPadding = DebugActionPadding,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Clear alert history"
+                            }
+                        ) {
+                            Text("Clear history")
+                        }
+                    }
+                }
+            }
+        }
         item { HorizontalDivider() }
 
         item {
@@ -169,6 +277,11 @@ fun SettingsScreen(
         }
     }
 }
+
+// The debug actions sit tighter than a normal button row: three of them have to share one
+// line, and default text-button padding alone pushes the last one onto a second row.
+private val DEBUG_ACTION_SPACING = 0.dp
+private val DebugActionPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
 
 @Composable
 private fun SectionHeader(title: String) {
@@ -234,3 +347,11 @@ private val AlertSensitivity.description: String
         AlertSensitivity.MEDIUM -> "Balanced. Most weather-sensitive people react around this level."
         AlertSensitivity.LOW -> "Only large drops. Fewer alerts, but a milder event may pass unflagged."
     }
+
+/** Below Android 13 the permission is granted at install time. */
+private fun notificationsPermitted(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
