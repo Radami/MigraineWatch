@@ -58,6 +58,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
 import com.example.migrainetracker.data.model.Severity
 import com.example.migrainetracker.data.model.SymptomEntry
+import com.example.migrainetracker.ui.components.DayMarker
 import com.example.migrainetracker.domain.AlertWindow
 import com.example.migrainetracker.ui.components.PressureChart
 import com.example.migrainetracker.ui.theme.ChartMeasuredLight
@@ -265,7 +266,6 @@ private fun SymptomLogCard(
     pressureEventDays: Map<LocalDate, String>,
     today: LocalDate
 ) {
-    val monthFormatter = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -280,8 +280,10 @@ private fun SymptomLogCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
+                // The strip is a rolling window, so naming the range beats a month label that
+                // would be wrong for the half of the week sitting in the previous month.
                 Text(
-                    today.format(monthFormatter),
+                    "Last 7 days",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
@@ -296,6 +298,8 @@ private fun SymptomLogCard(
     }
 }
 
+private val WEEK_STRIP_CELL_SIZE = 40.dp
+
 @Composable
 private fun WeekStrip(
     weekEntries: Map<LocalDate, SymptomEntry?>,
@@ -309,7 +313,6 @@ private fun WeekStrip(
     ) {
         weekEntries.entries.sortedBy { it.key }.forEach { (date, entry) ->
             val isToday = date == today
-            val bgColor = entry?.severity?.toColor() ?: Color.Transparent
             val eventDirection = pressureEventDays[date]
             val dayLabel = date.format(dayFormatter).take(1)
 
@@ -325,36 +328,13 @@ private fun WeekStrip(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
                 Spacer(Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(if (bgColor != Color.Transparent) bgColor else MaterialTheme.colorScheme.surfaceVariant)
-                        .then(
-                            if (isToday) Modifier.border(
-                                2.dp,
-                                MaterialTheme.colorScheme.primary,
-                                CircleShape
-                            ) else Modifier
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        date.dayOfMonth.toString(),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (entry != null) Color.White else MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                if (eventDirection != null) {
-                    Spacer(Modifier.height(2.dp))
-                    Icon(
-                        imageVector = if (eventDirection == "drop") Icons.AutoMirrored.Filled.TrendingDown
-                        else Icons.AutoMirrored.Filled.TrendingUp,
-                        contentDescription = if (eventDirection == "drop") "Pressure drop" else "Pressure rise",
-                        tint = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
+                DayMarker(
+                    day = date.dayOfMonth,
+                    severityColor = entry?.severity?.toColor(),
+                    eventDirection = eventDirection,
+                    isToday = isToday,
+                    modifier = Modifier.size(WEEK_STRIP_CELL_SIZE)
+                )
             }
         }
     }

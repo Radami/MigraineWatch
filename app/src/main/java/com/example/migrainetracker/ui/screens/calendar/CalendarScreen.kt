@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -61,6 +62,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.migrainetracker.data.model.Severity
 import com.example.migrainetracker.data.model.SymptomEntry
+import com.example.migrainetracker.ui.components.DayMarker
+import com.example.migrainetracker.ui.components.SeveritySwatch
 import com.example.migrainetracker.ui.theme.SeverityAura
 import com.example.migrainetracker.ui.theme.SeverityClear
 import com.example.migrainetracker.ui.theme.SeverityMigraine
@@ -230,6 +233,9 @@ private fun MonthCalendar(
     }
 }
 
+private val LEGEND_SWATCH_SIZE = 12.dp
+private val STATS_SWATCH_SIZE = 8.dp
+
 @Composable
 private fun DayCell(
     day: Int,
@@ -239,41 +245,19 @@ private fun DayCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bgColor: Color = entry?.severity?.toColor() ?: Color.Transparent
     val severityLabel = entry?.severity?.name ?: "No entry"
 
-    Column(
+    DayMarker(
+        day = day,
+        severityColor = entry?.severity?.toColor(),
+        eventDirection = eventDirection,
+        isToday = isToday,
         modifier = modifier
             .aspectRatio(1f)
-            .padding(2.dp)
-            .clip(CircleShape)
-            .background(if (entry != null) bgColor else Color.Transparent)
-            .then(
-                if (isToday) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                else Modifier
-            )
-            .clickable { onClick() }
-            .semantics { contentDescription = "Day $day $severityLabel" },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            day.toString(),
-            style = MaterialTheme.typography.labelLarge,
-            color = if (entry != null) Color.White else MaterialTheme.colorScheme.onSurface
-        )
-        if (eventDirection != null) {
-            // White on filled severity circles for contrast, tertiary on plain days.
-            val trendTint = if (entry != null) Color.White else MaterialTheme.colorScheme.tertiary
-            Icon(
-                imageVector = if (eventDirection == "drop") Icons.AutoMirrored.Filled.TrendingDown
-                else Icons.AutoMirrored.Filled.TrendingUp,
-                contentDescription = if (eventDirection == "drop") "Pressure drop" else "Pressure rise",
-                tint = trendTint,
-                modifier = Modifier.size(14.dp)
-            )
-        }
-    }
+            .padding(2.dp),
+        contentDescription = "Day $day $severityLabel",
+        onClick = onClick
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -310,12 +294,7 @@ private fun LegendTrendItem(icon: androidx.compose.ui.graphics.vector.ImageVecto
 @Composable
 private fun LegendItem(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(12.dp)
-                .clip(CircleShape)
-                .background(color)
-        )
+        SeveritySwatch(color = color, size = LEGEND_SWATCH_SIZE)
         Spacer(Modifier.width(4.dp))
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
@@ -383,12 +362,7 @@ private fun StatsCard(
                             fontWeight = FontWeight.Bold
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(severity.toColor())
-                            )
+                            SeveritySwatch(color = severity.toColor(), size = STATS_SWATCH_SIZE)
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 severity.name.lowercase().replaceFirstChar { it.uppercase() },
@@ -437,12 +411,7 @@ private fun DayDetailSheet(
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(severityColor)
-            )
+            SeveritySwatch(color = severityColor, size = LEGEND_SWATCH_SIZE)
             Spacer(Modifier.width(8.dp))
             Text(
                 entry.severity.name.lowercase().replaceFirstChar { it.uppercase() },
