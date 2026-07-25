@@ -59,13 +59,22 @@ class MockDataInterceptor : Interceptor {
         val locationSeed = (lat + lon).toFloat()
         val basePressure = 1013f + (locationSeed % 5f)
 
+        // NORMAL's events are sized to land between the alert sensitivity presets, and only
+        // 2 hPa separates one preset from the next. Its wobble is therefore kept small enough
+        // that no phase of the sine can push an event across a neighbouring threshold; the
+        // other scenarios keep the livelier wobble.
+        val varianceAmplitude = when (currentScenario) {
+            Scenario.NORMAL -> 0.35f
+            Scenario.STORM, Scenario.CALM -> 2f
+        }
+
         // Generate 30 days past + 7 days future (888 data points)
         for (i in -720..168) {
             val time = now.plusHours(i.toLong())
             times.add(time.format(formatter))
-            
-            val variance = 2f * sin(i / 10.0 + locationSeed).toFloat()
-            
+
+            val variance = varianceAmplitude * sin(i / 10.0 + locationSeed).toFloat()
+
             val eventOffset: Float = when (currentScenario) {
                 Scenario.STORM -> {
                     // Forced 10.3hPa drop for Scenario B/C testing
@@ -85,12 +94,14 @@ class MockDataInterceptor : Interceptor {
                 }
                 Scenario.CALM -> 0f
                 Scenario.NORMAL -> {
-                    // Three alert-worthy events so multi-alert display can be exercised:
-                    // 15 hPa drop, 15 hPa rise, 15 hPa drop, each over 24 h, alternating
-                    // direction so the detector reports them as separate alerts. The first
-                    // drop starts 12 h in the past so the app is mid-event at launch. 15 hPa
-                    // keeps every event above the 10 hPa threshold even when the ±2 hPa
-                    // sine variance works against the ramp.
+                    // Three events in the forecast window, sized so the alert list shrinks as
+                    // the user lowers their sensitivity: 12 hPa, then 9, then 7 over 24 h.
+                    // High (6 hPa) reports all three, Medium (8) the first two, Low (10) only
+                    // the first. Directions alternate so the detector keeps them separate, and
+                    // the first drop starts 12 h in the past so the app opens mid-event.
+                    //
+                    // Ramps run 20 h with 28 h of calm between them: no 24 h detection window
+                    // can span two events, which would merge them into one alert.
                     //
                     // Two completed drop-and-recovery excursions further in the past (ending
                     // ~4.5 and ~8 days ago) populate the "Last 3 events" card; each one
@@ -105,12 +116,12 @@ class MockDataInterceptor : Interceptor {
                         i <= -134 -> -15f
                         i <= -110 -> -15f + 15f * (i + 134) / 24f
                         i < -12 -> 0f
-                        i <= 12 -> -15f * (i + 12) / 24f
-                        i <= 14 -> -15f
-                        i <= 38 -> -15f + 15f * (i - 14) / 24f
-                        i <= 40 -> 0f
-                        i <= 64 -> -15f * (i - 40) / 24f
-                        else -> -15f
+                        i <= 8 -> -12f * (i + 12) / 20f
+                        i <= 36 -> -12f
+                        i <= 56 -> -12f + 9f * (i - 36) / 20f
+                        i <= 84 -> -3f
+                        i <= 104 -> -3f - 7f * (i - 84) / 20f
+                        else -> -10f
                     }
                 }
             }

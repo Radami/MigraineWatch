@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -31,6 +32,8 @@ import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,6 +64,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.migrainetracker.data.model.Severity
 import com.example.migrainetracker.data.model.SymptomEntry
+import com.example.migrainetracker.ui.components.DayMarker
+import com.example.migrainetracker.ui.components.SeveritySwatch
+import com.example.migrainetracker.ui.theme.DangerRed
 import com.example.migrainetracker.ui.theme.SeverityAura
 import com.example.migrainetracker.ui.theme.SeverityClear
 import com.example.migrainetracker.ui.theme.SeverityMigraine
@@ -138,7 +144,8 @@ fun CalendarScreen(
                     onEdit = {
                         viewModel.dismissBottomSheet()
                         onLogEntry(entry.date)
-                    }
+                    },
+                    onDelete = { viewModel.deleteEntry(entry) }
                 )
             }
         }
@@ -230,6 +237,9 @@ private fun MonthCalendar(
     }
 }
 
+private val LEGEND_SWATCH_SIZE = 12.dp
+private val STATS_SWATCH_SIZE = 8.dp
+
 @Composable
 private fun DayCell(
     day: Int,
@@ -239,41 +249,19 @@ private fun DayCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bgColor: Color = entry?.severity?.toColor() ?: Color.Transparent
     val severityLabel = entry?.severity?.name ?: "No entry"
 
-    Column(
+    DayMarker(
+        day = day,
+        severityColor = entry?.severity?.toColor(),
+        eventDirection = eventDirection,
+        isToday = isToday,
         modifier = modifier
             .aspectRatio(1f)
-            .padding(2.dp)
-            .clip(CircleShape)
-            .background(if (entry != null) bgColor else Color.Transparent)
-            .then(
-                if (isToday) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                else Modifier
-            )
-            .clickable { onClick() }
-            .semantics { contentDescription = "Day $day $severityLabel" },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            day.toString(),
-            style = MaterialTheme.typography.labelLarge,
-            color = if (entry != null) Color.White else MaterialTheme.colorScheme.onSurface
-        )
-        if (eventDirection != null) {
-            // White on filled severity circles for contrast, tertiary on plain days.
-            val trendTint = if (entry != null) Color.White else MaterialTheme.colorScheme.tertiary
-            Icon(
-                imageVector = if (eventDirection == "drop") Icons.AutoMirrored.Filled.TrendingDown
-                else Icons.AutoMirrored.Filled.TrendingUp,
-                contentDescription = if (eventDirection == "drop") "Pressure drop" else "Pressure rise",
-                tint = trendTint,
-                modifier = Modifier.size(14.dp)
-            )
-        }
-    }
+            .padding(2.dp),
+        contentDescription = "Day $day $severityLabel",
+        onClick = onClick
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -310,12 +298,7 @@ private fun LegendTrendItem(icon: androidx.compose.ui.graphics.vector.ImageVecto
 @Composable
 private fun LegendItem(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(12.dp)
-                .clip(CircleShape)
-                .background(color)
-        )
+        SeveritySwatch(color = color, size = LEGEND_SWATCH_SIZE)
         Spacer(Modifier.width(4.dp))
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
@@ -383,12 +366,7 @@ private fun StatsCard(
                             fontWeight = FontWeight.Bold
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(severity.toColor())
-                            )
+                            SeveritySwatch(color = severity.toColor(), size = STATS_SWATCH_SIZE)
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 severity.name.lowercase().replaceFirstChar { it.uppercase() },
@@ -402,11 +380,13 @@ private fun StatsCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DayDetailSheet(
     entry: SymptomEntry,
     onClose: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val dateFormatter = remember { DateTimeFormatter.ofPattern("EEEE d MMMM") }
     val severityColor = entry.severity.toColor()
@@ -436,12 +416,7 @@ private fun DayDetailSheet(
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(severityColor)
-            )
+            SeveritySwatch(color = severityColor, size = LEGEND_SWATCH_SIZE)
             Spacer(Modifier.width(8.dp))
             Text(
                 entry.severity.name.lowercase().replaceFirstChar { it.uppercase() },
@@ -450,7 +425,13 @@ private fun DayDetailSheet(
             )
         }
         Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // FlowRow, not Row: chips carry user-entered labels of any length and must wrap
+        // onto further lines instead of running off the edge of the sheet.
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             entry.durationBucket?.let { dur ->
                 AssistChip(onClick = {}, label = { Text(dur) })
             }
@@ -466,8 +447,12 @@ private fun DayDetailSheet(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
             Spacer(Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                entry.triggers.forEach { trigger ->
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                entry.triggers.inTriggerOrder().forEach { trigger ->
                     AssistChip(onClick = {}, label = { Text(trigger) })
                 }
             }
@@ -491,11 +476,28 @@ private fun DayDetailSheet(
             Text(notes, style = MaterialTheme.typography.bodyMedium)
         }
         Spacer(Modifier.height(16.dp))
-        androidx.compose.material3.Button(
-            onClick = onEdit,
-            modifier = Modifier.fillMaxWidth()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Edit entry")
+            Button(
+                onClick = onEdit,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Edit entry")
+            }
+            Button(
+                onClick = onDelete,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DangerRed,
+                    contentColor = Color.White
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { contentDescription = "Delete entry" }
+            ) {
+                Text("Delete entry")
+            }
         }
     }
 }

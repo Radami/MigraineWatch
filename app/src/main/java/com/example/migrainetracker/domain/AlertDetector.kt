@@ -2,6 +2,8 @@ package com.example.migrainetracker.domain
 
 import com.example.migrainetracker.data.model.PressureReading
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 data class AlertWindow(
     val start: Instant,
@@ -89,4 +91,29 @@ object AlertDetector {
         return result
     }
 
+    /**
+     * Maps every day an alert touches to the direction that dominates it. A day covered by
+     * several events (e.g. a drop ending and a rise starting) reports only the direction it
+     * spends the most time in, so a day is never marked with two conflicting trends.
+     */
+    fun eventDaysByDirection(alerts: List<AlertWindow>, zone: ZoneId): Map<LocalDate, String> {
+        val overlapsPerDay = mutableMapOf<LocalDate, MutableMap<String, Long>>()
+        alerts.forEach { alert ->
+            var day = alert.start.atZone(zone).toLocalDate()
+            val lastDay = alert.end.atZone(zone).toLocalDate()
+            while (!day.isAfter(lastDay)) {
+                val dayStart = day.atStartOfDay(zone).toInstant()
+                val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant()
+                val overlapSeconds =
+                    minOf(alert.end, dayEnd).epochSecond - maxOf(alert.start, dayStart).epochSecond
+
+                overlapsPerDay.getOrPut(day) { mutableMapOf() }
+                    .merge(alert.direction, overlapSeconds, Long::plus)
+
+                day = day.plusDays(1)
+            }
+        }
+
+        return overlapsPerDay.mapValues { (_, directions) -> directions.maxBy { it.value }.key }
+    }
 }

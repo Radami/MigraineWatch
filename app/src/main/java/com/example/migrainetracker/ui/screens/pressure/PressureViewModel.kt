@@ -3,6 +3,7 @@ package com.example.migrainetracker.ui.screens.pressure
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.migrainetracker.data.model.PressureReading
+import com.example.migrainetracker.data.preferences.AlertSensitivity
 import com.example.migrainetracker.data.preferences.UserPreferences
 import com.example.migrainetracker.data.repository.PressureRepository
 import com.example.migrainetracker.domain.AlertDetector
@@ -32,7 +33,7 @@ data class PressureUiState(
     val forecast: List<PressureReading> = emptyList(),
     val pastEvents: List<AlertWindow> = emptyList(),
     val alertWindows: List<AlertWindow> = emptyList(),
-    val alertThresholdHpa: Float = 6f,
+    val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
     val selectedRange: TimeRange = TimeRange.Days7,
     val locationName: String = "",
     val lastUpdated: Instant? = null,
