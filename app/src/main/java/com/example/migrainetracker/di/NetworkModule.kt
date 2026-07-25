@@ -1,7 +1,6 @@
 package com.example.migrainetracker.di
 
 import com.example.migrainetracker.BuildConfig
-import com.example.migrainetracker.data.remote.GeocodingApi
 import com.example.migrainetracker.data.remote.OpenMeteoApi
 import com.example.migrainetracker.data.remote.OpenMeteoArchiveApi
 import com.example.migrainetracker.data.remote.mock.MockDataInterceptor
@@ -68,16 +67,6 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    @Named("geocoding")
-    fun provideGeocodingRetrofit(client: OkHttpClient, json: Json): Retrofit =
-        Retrofit.Builder()
-            .baseUrl("https://geocoding-api.open-meteo.com/")
-            .client(client)
-            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
-            .build()
-
-    @Provides
-    @Singleton
     fun provideOpenMeteoApi(@Named("forecast") retrofit: Retrofit): OpenMeteoApi =
         retrofit.create(OpenMeteoApi::class.java)
 
@@ -85,9 +74,4 @@ object NetworkModule {
     @Singleton
     fun provideOpenMeteoArchiveApi(@Named("archive") retrofit: Retrofit): OpenMeteoArchiveApi =
         retrofit.create(OpenMeteoArchiveApi::class.java)
-
-    @Provides
-    @Singleton
-    fun provideGeocodingApi(@Named("geocoding") retrofit: Retrofit): GeocodingApi =
-        retrofit.create(GeocodingApi::class.java)
 }

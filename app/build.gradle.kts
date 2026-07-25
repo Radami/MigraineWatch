@@ -52,6 +52,9 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            // Plain JVM tests exercise code that calls android.util.Log; without this
+            // the stubbed android.jar throws instead of returning a default value.
+            isReturnDefaultValues = true
         }
     }
 }
@@ -98,6 +101,8 @@ dependencies {
 
     // WorkManager
     implementation(libs.workmanager.runtime)
+    testImplementation(libs.workmanager.testing)
+    androidTestImplementation(libs.workmanager.testing)
 
     // Networking
     implementation(libs.retrofit.core)
