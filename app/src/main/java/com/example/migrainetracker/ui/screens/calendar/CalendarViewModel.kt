@@ -1,6 +1,7 @@
 package com.example.migrainetracker.ui.screens.calendar
 
 import androidx.lifecycle.ViewModel
+import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.example.migrainetracker.data.model.Severity
 import com.example.migrainetracker.data.model.SymptomEntry
@@ -69,6 +70,16 @@ class CalendarViewModel @Inject constructor(
 
     fun dismissBottomSheet() {
         _uiState.value = _uiState.value.copy(showBottomSheet = false, selectedEntry = null)
+    }
+
+    fun deleteEntry(entry: SymptomEntry) {
+        viewModelScope.launch {
+            runCatching { symptomRepository.delete(entry.date) }
+                .onSuccess { dismissBottomSheet() }
+                // The calendar keeps showing the entry, so a failure is visible rather than
+                // silent; the sheet stays open for the user to try again.
+                .onFailure { Log.e("CalendarViewModel", "Failed to delete entry for ${entry.date}", it) }
+        }
     }
 
     private fun observeData() {

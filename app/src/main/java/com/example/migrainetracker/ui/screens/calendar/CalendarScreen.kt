@@ -32,6 +32,8 @@ import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +66,7 @@ import com.example.migrainetracker.data.model.Severity
 import com.example.migrainetracker.data.model.SymptomEntry
 import com.example.migrainetracker.ui.components.DayMarker
 import com.example.migrainetracker.ui.components.SeveritySwatch
+import com.example.migrainetracker.ui.theme.DangerRed
 import com.example.migrainetracker.ui.theme.SeverityAura
 import com.example.migrainetracker.ui.theme.SeverityClear
 import com.example.migrainetracker.ui.theme.SeverityMigraine
@@ -141,7 +144,8 @@ fun CalendarScreen(
                     onEdit = {
                         viewModel.dismissBottomSheet()
                         onLogEntry(entry.date)
-                    }
+                    },
+                    onDelete = { viewModel.deleteEntry(entry) }
                 )
             }
         }
@@ -381,7 +385,8 @@ private fun StatsCard(
 private fun DayDetailSheet(
     entry: SymptomEntry,
     onClose: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val dateFormatter = remember { DateTimeFormatter.ofPattern("EEEE d MMMM") }
     val severityColor = entry.severity.toColor()
@@ -471,11 +476,28 @@ private fun DayDetailSheet(
             Text(notes, style = MaterialTheme.typography.bodyMedium)
         }
         Spacer(Modifier.height(16.dp))
-        androidx.compose.material3.Button(
-            onClick = onEdit,
-            modifier = Modifier.fillMaxWidth()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Edit entry")
+            Button(
+                onClick = onEdit,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Edit entry")
+            }
+            Button(
+                onClick = onDelete,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DangerRed,
+                    contentColor = Color.White
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { contentDescription = "Delete entry" }
+            ) {
+                Text("Delete entry")
+            }
         }
     }
 }

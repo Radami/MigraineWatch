@@ -22,6 +22,8 @@ class SymptomRepository @Inject constructor(
 
     suspend fun save(entry: SymptomEntry) = dao.upsert(entry)
 
+    suspend fun delete(date: LocalDate) = dao.deleteByDate(date)
+
     suspend fun getEarliestDate(): LocalDate? =
         dao.getEarliestDate()?.let { LocalDate.parse(it) }
 }

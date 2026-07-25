@@ -16,6 +16,10 @@ val SeverityMild = Color(0xFFFFC107)
 val SeverityAura = Color(0xFFFF9800)
 val SeverityMigraine = Color(0xFFF44336)
 
+// Destructive actions. Deliberately darker than SeverityMigraine so a delete button never
+// reads as just another severity swatch.
+val DangerRed = Color(0xFF8E1B1B)
+
 // Chart colours
 val ChartMeasuredLight = Color(0xFFB05C3B)
 val ChartMeasuredDark = Color(0xFFE48D6C)
