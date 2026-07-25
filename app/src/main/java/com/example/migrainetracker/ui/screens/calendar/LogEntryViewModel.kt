@@ -28,8 +28,41 @@ data class LogEntryUiState(
     val savedSuccessfully: Boolean = false
 )
 
+const val OTHER_TRIGGER = "Other"
+
+/** The canonical order every screen shows triggers in. */
 val TRIGGER_OPTIONS = listOf(
-    "Poor sleep", "Stress", "Food / skipped meal", "Hormonal", "Screen time", "Other"
+    "Poor sleep", "Stress", "Food / skipped meal", "Hormonal", "Screen time", OTHER_TRIGGER
+)
+
+private val TRIGGER_RANKS = TRIGGER_OPTIONS.withIndex()
+    .associate { (rank, trigger) -> trigger to rank }
+
+/**
+ * Sorts triggers into [TRIGGER_OPTIONS] order with [OTHER_TRIGGER] last, so a saved entry
+ * reads the same wherever it is shown regardless of the order it was tapped in. Values from
+ * an older version of the app that are no longer offered keep a stable place of their own,
+ * after the known ones, rather than disappearing or shuffling between screens.
+ */
+fun Iterable<String>.inTriggerOrder(): List<String> = sortedWith(
+    // compareBy compares by the first selector and only falls through to the next one when
+    // that comparison ties, i.e. it sorts by the tuple of keys the selectors extract.
+    compareBy<String>(
+        // false sorts before true, so everything that is not "Other" forms the first group
+        // and "Other" the last. Whenever one side is "Other" this decides the comparison on
+        // its own and the selectors below never run, which is what keeps it last no matter
+        // where it sits in TRIGGER_OPTIONS.
+        { it == OTHER_TRIGGER },
+        // Position in TRIGGER_OPTIONS, so that list alone defines the display order. The
+        // elvis is load-bearing: selectors may return null and compareBy treats null as
+        // smaller than everything, so an unranked trigger would sort to the front instead
+        // of the back.
+        { TRIGGER_RANKS[it] ?: Int.MAX_VALUE },
+        // Known triggers have unique ranks, so this only separates unranked ones — they all
+        // share Int.MAX_VALUE above and would otherwise compare equal, leaving their order
+        // up to however the caller happened to store them.
+        { it }
+    )
 )
 
 val DURATION_OPTIONS = listOf("<2h", "2-6h", "6-12h", ">12h")
@@ -115,7 +148,7 @@ class LogEntryViewModel @Inject constructor(
                     SymptomEntry(
                         date = state.date,
                         severity = severity,
-                        triggers = state.triggers.toList(),
+                        triggers = state.triggers.inTriggerOrder(),
                         durationBucket = state.durationBucket,
                         reliefPercent = state.reliefPercent,
                         medication = state.medication.takeIf { it.isNotBlank() },

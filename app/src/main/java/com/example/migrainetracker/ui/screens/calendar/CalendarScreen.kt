@@ -402,6 +402,7 @@ private fun StatsCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DayDetailSheet(
     entry: SymptomEntry,
@@ -450,7 +451,13 @@ private fun DayDetailSheet(
             )
         }
         Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // FlowRow, not Row: chips carry user-entered labels of any length and must wrap
+        // onto further lines instead of running off the edge of the sheet.
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             entry.durationBucket?.let { dur ->
                 AssistChip(onClick = {}, label = { Text(dur) })
             }
@@ -466,8 +473,12 @@ private fun DayDetailSheet(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
             Spacer(Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                entry.triggers.forEach { trigger ->
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                entry.triggers.inTriggerOrder().forEach { trigger ->
                     AssistChip(onClick = {}, label = { Text(trigger) })
                 }
             }
