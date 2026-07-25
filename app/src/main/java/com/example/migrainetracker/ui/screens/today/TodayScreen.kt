@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Warning
@@ -135,7 +137,7 @@ fun TodayScreen(
         item {
             SymptomLogCard(
                 weekEntries = state.weekEntries,
-                pressureDropDays = state.pressureDropDays,
+                pressureEventDays = state.pressureEventDays,
                 today = today
             )
         }
@@ -260,7 +262,7 @@ private fun PressureCard(state: TodayUiState) {
 @Composable
 private fun SymptomLogCard(
     weekEntries: Map<LocalDate, SymptomEntry?>,
-    pressureDropDays: Set<LocalDate>,
+    pressureEventDays: Map<LocalDate, String>,
     today: LocalDate
 ) {
     val monthFormatter = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
@@ -287,7 +289,7 @@ private fun SymptomLogCard(
             Spacer(Modifier.height(12.dp))
             WeekStrip(
                 weekEntries = weekEntries,
-                pressureDropDays = pressureDropDays,
+                pressureEventDays = pressureEventDays,
                 today = today
             )
         }
@@ -297,7 +299,7 @@ private fun SymptomLogCard(
 @Composable
 private fun WeekStrip(
     weekEntries: Map<LocalDate, SymptomEntry?>,
-    pressureDropDays: Set<LocalDate>,
+    pressureEventDays: Map<LocalDate, String>,
     today: LocalDate
 ) {
     val dayFormatter = remember { DateTimeFormatter.ofPattern("E") }
@@ -308,7 +310,7 @@ private fun WeekStrip(
         weekEntries.entries.sortedBy { it.key }.forEach { (date, entry) ->
             val isToday = date == today
             val bgColor = entry?.severity?.toColor() ?: Color.Transparent
-            val hasDrop = pressureDropDays.contains(date)
+            val eventDirection = pressureEventDays[date]
             val dayLabel = date.format(dayFormatter).take(1)
 
             Column(
@@ -339,18 +341,18 @@ private fun WeekStrip(
                 ) {
                     Text(
                         date.dayOfMonth.toString(),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelLarge,
                         color = if (entry != null) Color.White else MaterialTheme.colorScheme.onSurface
                     )
                 }
-                if (hasDrop) {
+                if (eventDirection != null) {
                     Spacer(Modifier.height(2.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.tertiary)
-                            .semantics { contentDescription = "Pressure drop" }
+                    Icon(
+                        imageVector = if (eventDirection == "drop") Icons.AutoMirrored.Filled.TrendingDown
+                        else Icons.AutoMirrored.Filled.TrendingUp,
+                        contentDescription = if (eventDirection == "drop") "Pressure drop" else "Pressure rise",
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }

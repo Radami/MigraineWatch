@@ -2,7 +2,6 @@ package com.example.migrainetracker.ui.screens.calendar
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.migrainetracker.data.model.PressureReading
 import com.example.migrainetracker.data.model.Severity
 import com.example.migrainetracker.data.model.SymptomEntry
 import com.example.migrainetracker.data.preferences.UserPreferences
@@ -94,7 +93,8 @@ class CalendarViewModel @Inject constructor(
                         val entriesMap = entries.associateBy { it.date }
 
                         val eventDays = withContext(Dispatchers.Default) {
-                            computeEventDays(readings, settings.alertThresholdHpa, ZoneId.systemDefault())
+                            val alerts = AlertDetector.detect(readings, settings.alertThresholdHpa)
+                            AlertDetector.eventDaysByDirection(alerts, ZoneId.systemDefault())
                         }
 
                         val thisMonth = YearMonth.now()
@@ -123,29 +123,4 @@ class CalendarViewModel @Inject constructor(
         }
     }
 
-    private fun computeEventDays(
-        readings: List<PressureReading>,
-        threshold: Float,
-        zone: ZoneId
-    ): Map<LocalDate, String> {
-        val alerts = AlertDetector.detect(readings, threshold)
-        // Accumulate how long each direction's events overlap each day; a day touched by
-        // several events (e.g. a drop ending and a rise starting) shows only the dominant
-        // one, so day cells never need two icons.
-        val overlaps = mutableMapOf<LocalDate, MutableMap<String, Long>>()
-        alerts.forEach { alert ->
-            var day = alert.start.atZone(zone).toLocalDate()
-            val lastDay = alert.end.atZone(zone).toLocalDate()
-            while (!day.isAfter(lastDay)) {
-                val dayStart = day.atStartOfDay(zone).toInstant()
-                val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant()
-                val overlapSeconds =
-                    minOf(alert.end, dayEnd).epochSecond - maxOf(alert.start, dayStart).epochSecond
-                val perDirection = overlaps.getOrPut(day) { mutableMapOf() }
-                perDirection.merge(alert.direction, overlapSeconds, Long::plus)
-                day = day.plusDays(1)
-            }
-        }
-        return overlaps.mapValues { (_, directions) -> directions.maxBy { it.value }.key }
-    }
 }
