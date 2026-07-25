@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.testing.WorkManagerTestInitHelper
+import com.example.migrainetracker.data.preferences.AlertSensitivity
 import com.example.migrainetracker.data.preferences.LocationData
 import com.example.migrainetracker.data.preferences.UserPreferences
 import com.example.migrainetracker.data.remote.mock.MockDataInterceptor
@@ -41,8 +42,14 @@ import javax.inject.Inject
 class UserJourneyTest {
 
     private companion object {
-        /** The STORM scenario peaks at ~10 hPa over 24 h, so nothing qualifies at 12. */
-        const val THRESHOLD_ABOVE_STORM_DROP_HPA = 12f
+        /**
+         * Journeys start on the most sensitive setting rather than the default, so the STORM
+         * scenario's ~10 hPa events all qualify and the tests don't move when the default does.
+         */
+        val STARTING_SENSITIVITY = AlertSensitivity.HIGH
+
+        /** No STORM event reaches 10 hPa within 24 h, so the Low level silences the banner. */
+        const val SILENT_SENSITIVITY_OPTION = "Alert sensitivity Low"
 
         /** Fetches go through OkHttp and Room, and screens animate in, so the UI settles late. */
         const val UI_TIMEOUT_MILLIS = 10_000L
@@ -80,6 +87,7 @@ class UserJourneyTest {
         runBlocking {
             userPreferences.saveLocation(HOME_LOCATION)
             userPreferences.setOnboardingComplete(true)
+            userPreferences.setAlertSensitivity(STARTING_SENSITIVITY)
         }
     }
 
@@ -187,11 +195,13 @@ class UserJourneyTest {
         // 3. Navigate to Settings
         clickBottomNav("Settings screen")
 
-        // 4. Raise the threshold above the drop. The slider is driven through its semantics
-        //    action because a click would only land on whatever value sits under the tap.
-        awaitDisplayed(hasContentDescription("Alert threshold slider", substring = true))
-        composeTestRule.onNodeWithContentDescription("Alert threshold slider", substring = true)
-            .performSemanticsAction(SemanticsActions.SetProgress) { it(THRESHOLD_ABOVE_STORM_DROP_HPA) }
+        // 4. Drop to the least sensitive level, above every event in the data. The segmented
+        //    control is driven through its semantics action: injected touches reach it on a
+        //    real device (NavigationTest) but not under Robolectric, where they are swallowed
+        //    without invoking onClick.
+        awaitDisplayed(hasContentDescription(SILENT_SENSITIVITY_OPTION))
+        composeTestRule.onNodeWithContentDescription(SILENT_SENSITIVITY_OPTION)
+            .performSemanticsAction(SemanticsActions.OnClick)
 
         // 5. Navigate back to Today
         clickBottomNav("Today screen")

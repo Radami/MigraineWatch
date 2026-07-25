@@ -2,6 +2,7 @@ package com.example.migrainetracker.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.migrainetracker.data.preferences.AlertSensitivity
 import com.example.migrainetracker.data.preferences.UserPreferences
 import com.example.migrainetracker.data.repository.SymptomRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,7 +18,7 @@ import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 data class SettingsUiState(
-    val alertThresholdHpa: Float = 6f,
+    val alertSensitivity: AlertSensitivity = AlertSensitivity.Default,
     val notificationsEnabled: Boolean = true,
     val totalEntries: Int = 0,
     val trackingSince: String = ""
@@ -34,7 +35,7 @@ class SettingsViewModel @Inject constructor(
         symptomRepository.getTotalCount()
     ) { settings, count ->
         SettingsUiState(
-            alertThresholdHpa = settings.alertThresholdHpa,
+            alertSensitivity = settings.alertSensitivity,
             notificationsEnabled = settings.notificationsEnabled,
             totalEntries = count
         )
@@ -54,9 +55,9 @@ class SettingsViewModel @Inject constructor(
 
     val trackingSince: StateFlow<String> = _trackingSince.asStateFlow()
 
-    fun setAlertThreshold(hpa: Float) {
+    fun setAlertSensitivity(sensitivity: AlertSensitivity) {
         viewModelScope.launch {
-            userPreferences.setAlertThreshold(hpa)
+            userPreferences.setAlertSensitivity(sensitivity)
         }
     }
 

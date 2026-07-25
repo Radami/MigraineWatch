@@ -13,6 +13,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.work.testing.WorkManagerTestInitHelper
+import com.example.migrainetracker.data.preferences.AlertSensitivity
 import com.example.migrainetracker.data.preferences.LocationData
 import com.example.migrainetracker.data.preferences.UserPreferences
 import com.example.migrainetracker.data.remote.mock.MockDataInterceptor
@@ -33,8 +34,8 @@ import javax.inject.Inject
 class NavigationTest {
 
     private companion object {
-        /** Well below the ~10 hPa the STORM scenario produces, so the banner is guaranteed. */
-        const val ALERT_THRESHOLD_HPA = 6f
+        /** The most sensitive level, so the STORM scenario always produces a banner. */
+        val ALERT_SENSITIVITY = AlertSensitivity.HIGH
 
         /** Fetches go through OkHttp and Room, and screens animate in, so the UI settles late. */
         const val UI_TIMEOUT_MILLIS = 10_000L
@@ -72,7 +73,7 @@ class NavigationTest {
         runBlocking {
             userPreferences.saveLocation(HOME_LOCATION)
             userPreferences.setOnboardingComplete(true)
-            userPreferences.setAlertThreshold(ALERT_THRESHOLD_HPA)
+            userPreferences.setAlertSensitivity(ALERT_SENSITIVITY)
         }
 
         MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.STORM

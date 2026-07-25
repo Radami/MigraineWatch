@@ -14,7 +14,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -34,8 +37,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.migrainetracker.BuildConfig
+import com.example.migrainetracker.data.preferences.AlertSensitivity
 import com.example.migrainetracker.ui.theme.ChartMeasuredLight
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
@@ -79,7 +84,7 @@ fun SettingsScreen(
         }
 
         item {
-            SectionHeader("Alert threshold")
+            SectionHeader("Alert sensitivity")
         }
         item {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -89,40 +94,39 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
                 Text(
-                    "${state.alertThresholdHpa.toInt()} hPa",
+                    "${state.alertSensitivity.thresholdHpa.toInt()} hPa",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 8.dp)
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
                 ) {
-                    Text(
-                        "3 hPa · very sensitive",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                    Slider(
-                        value = state.alertThresholdHpa,
-                        onValueChange = viewModel::setAlertThreshold,
-                        valueRange = 3f..15f,
-                        steps = 11,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 8.dp)
-                            .semantics { contentDescription = "Alert threshold slider, ${state.alertThresholdHpa.toInt()} hPa" }
-                    )
-                    Text(
-                        "15 hPa · only big drops",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
+                    AlertSensitivity.entries.forEachIndexed { index, sensitivity ->
+                        SegmentedButton(
+                            selected = sensitivity == state.alertSensitivity,
+                            onClick = { viewModel.setAlertSensitivity(sensitivity) },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index = index,
+                                count = AlertSensitivity.entries.size
+                            ),
+                            modifier = Modifier.semantics {
+                                contentDescription = "Alert sensitivity ${sensitivity.label}"
+                            }
+                        ) {
+                            Text(sensitivity.label)
+                        }
+                    }
                 }
+                // Reserve both lines: the longest description wraps, and letting the block
+                // shrink to one line would make the divider below jump as levels change.
                 Text(
-                    "Most weather-sensitive people react to drops of 6–10 hPa within 24 hours.",
+                    state.alertSensitivity.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    minLines = 2
                 )
             }
         }
@@ -214,3 +218,19 @@ private fun SettingsRow(
         }
     }
 }
+
+// Presentation of the sensitivity presets lives here rather than on the enum, so the
+// preferences layer stays free of user-facing copy.
+private val AlertSensitivity.label: String
+    get() = when (this) {
+        AlertSensitivity.HIGH -> "High"
+        AlertSensitivity.MEDIUM -> "Medium"
+        AlertSensitivity.LOW -> "Low"
+    }
+
+private val AlertSensitivity.description: String
+    get() = when (this) {
+        AlertSensitivity.HIGH -> "Warns on smaller drops. Expect more alerts, some of them minor."
+        AlertSensitivity.MEDIUM -> "Balanced. Most weather-sensitive people react around this level."
+        AlertSensitivity.LOW -> "Only large drops. Fewer alerts, but a milder event may pass unflagged."
+    }

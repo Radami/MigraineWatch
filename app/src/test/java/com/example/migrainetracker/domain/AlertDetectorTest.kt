@@ -5,6 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import kotlin.math.sin
 
@@ -36,6 +38,55 @@ class AlertDetectorTest {
         val alerts = AlertDetector.detect(readings, 5f)
 
         assertTrue(alerts.isEmpty())
+    }
+
+    @Test
+    fun `eventDaysByDirection marks every day an alert spans`() {
+        val alert = AlertWindow(
+            start = Instant.parse("2023-10-01T18:00:00Z"),
+            end = Instant.parse("2023-10-03T06:00:00Z"),
+            delta = 9f,
+            direction = "drop"
+        )
+
+        val days = AlertDetector.eventDaysByDirection(listOf(alert), ZoneId.of("UTC"))
+
+        assertEquals(
+            mapOf(
+                LocalDate.parse("2023-10-01") to "drop",
+                LocalDate.parse("2023-10-02") to "drop",
+                LocalDate.parse("2023-10-03") to "drop"
+            ),
+            days
+        )
+    }
+
+    @Test
+    fun `eventDaysByDirection reports the direction that dominates a shared day`() {
+        // A drop ending in the morning and a rise running the rest of the day: the day cell
+        // has room for one arrow, so the longer of the two wins.
+        val drop = AlertWindow(
+            start = Instant.parse("2023-10-01T22:00:00Z"),
+            end = Instant.parse("2023-10-02T04:00:00Z"),
+            delta = 8f,
+            direction = "drop"
+        )
+        val rise = AlertWindow(
+            start = Instant.parse("2023-10-02T06:00:00Z"),
+            end = Instant.parse("2023-10-02T22:00:00Z"),
+            delta = 8f,
+            direction = "rise"
+        )
+
+        val days = AlertDetector.eventDaysByDirection(listOf(drop, rise), ZoneId.of("UTC"))
+
+        assertEquals("drop", days[LocalDate.parse("2023-10-01")])
+        assertEquals("rise", days[LocalDate.parse("2023-10-02")])
+    }
+
+    @Test
+    fun `eventDaysByDirection returns nothing when there are no alerts`() {
+        assertTrue(AlertDetector.eventDaysByDirection(emptyList(), ZoneId.of("UTC")).isEmpty())
     }
 
     @Test

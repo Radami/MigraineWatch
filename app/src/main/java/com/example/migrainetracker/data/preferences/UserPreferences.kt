@@ -22,11 +22,14 @@ data class LocationData(
 )
 
 data class AppSettings(
-    val alertThresholdHpa: Float = 6f,
+    val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
     val notificationsEnabled: Boolean = true,
     val onboardingComplete: Boolean = false,
     val location: LocationData = LocationData()
-)
+) {
+    /** The preset the stored threshold corresponds to, for screens that offer the choice. */
+    val alertSensitivity: AlertSensitivity get() = AlertSensitivity.forThreshold(alertThresholdHpa)
+}
 
 @Singleton
 class UserPreferences @Inject constructor(
@@ -45,7 +48,7 @@ class UserPreferences @Inject constructor(
 
     val settings: Flow<AppSettings> = dataStore.data.map { prefs ->
         AppSettings(
-            alertThresholdHpa = prefs[Keys.ALERT_THRESHOLD] ?: 6f,
+            alertThresholdHpa = prefs[Keys.ALERT_THRESHOLD] ?: AlertSensitivity.Default.thresholdHpa,
             notificationsEnabled = prefs[Keys.NOTIFICATIONS_ENABLED] ?: true,
             onboardingComplete = prefs[Keys.ONBOARDING_COMPLETE] ?: false,
             location = LocationData(
@@ -68,8 +71,9 @@ class UserPreferences @Inject constructor(
         }
     }
 
-    suspend fun setAlertThreshold(hpa: Float) {
-        dataStore.edit { it[Keys.ALERT_THRESHOLD] = hpa }
+    /** Takes the preset rather than a raw value so an off-menu threshold can't be stored. */
+    suspend fun setAlertSensitivity(sensitivity: AlertSensitivity) {
+        dataStore.edit { it[Keys.ALERT_THRESHOLD] = sensitivity.thresholdHpa }
     }
 
     suspend fun setNotificationsEnabled(enabled: Boolean) {

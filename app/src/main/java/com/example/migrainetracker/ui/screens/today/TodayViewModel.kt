@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.migrainetracker.data.model.PressureReading
 import com.example.migrainetracker.data.model.SymptomEntry
+import com.example.migrainetracker.data.preferences.AlertSensitivity
 import com.example.migrainetracker.data.preferences.UserPreferences
 import com.example.migrainetracker.data.repository.PressureRepository
 import com.example.migrainetracker.data.repository.SymptomRepository
@@ -30,7 +31,7 @@ data class TodayUiState(
     val historical: List<PressureReading> = emptyList(),
     val forecast: List<PressureReading> = emptyList(),
     val alertWindows: List<AlertWindow> = emptyList(),
-    val alertThresholdHpa: Float = 6f,
+    val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
     val weekEntries: Map<LocalDate, SymptomEntry?> = emptyMap(),
     val pressureEventDays: Map<LocalDate, String> = emptyMap(),
     val locationName: String = "",
