@@ -34,7 +34,7 @@ import javax.inject.Inject
 class NavigationTest {
 
     private companion object {
-        /** The most sensitive level, so the STORM scenario always produces a banner. */
+        /** The most sensitive level, so the TWO_EVENTS scenario always produces a banner. */
         val ALERT_SENSITIVITY = AlertSensitivity.HIGH
 
         /** Fetches go through OkHttp and Room, and screens animate in, so the UI settles late. */
@@ -76,14 +76,14 @@ class NavigationTest {
             userPreferences.setAlertSensitivity(ALERT_SENSITIVITY)
         }
 
-        MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.STORM
+        MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.TWO_EVENTS
         scenario = ActivityScenario.launch(MainActivity::class.java)
     }
 
     @After
     fun tearDown() {
         scenario?.close()
-        MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.NORMAL
+        MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.THREE_EVENTS
     }
 
     /**
