@@ -23,7 +23,12 @@ data class LocationData(
 
 data class AppSettings(
     val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
+    /**
+     * Whether the user wants alerts, not whether the system will deliver them. The runtime
+     * permission is tracked separately and must never be written back into this.
+     */
     val notificationsEnabled: Boolean = true,
+    val notificationPermissionRequested: Boolean = false,
     val onboardingComplete: Boolean = false,
     val location: LocationData = LocationData()
 ) {
@@ -43,6 +48,8 @@ class UserPreferences @Inject constructor(
         val LOCATION_TIMEZONE = stringPreferencesKey("location_timezone")
         val ALERT_THRESHOLD = floatPreferencesKey("alert_threshold_hpa")
         val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
+        val NOTIFICATION_PERMISSION_REQUESTED =
+            booleanPreferencesKey("notification_permission_requested")
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
     }
 
@@ -50,6 +57,8 @@ class UserPreferences @Inject constructor(
         AppSettings(
             alertThresholdHpa = prefs[Keys.ALERT_THRESHOLD] ?: AlertSensitivity.Default.thresholdHpa,
             notificationsEnabled = prefs[Keys.NOTIFICATIONS_ENABLED] ?: true,
+            notificationPermissionRequested =
+                prefs[Keys.NOTIFICATION_PERMISSION_REQUESTED] ?: false,
             onboardingComplete = prefs[Keys.ONBOARDING_COMPLETE] ?: false,
             location = LocationData(
                 source = prefs[Keys.LOCATION_SOURCE] ?: "",
@@ -78,6 +87,14 @@ class UserPreferences @Inject constructor(
 
     suspend fun setNotificationsEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.NOTIFICATIONS_ENABLED] = enabled }
+    }
+
+    /**
+     * Records that the runtime permission dialog has been shown once. Android will not show it
+     * again after a denial, so this is what separates "not asked yet" from "refused".
+     */
+    suspend fun setNotificationPermissionRequested(requested: Boolean) {
+        dataStore.edit { it[Keys.NOTIFICATION_PERMISSION_REQUESTED] = requested }
     }
 
     suspend fun setOnboardingComplete(complete: Boolean) {

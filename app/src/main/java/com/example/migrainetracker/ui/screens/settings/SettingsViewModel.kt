@@ -1,5 +1,6 @@
 package com.example.migrainetracker.ui.screens.settings
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.migrainetracker.data.preferences.AlertSensitivity
@@ -11,6 +12,8 @@ import com.example.migrainetracker.domain.AlertNotificationScheduler
 import com.example.migrainetracker.domain.PressureAlertUseCase
 import com.example.migrainetracker.domain.ReconcileResult
 import com.example.migrainetracker.notifications.AlertNotifier
+import com.example.migrainetracker.notifications.NotificationPermissionMonitor
+import com.example.migrainetracker.notifications.NotificationPermissionState
 import com.example.migrainetracker.workers.PressureFetchWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
@@ -31,16 +34,29 @@ import javax.inject.Inject
 
 data class SettingsUiState(
     val alertSensitivity: AlertSensitivity = AlertSensitivity.Default,
+    /** What the user asked for, which is not the same as what the system will deliver. */
     val notificationsEnabled: Boolean = true,
+    // Assumed granted until the first check answers, so the warning row does not flash on
+    // every entry to the screen.
+    val permission: NotificationPermissionState = NotificationPermissionState.GRANTED,
     val totalEntries: Int = 0,
     val trackingSince: String = ""
-)
+) {
+    /** The switch tracks delivery: on means an alert would actually arrive. */
+    val alertsDelivering: Boolean
+        get() = notificationsEnabled && permission == NotificationPermissionState.GRANTED
+
+    /** Wanted but undeliverable — the silent failure the warning row exists to explain. */
+    val alertsBlocked: Boolean
+        get() = notificationsEnabled && permission != NotificationPermissionState.GRANTED
+}
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val symptomRepository: SymptomRepository,
     private val alertScheduler: AlertNotificationScheduler,
+    private val permissionMonitor: NotificationPermissionMonitor,
     private val workManager: WorkManager,
     // Debug section only.
     private val alertUseCase: PressureAlertUseCase,
@@ -53,13 +69,17 @@ class SettingsViewModel @Inject constructor(
         const val MESSAGE_BUFFER = 4
     }
 
+    private val _permission = MutableStateFlow(NotificationPermissionState.GRANTED)
+
     val uiState: StateFlow<SettingsUiState> = combine(
         userPreferences.settings,
-        symptomRepository.getTotalCount()
-    ) { settings, count ->
+        symptomRepository.getTotalCount(),
+        _permission
+    ) { settings, count, permission ->
         SettingsUiState(
             alertSensitivity = settings.alertSensitivity,
             notificationsEnabled = settings.notificationsEnabled,
+            permission = permission,
             totalEntries = count
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
@@ -87,11 +107,40 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Stores intent only. A missing permission is never folded in here: it would leave the
+     * user's answer unrecoverable once the system state changed underneath it.
+     */
     fun setNotificationsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             userPreferences.setNotificationsEnabled(enabled)
             // Switching off cancels everything pending; switching on rebuilds it.
             alertScheduler.reconcile()
+        }
+    }
+
+    /**
+     * Re-reads what the system allows. Called every time the screen resumes, because the
+     * permission can be revoked while the app sits in the background.
+     */
+    fun refreshPermissionState() {
+        viewModelScope.launch {
+            _permission.value = permissionMonitor.currentState()
+        }
+    }
+
+    /**
+     * The dialog is only ever shown once by Android, so record that it happened before
+     * re-reading: a denial has to resolve to [NotificationPermissionState.BLOCKED], which is
+     * what sends the user to the system settings instead of a button that does nothing.
+     */
+    /** Where a blocked app has to go to be re-enabled; the screen starts it. */
+    fun notificationSettingsIntent(): Intent = permissionMonitor.appNotificationSettingsIntent()
+
+    fun onPermissionRequestFinished() {
+        viewModelScope.launch {
+            permissionMonitor.markRequested()
+            _permission.value = permissionMonitor.currentState()
         }
     }
 

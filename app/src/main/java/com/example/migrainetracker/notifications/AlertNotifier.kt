@@ -1,18 +1,15 @@
 package com.example.migrainetracker.notifications
 
-import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.TaskStackBuilder
-import androidx.core.content.ContextCompat
 import com.example.migrainetracker.AlertDetailActivity
 import com.example.migrainetracker.R
 import com.example.migrainetracker.domain.AlertWindow
@@ -25,7 +22,8 @@ import javax.inject.Singleton
 /** Posts pressure alerts to the system tray and opens the matching detail screen on tap. */
 @Singleton
 class AlertNotifier @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val permissionMonitor: NotificationPermissionMonitor
 ) {
     private companion object {
         const val TAG = "AlertNotifier"
@@ -55,7 +53,7 @@ class AlertNotifier @Inject constructor(
      * permission should be retried, not remembered as sent.
      */
     fun notify(alert: AlertWindow): Boolean {
-        if (!canPost()) {
+        if (!permissionMonitor.canPost()) {
             Log.w(TAG, "Notifications not permitted; skipping alert at ${alert.start}")
             return false
         }
@@ -84,16 +82,6 @@ class AlertNotifier @Inject constructor(
             Log.e(TAG, "Failed to post alert notification", error)
             false
         }
-    }
-
-    private fun canPost(): Boolean {
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
-
-        return ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
     }
 
     /** Opens the alert's detail screen with Today underneath it, as if navigated to in-app. */

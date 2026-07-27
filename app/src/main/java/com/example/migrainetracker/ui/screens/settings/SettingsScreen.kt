@@ -1,9 +1,6 @@
 package com.example.migrainetracker.ui.screens.settings
 
 import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -50,10 +47,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.migrainetracker.BuildConfig
 import com.example.migrainetracker.data.preferences.AlertSensitivity
+import com.example.migrainetracker.notifications.NotificationPermissionState
 import com.example.migrainetracker.ui.theme.ChartMeasuredLight
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,6 +60,14 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // The permission can be revoked, or granted from the system settings, while the app sits in
+    // the background — so it is re-read on every resume rather than once at launch. Kept at the
+    // screen root: an item scrolled out of the LazyColumn below would be disposed.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshPermissionState()
+        onPauseOrDispose { }
+    }
 
     if (BuildConfig.DEBUG) {
         // Collected at the screen root rather than inside the debug section: a LazyColumn item
@@ -176,29 +182,29 @@ private fun SettingsList(viewModel: SettingsViewModel) {
         item { HorizontalDivider() }
         item { SectionHeader("Notifications") }
         item {
-            // Android 13 needs the runtime grant before anything reaches the tray. Asking on
-            // the way in would be asking before the user has any reason to say yes, so the
-            // request is attached to switching alerts on.
+            val context = LocalContext.current
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission()
-            ) { granted ->
-                viewModel.setNotificationsEnabled(granted)
+            ) {
+                // The answer itself is not stored. The switch reads the live system state, and
+                // a denial must not overwrite the user's standing request for alerts.
+                viewModel.onPermissionRequestFinished()
             }
-            val context = LocalContext.current
 
             SettingsRow(
                 title = "Pressure drop alerts",
                 subtitle = "Push when a drop crosses your threshold",
                 trailing = {
                     Switch(
-                        checked = state.notificationsEnabled,
+                        // Delivery, not intent: never claims alerts are on while the system is
+                        // dropping them.
+                        checked = state.alertsDelivering,
                         onCheckedChange = { enabled ->
-                            when {
-                                !enabled -> viewModel.setNotificationsEnabled(false)
-                                notificationsPermitted(context) -> viewModel.setNotificationsEnabled(true)
-                                // The switch stays off until the grant comes back, so it never
-                                // claims alerts are on while the system is dropping them.
-                                else -> permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            viewModel.setNotificationsEnabled(enabled)
+
+                            // Turning it on is the moment the user has a reason to say yes.
+                            if (enabled && state.permission == NotificationPermissionState.REQUESTABLE) {
+                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             }
                         },
                         modifier = Modifier.semantics {
@@ -207,6 +213,20 @@ private fun SettingsList(viewModel: SettingsViewModel) {
                     )
                 }
             )
+
+            // Wanted but undeliverable. Without this the switch simply reads off and the user
+            // has nothing to act on.
+            if (state.alertsBlocked) {
+                NotificationBlockedWarning(
+                    permission = state.permission,
+                    onRequestPermission = {
+                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    },
+                    onOpenSystemSettings = {
+                        context.startActivity(viewModel.notificationSettingsIntent())
+                    }
+                )
+            }
         }
 
         item { HorizontalDivider() }
@@ -348,10 +368,47 @@ private val AlertSensitivity.description: String
         AlertSensitivity.LOW -> "Only large drops. Fewer alerts, but a milder event may pass unflagged."
     }
 
-/** Below Android 13 the permission is granted at install time. */
-private fun notificationsPermitted(context: Context): Boolean =
-    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-        ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
+/**
+ * Explains why alerts the user asked for are not arriving, and offers the one action that can
+ * fix it: the runtime dialog while Android will still show it, the system settings screen once
+ * it won't.
+ */
+@Composable
+private fun NotificationBlockedWarning(
+    permission: NotificationPermissionState,
+    onRequestPermission: () -> Unit,
+    onOpenSystemSettings: () -> Unit
+) {
+    val requestable = permission == NotificationPermissionState.REQUESTABLE
+    val message = when {
+        requestable -> "Alerts need notification permission before they can reach you."
+        else -> "Android is blocking these alerts. Turn notifications on in system settings."
+    }
+    val actionLabel = if (requestable) "Allow" else "Open settings"
+
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(
+                onClick = if (requestable) onRequestPermission else onOpenSystemSettings,
+                modifier = Modifier.semantics { contentDescription = "$actionLabel notifications" }
+            ) {
+                Text(actionLabel)
+            }
+        }
+    }
+}
