@@ -63,6 +63,22 @@ fun OnboardingScreen(
         if (state.savedSuccessfully) onComplete()
     }
 
+    val notificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        // The grant is not recorded as a preference: the alerts setting holds intent, and the
+        // Settings screen reads the live permission to explain a denial.
+        viewModel.onNotificationPermissionRequestFinished()
+    }
+
+    // Asked once setup has succeeded, so the dialog lands after the user has seen what the app
+    // is for rather than on the way in.
+    LaunchedEffect(state.requestNotificationPermission) {
+        if (state.requestNotificationPermission) {
+            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->

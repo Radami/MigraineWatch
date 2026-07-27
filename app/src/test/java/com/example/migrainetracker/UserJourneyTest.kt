@@ -43,12 +43,12 @@ class UserJourneyTest {
 
     private companion object {
         /**
-         * Journeys start on the most sensitive setting rather than the default, so the STORM
-         * scenario's ~10 hPa events all qualify and the tests don't move when the default does.
+         * Journeys start on the most sensitive setting rather than the default, so the TWO_EVENTS
+         * scenario's 9 hPa events both qualify and the tests don't move when the default does.
          */
         val STARTING_SENSITIVITY = AlertSensitivity.HIGH
 
-        /** No STORM event reaches 10 hPa within 24 h, so the Low level silences the banner. */
+        /** Both TWO_EVENTS events are 9 hPa exactly, so the Low level silences the banner. */
         const val SILENT_SENSITIVITY_OPTION = "Alert sensitivity Low"
 
         /** Fetches go through OkHttp and Room, and screens animate in, so the UI settles late. */
@@ -94,7 +94,7 @@ class UserJourneyTest {
     @After
     fun tearDown() {
         scenarios.reversed().forEach { it.close() }
-        MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.NORMAL
+        MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.THREE_EVENTS
     }
 
     private fun launchApp(mockScenario: MockDataInterceptor.Scenario) {
@@ -136,7 +136,7 @@ class UserJourneyTest {
 
     @Test
     fun scenarioA_TheNervousTraveler() {
-        launchApp(MockDataInterceptor.Scenario.NORMAL)
+        launchApp(MockDataInterceptor.Scenario.THREE_EVENTS)
 
         // 1. Click location chip to change location
         composeTestRule.onNodeWithContentDescription("Location").performClick()
@@ -163,8 +163,8 @@ class UserJourneyTest {
 
     @Test
     fun scenarioB_TheProactivePatient() {
-        // 1. Force a storm scenario so the app starts with a ~10 hPa drop in its data
-        launchApp(MockDataInterceptor.Scenario.STORM)
+        // 1. Force a storm scenario so the app starts with a 9 hPa drop in its data
+        launchApp(MockDataInterceptor.Scenario.TWO_EVENTS)
 
         // 2. Verify "Elevated risk" banner is displayed
         awaitDisplayed(hasContentDescription("Pressure alert banner"))
@@ -187,7 +187,7 @@ class UserJourneyTest {
     @Test
     fun scenarioC_TheStoic() {
         // 1. Start with a storm (~10 hPa drop)
-        launchApp(MockDataInterceptor.Scenario.STORM)
+        launchApp(MockDataInterceptor.Scenario.TWO_EVENTS)
 
         // 2. Verify banner is visible on Today screen
         awaitDisplayed(hasContentDescription("Pressure alert banner"))

@@ -8,22 +8,113 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.sin
 
 /**
  * Intercepts calls to Open-Meteo and returns a generated realistic dataset.
  */
 class MockDataInterceptor : Interceptor {
 
+    /** Named for what the forecast contains, since that is the only thing a caller picks on. */
     enum class Scenario {
-        NORMAL,
-        STORM, // Forced 10.3hPa drop
-        CALM   // No major pressure changes
+        THREE_EVENTS, // A 12 hPa drop, its 9 hPa recovery, then a 7 hPa drop
+        TWO_EVENTS,   // A 9 hPa drop and its 9 hPa recovery
+        NO_EVENTS     // Flat
     }
 
     companion object {
-        var currentScenario: Scenario = Scenario.NORMAL
+        /**
+         * Which forecast shape is served. [Scenario.THREE_EVENTS] covers every alert
+         * sensitivity on its own, so this is only changed by the tests and by
+         * [com.example.migrainetracker.debug.DebugAlertReceiver] over adb.
+         */
+        var currentScenario: Scenario = Scenario.THREE_EVENTS
+
+        /** 30 days of history and the 7-day forecast Open-Meteo returns, hour by hour. */
+        private const val FIRST_HOUR = -720
+        private const val LAST_HOUR = 168
+
+        /**
+         * Three back-to-back events fill the alert detail chart, which spans 24 h behind to
+         * 60 h ahead: a 12 hPa drop already under way, the 9 hPa recovery from it, then a
+         * 7 hPa drop. Each event's turning point is where the next one starts,
+         * so the detector reports three separate alerts and the sensitivity presets peel them
+         * off one at a time — High (6) shows all three, Medium (8) two, Low (10) one.
+         *
+         * Those deltas are exactly 12, 9 and 7 because no wobble is laid over them. An event
+         * sized 1 hPa clear of a preset boundary with noise laid over it can only be trusted
+         * by simulating every phase of the noise, which is what the previous shape needed.
+         */
+        private val THREE_EVENT_CURVE = listOf(
+            Anchor(FIRST_HOUR, 0f),
+            // Two completed excursions inside the past month, for the "Last 3 events" card.
+            Anchor(-250, 0f), Anchor(-226, -15f), Anchor(-224, -15f), Anchor(-200, 0f),
+            Anchor(-160, 0f), Anchor(-136, -15f), Anchor(-134, -15f), Anchor(-110, 0f),
+            // Pressure climbs gently into the peak rather than arriving along a flat plateau.
+            // An event is pinned to the first reading holding its extreme value, so a dead
+            // flat approach would date the drop from the far end of the plateau.
+            Anchor(-36, -0.8f), Anchor(-12, 0f),
+            Anchor(8, -12f), Anchor(12, -12f),
+            Anchor(32, -3f), Anchor(36, -3f),
+            Anchor(56, -10f),
+            Anchor(LAST_HOUR, -10f)
+        )
+
+        /**
+         * A storm arriving and clearing: a 9 hPa drop and the 9 hPa recovery behind it, each
+         * over 20 h so a 24 h detection window sees the whole of one.
+         *
+         * 9 sits a clear 1 hPa inside both neighbouring presets, which is what makes the two
+         * properties the tests lean on hold everywhere rather than at one location: the events
+         * always show at High and Medium, and never at Low. `UserJourneyTest.scenarioC` walks
+         * the sensitivity down until the banner goes away, so "never at Low" has to be a
+         * guarantee, not a calibration.
+         */
+        private val TWO_EVENT_CURVE = listOf(
+            Anchor(FIRST_HOUR, 0f),
+            Anchor(-21, -0.8f), Anchor(3, 0f),
+            Anchor(23, -9f), Anchor(27, -9f),
+            Anchor(47, 0f),
+            Anchor(LAST_HOUR, 0f)
+        )
+
+        /** Nothing happens. The empty case: no alerts to raise, and any pending ones cancel. */
+        private val NO_EVENT_CURVE = listOf(Anchor(FIRST_HOUR, 0f), Anchor(LAST_HOUR, 0f))
+
+        private fun curveFor(scenario: Scenario): List<Anchor> = when (scenario) {
+            Scenario.THREE_EVENTS -> THREE_EVENT_CURVE
+            Scenario.TWO_EVENTS -> TWO_EVENT_CURVE
+            Scenario.NO_EVENTS -> NO_EVENT_CURVE
+        }
+
+        /**
+         * The curve's value at [hour], eased between the anchors on either side. Smoothstep
+         * rather than a straight line: it still passes exactly through every anchor, so the
+         * deltas the table describes survive, but the corners are rounded off.
+         */
+        private fun List<Anchor>.offsetAt(hour: Int): Float {
+            if (hour <= first().hour) return first().offsetHpa
+            if (hour >= last().hour) return last().offsetHpa
+
+            val endIndex = indexOfFirst { it.hour >= hour }
+            val end = this[endIndex]
+            val start = this[endIndex - 1]
+            if (end.hour == start.hour) return end.offsetHpa
+
+            val progress = (hour - start.hour).toFloat() / (end.hour - start.hour)
+            return start.offsetHpa + (end.offsetHpa - start.offsetHpa) * smoothStep(progress)
+        }
+
+        /** 3t² − 2t³: runs 0 to 1 with zero slope at both ends. */
+        private fun smoothStep(t: Float): Float = t * t * (3f - 2f * t)
     }
+
+    /**
+     * One point on a scenario's pressure curve: [offsetHpa] away from the base pressure,
+     * [hour] hours from now. Defining a scenario as a table of these keeps its shape readable
+     * — and its alert deltas exact — where ramp arithmetic spread over a when-block was
+     * neither.
+     */
+    private data class Anchor(val hour: Int, val offsetHpa: Float)
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -59,74 +150,17 @@ class MockDataInterceptor : Interceptor {
         val locationSeed = (lat + lon).toFloat()
         val basePressure = 1013f + (locationSeed % 5f)
 
-        // NORMAL's events are sized to land between the alert sensitivity presets, and only
-        // 2 hPa separates one preset from the next. Its wobble is therefore kept small enough
-        // that no phase of the sine can push an event across a neighbouring threshold; the
-        // other scenarios keep the livelier wobble.
-        val varianceAmplitude = when (currentScenario) {
-            Scenario.NORMAL -> 0.35f
-            Scenario.STORM, Scenario.CALM -> 2f
-        }
+        // No noise is layered on top: every scenario's alerts are exactly the size its curve
+        // describes, at every location. Sizing an event 1 hPa clear of a sensitivity preset
+        // and then adding a wobble that can reach it means the scenario only behaves where it
+        // happened to be checked.
+        val curve = curveFor(currentScenario)
 
-        // Generate 30 days past + 7 days future (888 data points)
-        for (i in -720..168) {
-            val time = now.plusHours(i.toLong())
+        for (hour in FIRST_HOUR..LAST_HOUR) {
+            val time = now.plusHours(hour.toLong())
             times.add(time.format(formatter))
 
-            val variance = varianceAmplitude * sin(i / 10.0 + locationSeed).toFloat()
-
-            val eventOffset: Float = when (currentScenario) {
-                Scenario.STORM -> {
-                    // Forced 10.3hPa drop for Scenario B/C testing
-                    when {
-                        i < 3 -> 0f
-                        i <= 39 -> {
-                            val progress = (i - 3) / 36f
-                            -(progress * 10.3f)
-                        }
-                        i <= 42 -> -10.3f
-                        i <= 66 -> {
-                            val progress = (i - 42) / 24f
-                            -10.3f + (progress * 12f)
-                        }
-                        else -> 1.7f
-                    }
-                }
-                Scenario.CALM -> 0f
-                Scenario.NORMAL -> {
-                    // Three events in the forecast window, sized so the alert list shrinks as
-                    // the user lowers their sensitivity: 12 hPa, then 9, then 7 over 24 h.
-                    // High (6 hPa) reports all three, Medium (8) the first two, Low (10) only
-                    // the first. Directions alternate so the detector keeps them separate, and
-                    // the first drop starts 12 h in the past so the app opens mid-event.
-                    //
-                    // Ramps run 20 h with 28 h of calm between them: no 24 h detection window
-                    // can span two events, which would merge them into one alert.
-                    //
-                    // Two completed drop-and-recovery excursions further in the past (ending
-                    // ~4.5 and ~8 days ago) populate the "Last 3 events" card; each one
-                    // produces a drop event and a rise event.
-                    when {
-                        i < -250 -> 0f
-                        i <= -226 -> -15f * (i + 250) / 24f
-                        i <= -224 -> -15f
-                        i <= -200 -> -15f + 15f * (i + 224) / 24f
-                        i < -160 -> 0f
-                        i <= -136 -> -15f * (i + 160) / 24f
-                        i <= -134 -> -15f
-                        i <= -110 -> -15f + 15f * (i + 134) / 24f
-                        i < -12 -> 0f
-                        i <= 8 -> -12f * (i + 12) / 20f
-                        i <= 36 -> -12f
-                        i <= 56 -> -12f + 9f * (i - 36) / 20f
-                        i <= 84 -> -3f
-                        i <= 104 -> -3f - 7f * (i - 84) / 20f
-                        else -> -10f
-                    }
-                }
-            }
-            
-            pressures.add(basePressure + variance + eventOffset)
+            pressures.add(basePressure + curve.offsetAt(hour))
         }
 
         return """

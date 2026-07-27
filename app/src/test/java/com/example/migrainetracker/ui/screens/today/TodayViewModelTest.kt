@@ -5,6 +5,7 @@ import com.example.migrainetracker.data.preferences.AppSettings
 import com.example.migrainetracker.data.preferences.UserPreferences
 import com.example.migrainetracker.data.repository.PressureRepository
 import com.example.migrainetracker.data.repository.SymptomRepository
+import com.example.migrainetracker.domain.PressureAlertUseCase
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +30,10 @@ class TodayViewModelTest {
     private val symptomRepository = mockk<SymptomRepository>(relaxed = true)
     private val userPreferences = mockk<UserPreferences>(relaxed = true)
     
+    // Real instance rather than a mock: alertsIn is pure, so this keeps the test exercising
+    // the same detection path the app uses.
+    private val alertUseCase = PressureAlertUseCase(pressureRepository, userPreferences)
+
     private val testDispatcher = StandardTestDispatcher()
 
     @Before
@@ -46,7 +51,7 @@ class TodayViewModelTest {
 
     @Test
     fun `initial state is loading`() = runTest {
-        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences)
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
         assertEquals(true, viewModel.uiState.value.isLoading)
     }
 
@@ -58,7 +63,7 @@ class TodayViewModelTest {
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         
-        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences)
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
         
         advanceUntilIdle()
         
@@ -78,7 +83,7 @@ class TodayViewModelTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
         
-        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences)
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
         
         advanceUntilIdle()
         

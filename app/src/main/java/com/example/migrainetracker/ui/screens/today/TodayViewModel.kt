@@ -10,6 +10,7 @@ import com.example.migrainetracker.data.repository.PressureRepository
 import com.example.migrainetracker.data.repository.SymptomRepository
 import com.example.migrainetracker.domain.AlertDetector
 import com.example.migrainetracker.domain.AlertWindow
+import com.example.migrainetracker.domain.PressureAlertUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +44,8 @@ data class TodayUiState(
 class TodayViewModel @Inject constructor(
     private val pressureRepository: PressureRepository,
     private val symptomRepository: SymptomRepository,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val alertUseCase: PressureAlertUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TodayUiState())
@@ -80,13 +82,10 @@ class TodayViewModel @Inject constructor(
                 val hist = readings.filter { it.dateTime.isBefore(now) }
                 val fore = readings.filter { !it.dateTime.isBefore(now) }
 
-                // Detect over the past 24 h as well, so a pressure event that is already
-                // underway is reported with its true start rather than clipped at "now".
-                val alertInput = readings.filter {
-                    !it.dateTime.isBefore(now.minus(24, ChronoUnit.HOURS))
-                }
+                // Detection goes through the shared use case so the banner and the scheduled
+                // notifications always describe the same set of events.
                 val alerts = withContext(Dispatchers.Default) {
-                    AlertDetector.detect(alertInput, settings.alertThresholdHpa)
+                    alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now)
                 }
 
                 val entriesMap = (0..6).associate { d ->

@@ -6,6 +6,8 @@ import com.example.migrainetracker.data.preferences.LocationData
 import com.example.migrainetracker.data.preferences.UserPreferences
 import com.example.migrainetracker.data.remote.GeocodingApi
 import com.example.migrainetracker.data.remote.dto.GeocodingResult
+import com.example.migrainetracker.notifications.NotificationPermissionMonitor
+import com.example.migrainetracker.notifications.NotificationPermissionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +22,8 @@ data class OnboardingUiState(
     val isSearching: Boolean = false,
     val isSaving: Boolean = false,
     val savedSuccessfully: Boolean = false,
+    /** Set once, at the end, when the notification dialog still has to be shown. */
+    val requestNotificationPermission: Boolean = false,
     val error: String? = null
 )
 
@@ -28,7 +32,8 @@ enum class OnboardingStep { Rationale, CitySearch }
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
     private val geocodingApi: GeocodingApi,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val permissionMonitor: NotificationPermissionMonitor
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OnboardingUiState())
@@ -67,7 +72,7 @@ class OnboardingViewModel @Inject constructor(
                 userPreferences.saveLocation(LocationData("gps", lat, lon, name, timezone))
                 userPreferences.setOnboardingComplete(true)
             }.onSuccess {
-                _uiState.value = _uiState.value.copy(isSaving = false, savedSuccessfully = true)
+                finishSetup()
             }.onFailure {
                 _uiState.value = _uiState.value.copy(isSaving = false, error = it.message)
             }
@@ -89,10 +94,35 @@ class OnboardingViewModel @Inject constructor(
                 )
                 userPreferences.setOnboardingComplete(true)
             }.onSuccess {
-                _uiState.value = _uiState.value.copy(isSaving = false, savedSuccessfully = true)
+                finishSetup()
             }.onFailure {
                 _uiState.value = _uiState.value.copy(isSaving = false, error = it.message)
             }
+        }
+    }
+
+    /**
+     * Alerts are on by default, so the permission behind them is asked for here rather than
+     * left for the user to discover. Without this the default is a promise the app never keeps:
+     * the Settings switch already reads on, so nothing there would trigger the request.
+     */
+    private suspend fun finishSetup() {
+        val mustAsk = permissionMonitor.currentState() == NotificationPermissionState.REQUESTABLE
+        _uiState.value = _uiState.value.copy(
+            isSaving = false,
+            savedSuccessfully = !mustAsk,
+            requestNotificationPermission = mustAsk
+        )
+    }
+
+    /** Either answer moves on: a denial is surfaced by the Settings screen, not blocked here. */
+    fun onNotificationPermissionRequestFinished() {
+        viewModelScope.launch {
+            permissionMonitor.markRequested()
+            _uiState.value = _uiState.value.copy(
+                savedSuccessfully = true,
+                requestNotificationPermission = false
+            )
         }
     }
 }

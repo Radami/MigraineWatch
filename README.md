@@ -55,12 +55,22 @@ const val USE_MOCK_DATA = true   // set to false to hit the real Open-Meteo API
 and choose the pattern it generates in `data/remote/mock/MockDataInterceptor.kt`:
 
 ```kotlin
-var currentScenario: Scenario = Scenario.NORMAL   // NORMAL | STORM | CALM
+var currentScenario: Scenario = Scenario.THREE_EVENTS  // THREE_EVENTS | TWO_EVENTS | NO_EVENTS
 ```
 
-`NORMAL` generates several alert-worthy events, `STORM` forces a single ~10 hPa drop, and
-`CALM` produces no events at all. City search always goes to the real geocoding service —
-it is never mocked. Release builds use the live API regardless of these values.
+Each scenario is named for what its forecast contains, and the sizes are exact — the curves
+carry no noise, so a scenario behaves the same at every location:
+
+| scenario | events | alerts at High / Medium / Low |
+| --- | --- | --- |
+| `THREE_EVENTS` | 12 hPa drop, 9 hPa rise, 7 hPa drop | 3 / 2 / 1 |
+| `TWO_EVENTS` | 9 hPa drop, 9 hPa rise | 2 / 2 / 0 |
+| `NO_EVENTS` | none | 0 / 0 / 0 |
+
+`THREE_EVENTS` is the default: its events are laid out back to back inside the window the
+alert detail chart draws, and each sensitivity preset drops one of them. City search always
+goes to the real geocoding service — it is never mocked. Release builds use the live API
+regardless of these values.
 
 ## Running the tests
 

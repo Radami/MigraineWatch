@@ -21,7 +21,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        PressureFetchWorker.schedule(WorkManager.getInstance(this))
+        val workManager = WorkManager.getInstance(this)
+        PressureFetchWorker.schedule(workManager)
+        // Periodic work does not run until an interval has elapsed, so refresh and rebuild
+        // the pending warnings now as well.
+        PressureFetchWorker.runNow(workManager)
         enableEdgeToEdge()
         setContent {
             val onboardingComplete by viewModel.onboardingComplete.collectAsStateWithLifecycle()
