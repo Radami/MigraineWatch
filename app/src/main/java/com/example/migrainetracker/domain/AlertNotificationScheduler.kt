@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.Instant
-import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -54,7 +53,7 @@ class AlertNotificationScheduler @Inject constructor(
 
         const val WORK_NAME_PREFIX = "alert_notification_"
 
-        /** Delivered alerts are pruned beyond this; nothing that old can still be forecast. */
+        /** Delivered warnings are pruned beyond this; nothing that old can still be forecast. */
         val HISTORY_RETENTION: Duration = Duration.ofDays(30)
 
         /** Room for a burst of reconciles so [results] never drops one it could have reported. */
@@ -74,7 +73,7 @@ class AlertNotificationScheduler @Inject constructor(
             val settings = userPreferences.settings.first()
             val alerts = alertUseCase.currentAlerts(now)
             val alreadyNotified = notifiedAlertDao.getNotifiedSince(
-                now.minus(PressureAlertUseCase.HISTORY_HOURS, ChronoUnit.HOURS)
+                now.minus(AlertNotificationDecider.NOTIFICATION_LOOKBACK)
             )
 
             val pending = AlertNotificationDecider.decide(
@@ -131,7 +130,7 @@ class AlertNotificationScheduler @Inject constructor(
             .addTag(name)
             .build()
 
-        Log.d(TAG, "Warning $name scheduled in ${delay.toMinutes()} min")
+        Log.d(TAG, "Warning $name (${notification.phase}) scheduled in ${delay.toMinutes()} min")
 
         // REPLACE rather than KEEP: a refreshed forecast moves an event, and the warning has
         // to move with it.

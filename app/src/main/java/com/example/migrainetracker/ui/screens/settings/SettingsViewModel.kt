@@ -9,6 +9,7 @@ import com.example.migrainetracker.data.local.dao.NotifiedAlertDao
 import com.example.migrainetracker.data.preferences.UserPreferences
 import com.example.migrainetracker.data.repository.SymptomRepository
 import com.example.migrainetracker.domain.AlertNotificationScheduler
+import com.example.migrainetracker.domain.AlertPhase
 import com.example.migrainetracker.domain.PressureAlertUseCase
 import com.example.migrainetracker.domain.ReconcileResult
 import com.example.migrainetracker.notifications.AlertNotifier
@@ -183,8 +184,10 @@ class SettingsViewModel @Inject constructor(
                 return@launch
             }
 
+            val phase = AlertPhase.of(next, now)
             val message = when {
-                notifier.notify(next) -> "Sent: %.1f hPa %s".format(next.delta, next.direction)
+                notifier.notify(next, phase) ->
+                    "Sent: %.1f hPa %s (%s)".format(next.delta, next.direction, phase)
                 else -> "Blocked — notifications are not permitted"
             }
             _debugMessages.emit(message)

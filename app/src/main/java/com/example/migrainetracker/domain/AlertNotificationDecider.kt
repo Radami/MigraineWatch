@@ -5,10 +5,11 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.math.abs
 
-/** An alert the user should be told about, and when to tell them. */
+/** An alert the user should be told about, when to tell them, and what it can claim. */
 data class PendingAlertNotification(
     val alert: AlertWindow,
-    val notifyAt: Instant
+    val notifyAt: Instant,
+    val phase: AlertPhase
 )
 
 /**
@@ -29,6 +30,16 @@ object AlertNotificationDecider {
     val SAME_EVENT_TOLERANCE: Duration = Duration.ofHours(6)
 
     /**
+     * How far back delivered warnings are read when deduplicating.
+     *
+     * A record that ages out of this stops suppressing its own event, so the lookback has to
+     * outlast the longest event we would ever announce — a drop spread over two days is still
+     * the same event on its second day, and re-announcing it is exactly the bug this guards.
+     * Well inside the retention the scheduler prunes at.
+     */
+    val NOTIFICATION_LOOKBACK: Duration = Duration.ofDays(7)
+
+    /**
      * @param alerts events currently in the forecast, from [PressureAlertUseCase].
      * @param alreadyNotified events the user has been told about, recent ones suffice.
      * @return what should be scheduled, ordered by when it should fire. Callers treat this as
@@ -47,26 +58,52 @@ object AlertNotificationDecider {
         return alerts
             // An event that has already finished is history, not a warning.
             .filter { it.end.isAfter(now) }
-            .filterNot { alert -> alreadyNotified.any { it.matches(alert) } }
+            .filterNot { alert -> alreadyNotified.any { covers(it, alert) } }
             .map { alert ->
-                // Events found late — a forecast can surface one inside its own lead time —
-                // are announced immediately rather than not at all.
-                val lead = alert.start.minus(LEAD_TIME)
-                PendingAlertNotification(alert, maxOf(lead, now))
+                PendingAlertNotification(alert, notifyAt(alert, now), AlertPhase.of(alert, now))
             }
             .sortedBy { it.notifyAt }
     }
 
     /**
-     * Whether a delivered notification covers [alert]. Direction matters: a drop and a rise
+     * When the warning should land.
+     *
+     * An event still ahead gets the full lead time, unless the forecast only just surfaced it
+     * and that moment has already passed — announced late beats not at all. An event already
+     * underway goes out straight away, because there is nothing left to be early for.
+     */
+    private fun notifyAt(alert: AlertWindow, now: Instant): Instant =
+        when (AlertPhase.of(alert, now)) {
+            AlertPhase.AHEAD -> maxOf(alert.start.minus(LEAD_TIME), now)
+            AlertPhase.UNDERWAY -> now
+        }
+
+    /**
+     * Whether a delivered warning covers [alert]. Direction matters: a drop and a rise
      * starting at the same time are two different things to warn about.
      *
      * Note this ignores the threshold each was sent at. Once told about an event the user has
      * been told, so raising and then lowering sensitivity does not re-announce it.
      */
-    private fun NotifiedAlert.matches(alert: AlertWindow): Boolean {
-        if (direction != alert.direction) return false
-        val gapMillis = abs(startDateTime.toEpochMilli() - alert.start.toEpochMilli())
-        return gapMillis <= SAME_EVENT_TOLERANCE.toMillis()
+    fun covers(notified: NotifiedAlert, alert: AlertWindow): Boolean =
+        isSameEvent(notified.direction, notified.startDateTime, alert.direction, alert.start)
+
+    /**
+     * Whether two forecasts describe the same event. Shared with the worker so a warning is
+     * matched against the live forecast by the same rule that matched it against history —
+     * two rules would eventually disagree about which event a notification belongs to.
+     */
+    fun isSameEvent(alert: AlertWindow, other: AlertWindow): Boolean =
+        isSameEvent(alert.direction, alert.start, other.direction, other.start)
+
+    private fun isSameEvent(
+        direction: String,
+        start: Instant,
+        otherDirection: String,
+        otherStart: Instant
+    ): Boolean {
+        if (direction != otherDirection) return false
+        return abs(start.toEpochMilli() - otherStart.toEpochMilli()) <=
+            SAME_EVENT_TOLERANCE.toMillis()
     }
 }

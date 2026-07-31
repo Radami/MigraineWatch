@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.TaskStackBuilder
 import com.example.migrainetracker.AlertDetailActivity
 import com.example.migrainetracker.R
+import com.example.migrainetracker.domain.AlertPhase
 import com.example.migrainetracker.domain.AlertWindow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.ZoneId
@@ -48,11 +49,11 @@ class AlertNotifier @Inject constructor(
     }
 
     /**
-     * Posts a warning for [alert]. Returns whether it reached the tray, so the caller only
-     * records an alert as delivered when it actually was — a notification lost to a revoked
-     * permission should be retried, not remembered as sent.
+     * Posts a warning for [alert], worded for its [phase]. Returns whether it reached the tray,
+     * so the caller only records an alert as delivered when it actually was — a notification
+     * lost to a revoked permission should be retried, not remembered as sent.
      */
-    fun notify(alert: AlertWindow): Boolean {
+    fun notify(alert: AlertWindow, phase: AlertPhase): Boolean {
         if (!permissionMonitor.canPost()) {
             Log.w(TAG, "Notifications not permitted; skipping alert at ${alert.start}")
             return false
@@ -62,12 +63,11 @@ class AlertNotifier @Inject constructor(
 
         val directionLabel =
             if (alert.direction == DROP_DIRECTION) "pressure drop" else "pressure rise"
-        val startLabel = timeFormatter.format(alert.start.atZone(ZoneId.systemDefault()))
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentTitle("${String.format("%.1f", alert.delta)} hPa $directionLabel")
-            .setContentText("Starts $startLabel")
+            .setContentText(timingLabel(alert, phase))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
@@ -81,6 +81,21 @@ class AlertNotifier @Inject constructor(
             // Permission can be revoked between the check above and posting.
             Log.e(TAG, "Failed to post alert notification", error)
             false
+        }
+    }
+
+    /**
+     * An event still ahead is described by when it arrives. One already running is described by
+     * when it ends, because "starts" would be describing the past — the user is in it.
+     */
+    private fun timingLabel(alert: AlertWindow, phase: AlertPhase): String {
+        val zone = ZoneId.systemDefault()
+        val startLabel = timeFormatter.format(alert.start.atZone(zone))
+
+        return when (phase) {
+            AlertPhase.AHEAD -> "Starts $startLabel"
+            AlertPhase.UNDERWAY ->
+                "Underway since $startLabel · eases ${timeFormatter.format(alert.end.atZone(zone))}"
         }
     }
 

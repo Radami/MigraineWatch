@@ -23,10 +23,23 @@ class PressureAlertUseCase @Inject constructor(
 ) {
     companion object {
         /**
-         * Detection reaches back a day so an event that is already underway is reported with
-         * its true start rather than clipped at "now".
+         * How recently an event must have finished to still count as current. An event that
+         * ended within the last day is what the Today screen marks and what the calendar
+         * colours, so it stays in the result; anything older is history.
          */
-        const val HISTORY_HOURS = 24L
+        const val RELEVANCE_HOURS = 24L
+
+        /**
+         * How far back detection reads, which is deliberately further than [RELEVANCE_HOURS].
+         *
+         * An event that is already underway has its peak behind us. Detecting inside a window
+         * that begins at `now - RELEVANCE_HOURS` pins the start to the window edge instead of
+         * to the real peak, so the reported start walks forward an hour on every refresh and
+         * one continuous event looks like a new event each time — new work name, new
+         * notification id, nothing matching the delivered history. Reaching back three days is
+         * what gives an in-progress event one stable identity.
+         */
+        const val DETECTION_HISTORY_HOURS = 72L
 
         /** The forecast horizon Open-Meteo gives us. */
         const val FORECAST_DAYS = 7L
@@ -42,9 +55,13 @@ class PressureAlertUseCase @Inject constructor(
         thresholdHpa: Float,
         now: Instant
     ): List<AlertWindow> {
-        val from = now.minus(HISTORY_HOURS, ChronoUnit.HOURS)
-        val window = readings.filter { !it.dateTime.isBefore(from) }
-        return AlertDetector.detect(window, thresholdHpa)
+        val detectFrom = now.minus(DETECTION_HISTORY_HOURS, ChronoUnit.HOURS)
+        val window = readings.filter { !it.dateTime.isBefore(detectFrom) }
+
+        // The extra history exists only to find true starts, not to widen the result: an event
+        // that finished before the relevance window is reported to nobody.
+        val relevantFrom = now.minus(RELEVANCE_HOURS, ChronoUnit.HOURS)
+        return AlertDetector.detect(window, thresholdHpa).filter { it.end.isAfter(relevantFrom) }
     }
 
     /** Alerts for the user's current sensitivity, read straight from storage. */
@@ -52,7 +69,7 @@ class PressureAlertUseCase @Inject constructor(
         val settings = userPreferences.settings.first()
         val readings = pressureRepository
             .getReadingsInRange(
-                now.minus(HISTORY_HOURS, ChronoUnit.HOURS),
+                now.minus(DETECTION_HISTORY_HOURS, ChronoUnit.HOURS),
                 now.plus(FORECAST_DAYS, ChronoUnit.DAYS)
             )
             .first()

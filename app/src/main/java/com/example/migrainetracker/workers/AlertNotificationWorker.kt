@@ -9,6 +9,7 @@ import com.example.migrainetracker.data.local.dao.NotifiedAlertDao
 import com.example.migrainetracker.data.model.NotifiedAlert
 import com.example.migrainetracker.data.preferences.UserPreferences
 import com.example.migrainetracker.domain.AlertNotificationDecider
+import com.example.migrainetracker.domain.AlertPhase
 import com.example.migrainetracker.domain.AlertWindow
 import com.example.migrainetracker.domain.PressureAlertUseCase
 import com.example.migrainetracker.notifications.AlertNotifier
@@ -16,7 +17,6 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
 import java.time.Instant
-import kotlin.math.abs
 
 /**
  * Fires at the lead time worked out by [com.example.migrainetracker.domain.AlertNotificationScheduler]
@@ -41,14 +41,21 @@ class AlertNotificationWorker @AssistedInject constructor(
         // The scheduler cancels events that leave the forecast, but up to an hour can pass
         // between reconciles, so confirm the event is still there before waking the user.
         val now = Instant.now()
-        val stillForecast = alertUseCase.currentAlerts(now).any { it.isSameEventAs(alert) }
+        val stillForecast = alertUseCase.currentAlerts(now)
+            .any { AlertNotificationDecider.isSameEvent(it, alert) }
         if (!stillForecast) return Result.success()
 
-        val alreadySent = notifiedAlertDao.getNotifiedSince(now.minus(AlertNotificationDecider.SAME_EVENT_TOLERANCE))
-            .any { it.direction == alert.direction }
+        // Matched on the event, not merely on direction: an unrelated drop announced this
+        // morning must not silence a genuinely new one this evening.
+        val alreadySent = notifiedAlertDao
+            .getNotifiedSince(now.minus(AlertNotificationDecider.NOTIFICATION_LOOKBACK))
+            .any { AlertNotificationDecider.covers(it, alert) }
         if (alreadySent) return Result.success()
 
-        if (!notifier.notify(alert)) return Result.retry()
+        // Read now rather than carried from the scheduler: work can run hours after its delay
+        // expires, by which time an event that was still ahead has started.
+        val phase = AlertPhase.of(alert, now)
+        if (!notifier.notify(alert, phase)) return Result.retry()
 
         notifiedAlertDao.insert(
             NotifiedAlert(
@@ -59,12 +66,6 @@ class AlertNotificationWorker @AssistedInject constructor(
             )
         )
         return Result.success()
-    }
-
-    private fun AlertWindow.isSameEventAs(other: AlertWindow): Boolean {
-        if (direction != other.direction) return false
-        val gap = abs(start.toEpochMilli() - other.start.toEpochMilli())
-        return gap <= AlertNotificationDecider.SAME_EVENT_TOLERANCE.toMillis()
     }
 
     companion object {

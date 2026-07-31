@@ -14,13 +14,15 @@ interface NotifiedAlertDao {
     suspend fun insert(alert: NotifiedAlert)
 
     /**
-     * Records from [since] onwards. The decider only cares about recent history — an event
-     * from last month can no longer collide with anything in the forecast.
+     * Warnings *delivered* from [since] onwards. The filter is on the delivery time, not on
+     * the event's start: an event that is already underway is recorded with a start that is
+     * hours old the moment it is written, so a start-based lookback drops the record almost
+     * immediately and the event is announced again on the next refresh.
      */
-    @Query("SELECT * FROM notified_alerts WHERE startDateTime >= :since ORDER BY startDateTime")
+    @Query("SELECT * FROM notified_alerts WHERE notifiedDateTime >= :since ORDER BY notifiedDateTime")
     suspend fun getNotifiedSince(since: Instant): List<NotifiedAlert>
 
-    @Query("DELETE FROM notified_alerts WHERE startDateTime < :before")
+    @Query("DELETE FROM notified_alerts WHERE notifiedDateTime < :before")
     suspend fun deleteOlderThan(before: Instant)
 
     /**
