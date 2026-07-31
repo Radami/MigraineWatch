@@ -12,7 +12,7 @@
             android:name=".debug.DebugAlertReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.example.migrainetracker.DEBUG_CHECK_ALERTS" />
+                <action android:name="com.radami.migrainewatch.DEBUG_CHECK_ALERTS" />
             </intent-filter>
         </receiver>
 

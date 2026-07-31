@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">MigraineWatch</string>
+    <string name="app_name">Migraine Watch</string>
 
     <string name="alert_channel_name">Pressure alerts</string>
     <string name="alert_channel_description">Warnings ahead of a barometric pressure change large enough to matter</string>

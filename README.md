@@ -32,10 +32,10 @@ sdk.dir=/path/to/Android/Sdk
 ./gradlew assembleDebug
 ```
 
-Then launch **MigraineWatch** from the launcher, or:
+Then launch **Migraine Watch** from the launcher, or:
 
 ```bash
-adb shell am start -n com.example.migrainetracker/.MainActivity
+adb shell am start -n com.radami.migrainewatch/.MainActivity
 ```
 
 On first launch the app asks for a location — either from GPS or by searching for a
