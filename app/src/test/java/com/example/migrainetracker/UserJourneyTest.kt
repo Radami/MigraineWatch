@@ -11,7 +11,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
@@ -88,6 +88,11 @@ class UserJourneyTest {
             userPreferences.saveLocation(HOME_LOCATION)
             userPreferences.setOnboardingComplete(true)
             userPreferences.setAlertSensitivity(STARTING_SENSITIVITY)
+
+            // A returning user has already met the notification prompt. Without this the
+            // location picker finishes by asking for the permission and waits on a dialog
+            // result Robolectric never delivers, leaving it stuck on its spinner.
+            userPreferences.setNotificationPermissionRequested(true)
         }
     }
 
@@ -126,6 +131,21 @@ class UserJourneyTest {
     }
 
     /**
+     * Scrolls the screen's lazy list until [matcher] resolves.
+     *
+     * `performScrollTo` cannot do this: it needs the node to exist already, and a LazyColumn
+     * never composes what sits far below the viewport. A card pushed down by a tall alert
+     * banner is therefore not merely off screen, it is absent from the tree entirely.
+     *
+     * Matched on ScrollToIndex rather than on any scroll action, because the pressure chart
+     * scrolls too and only a lazy list can be scrolled by index.
+     */
+    private fun scrollToInList(matcher: SemanticsMatcher) {
+        composeTestRule.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollToIndex))
+            .performScrollToNode(matcher)
+    }
+
+    /**
      * Bottom bar destinations are found in the unmerged tree: the description sits on the
      * item's icon, and the merged tab node exposes only its label.
      */
@@ -151,14 +171,16 @@ class UserJourneyTest {
         awaitDisplayed(hasText("Zurich, Switzerland", substring = true))
         composeTestRule.onNodeWithText("Zurich, Switzerland", substring = true).performClick()
 
-        // 4. Verify we are back on Today screen with Zurich
+        // 4. Verify we are back on Today screen with Zurich. The chip has to be the signal:
+        //    the picker stays up on a spinner while the location saves, and "Zurich" alone
+        //    matches the search field this test just typed into.
+        awaitDisplayed(hasContentDescription("Location"))
         awaitDisplayed(hasText("Zurich", substring = true))
 
         // 5. Verify pressure data is present. Whether the card starts on screen depends on
         //    how tall the alert banner above it ends up, so scroll it into view first.
-        composeTestRule.onNodeWithText("Barometric pressure")
-            .performScrollTo()
-            .assertIsDisplayed()
+        scrollToInList(hasText("Barometric pressure"))
+        composeTestRule.onNodeWithText("Barometric pressure").assertIsDisplayed()
     }
 
     @Test
