@@ -1,9 +1,7 @@
 package com.radami.migrainewatch.di
 
-import com.radami.migrainewatch.BuildConfig
 import com.radami.migrainewatch.data.remote.OpenMeteoApi
 import com.radami.migrainewatch.data.remote.OpenMeteoArchiveApi
-import com.radami.migrainewatch.data.remote.mock.MockDataInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -11,7 +9,6 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import javax.inject.Named
@@ -27,23 +24,6 @@ object NetworkModule {
         ignoreUnknownKeys = true
         coerceInputValues = true
     }
-
-    const val USE_MOCK_DATA = true
-    @Provides
-    @Singleton
-    fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
-        .apply {
-            if (BuildConfig.DEBUG) {
-
-                if (USE_MOCK_DATA) {
-                    addInterceptor(MockDataInterceptor())
-                }
-                addInterceptor(HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BASIC
-                })
-            }
-        }
-        .build()
 
     @Provides
     @Singleton

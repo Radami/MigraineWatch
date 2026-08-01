@@ -1,3 +1,24 @@
+import java.util.Properties
+
+/**
+ * Whether the app serves generated weather instead of calling Open-Meteo.
+ *
+ * A per-developer choice, so it is read from the untracked local.properties rather than kept
+ * in a source file where flipping it shows up as a diff and eventually gets committed. Set
+ * `useMockData=true` there, or pass `-PuseMockData=true` for a single build.
+ */
+val useMockData: Boolean = run {
+    val fromCommandLine = providers.gradleProperty("useMockData").orNull
+    val fromLocalProperties = Properties().apply {
+        rootProject.file("local.properties")
+            .takeIf { it.exists() }
+            ?.reader()
+            ?.use { load(it) }
+    }.getProperty("useMockData")
+
+    (fromCommandLine ?: fromLocalProperties ?: "false").toBoolean()
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -26,12 +47,20 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("boolean", "USE_MOCK_DATA", useMockData.toString())
+        }
+
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+
+            // Hard-coded rather than read from the property: a release must never serve
+            // generated weather, whatever a local.properties happens to say.
+            buildConfigField("boolean", "USE_MOCK_DATA", "false")
         }
     }
 

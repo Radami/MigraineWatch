@@ -44,15 +44,25 @@ data hourly in the background.
 
 ### Mock data
 
-Debug builds serve the pressure endpoints from `MockDataInterceptor` instead of the
-network, so the app has realistic data without waiting on a real weather pattern. It is
-controlled by two switches. Turn it off in `di/NetworkModule.kt`:
+`MockDataInterceptor` can serve the pressure endpoints instead of the network, so the app
+has realistic data without waiting on a real weather pattern. It is off by default. Turn it
+on per developer in `local.properties`, which is untracked:
 
-```kotlin
-const val USE_MOCK_DATA = true   // set to false to hit the real Open-Meteo API
+```properties
+useMockData=true
 ```
 
-and choose the pattern it generates in `data/remote/mock/MockDataInterceptor.kt`:
+or for a single build:
+
+```bash
+./gradlew installDebug -PuseMockData=true
+```
+
+Release builds ignore both and always call the real API. Tests ignore both too — they
+install their own client (`di/FakeHttpClientModule`) and always get mock data, so pointing
+your own build at Open-Meteo never turns the suite red.
+
+Choose the pattern it generates in `data/remote/mock/MockDataInterceptor.kt`:
 
 ```kotlin
 var currentScenario: Scenario = Scenario.THREE_EVENTS  // THREE_EVENTS | TWO_EVENTS | NO_EVENTS
