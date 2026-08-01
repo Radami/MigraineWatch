@@ -60,6 +60,7 @@ class AlertNotificationWorker @AssistedInject constructor(
         notifiedAlertDao.insert(
             NotifiedAlert(
                 startDateTime = alert.start,
+                endDateTime = alert.end,
                 direction = alert.direction,
                 thresholdHpa = userPreferences.settings.first().alertThresholdHpa,
                 notifiedDateTime = now

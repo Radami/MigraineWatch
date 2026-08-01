@@ -3,7 +3,6 @@ package com.radami.migrainewatch.domain
 import com.radami.migrainewatch.data.model.NotifiedAlert
 import java.time.Duration
 import java.time.Instant
-import kotlin.math.abs
 
 /** An alert the user should be told about, when to tell them, and what it can claim. */
 data class PendingAlertNotification(
@@ -22,12 +21,6 @@ object AlertNotificationDecider {
 
     /** How far ahead of an event the warning is useful — early enough to act on. */
     val LEAD_TIME: Duration = Duration.ofHours(12)
-
-    /**
-     * A refreshed forecast nudges an event's start around without it becoming a different
-     * event, so "already notified" is matched within this tolerance rather than exactly.
-     */
-    val SAME_EVENT_TOLERANCE: Duration = Duration.ofHours(6)
 
     /**
      * How far back delivered warnings are read when deduplicating.
@@ -86,7 +79,10 @@ object AlertNotificationDecider {
      * been told, so raising and then lowering sensitivity does not re-announce it.
      */
     fun covers(notified: NotifiedAlert, alert: AlertWindow): Boolean =
-        isSameEvent(notified.direction, notified.startDateTime, alert.direction, alert.start)
+        isSameEvent(
+            notified.direction, notified.startDateTime, notified.endDateTime,
+            alert.direction, alert.start, alert.end
+        )
 
     /**
      * Whether two forecasts describe the same event. Shared with the worker so a warning is
@@ -94,16 +90,29 @@ object AlertNotificationDecider {
      * two rules would eventually disagree about which event a notification belongs to.
      */
     fun isSameEvent(alert: AlertWindow, other: AlertWindow): Boolean =
-        isSameEvent(alert.direction, alert.start, other.direction, other.start)
+        isSameEvent(
+            alert.direction, alert.start, alert.end,
+            other.direction, other.start, other.end
+        )
 
+    /**
+     * Same direction, and sharing at least a moment.
+     *
+     * Overlap rather than nearness of starts: a refreshed forecast stretches an event or moves
+     * it an hour without it becoming a different one, and it keeps overlapping through that,
+     * while two events sharing no time at all stay distinct however close their starts fall.
+     * It is also how [AlertDetector] itself decides what counts as one event, so the two
+     * cannot disagree.
+     */
     private fun isSameEvent(
         direction: String,
         start: Instant,
+        end: Instant,
         otherDirection: String,
-        otherStart: Instant
+        otherStart: Instant,
+        otherEnd: Instant
     ): Boolean {
         if (direction != otherDirection) return false
-        return abs(start.toEpochMilli() - otherStart.toEpochMilli()) <=
-            SAME_EVENT_TOLERANCE.toMillis()
+        return !start.isAfter(otherEnd) && !otherStart.isAfter(end)
     }
 }

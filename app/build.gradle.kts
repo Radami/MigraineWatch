@@ -49,6 +49,12 @@ android {
         buildConfig = true
     }
 
+    sourceSets {
+        // MigrationTestHelper reads the exported schemas off the device as assets, so the
+        // directory Room writes them to has to be packaged into the instrumented test APK.
+        getByName("androidTest").assets.srcDirs(files("$projectDir/schemas"))
+    }
+
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
@@ -57,6 +63,13 @@ android {
             isReturnDefaultValues = true
         }
     }
+}
+
+ksp {
+    // Room writes one JSON file per schema version here, and they are committed. Without the
+    // previous version's file there is nothing for a migration to start from and nothing for
+    // a migration test to verify against, so dropping these is what forces a destructive wipe.
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {

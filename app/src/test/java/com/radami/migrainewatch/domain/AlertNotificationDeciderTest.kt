@@ -25,6 +25,7 @@ class AlertNotificationDeciderTest {
 
     private fun notified(alert: AlertWindow, thresholdHpa: Float = 6f) = NotifiedAlert(
         startDateTime = alert.start,
+        endDateTime = alert.end,
         direction = alert.direction,
         thresholdHpa = thresholdHpa,
         notifiedDateTime = now
@@ -91,13 +92,35 @@ class AlertNotificationDeciderTest {
     }
 
     @Test
-    fun `treats a start that moves beyond the tolerance as a new event`() {
-        val asFirstSeen = alert(startHoursFromNow = 36)
-        val muchLater = alert(startHoursFromNow = 36 + 7)
+    fun `treats an event sharing no time with the delivered one as new`() {
+        val asFirstSeen = alert(startHoursFromNow = 36, durationHours = 20)
+        val afterItEnds = alert(startHoursFromNow = 57)
 
-        val pending = decide(listOf(muchLater), alreadyNotified = listOf(notified(asFirstSeen)))
+        val pending = decide(listOf(afterItEnds), alreadyNotified = listOf(notified(asFirstSeen)))
 
         assertEquals(1, pending.size)
+    }
+
+    @Test
+    fun `warns about a second event that starts soon after a short one`() {
+        // The old rule matched on start times within six hours, so a brief event silenced an
+        // unrelated one beginning four hours later. They share no time, so both are real.
+        val brief = alert(startHoursFromNow = 36, durationHours = 2)
+        val separate = alert(startHoursFromNow = 40)
+
+        val pending = decide(listOf(separate), alreadyNotified = listOf(notified(brief)))
+
+        assertEquals(listOf(separate), pending.map { it.alert })
+    }
+
+    @Test
+    fun `treats a forecast that stretches an event as the same event`() {
+        val asFirstSeen = alert(startHoursFromNow = 36, durationHours = 20)
+        val asRefetched = alert(startHoursFromNow = 34, durationHours = 30)
+
+        val pending = decide(listOf(asRefetched), alreadyNotified = listOf(notified(asFirstSeen)))
+
+        assertTrue(pending.isEmpty())
     }
 
     @Test
