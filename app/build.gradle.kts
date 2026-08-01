@@ -19,6 +19,23 @@ val useMockData: Boolean = run {
     (fromCommandLine ?: fromLocalProperties ?: "false").toBoolean()
 }
 
+/**
+ * Upload-key credentials, kept in an untracked keystore.properties at the repo root:
+ *
+ *     storeFile=/home/you/keys/migrainewatch-upload.jks
+ *     storePassword=…
+ *     keyAlias=upload
+ *     keyPassword=…
+ *
+ * Empty when the file is absent, which is what lets a fresh clone still build a release.
+ */
+val keystoreProperties = Properties().apply {
+    rootProject.file("keystore.properties")
+        .takeIf { it.exists() }
+        ?.reader()
+        ?.use { load(it) }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -46,12 +63,30 @@ android {
         testInstrumentationRunner = "com.radami.migrainewatch.HiltTestRunner"
     }
 
+    signingConfigs {
+        // Declared only when the credentials are present. Reading them unconditionally would
+        // break `assembleRelease` for anyone without the file — CI, a fresh clone — with an
+        // error about a missing keystore rather than anything to do with their change.
+        if (!keystoreProperties.isEmpty) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             buildConfigField("boolean", "USE_MOCK_DATA", useMockData.toString())
         }
 
         release {
+            // Null without keystore.properties, which yields an unsigned bundle rather than a
+            // failed build. Play rejects it at upload, so it cannot be mistaken for shippable.
+            signingConfig = signingConfigs.findByName("release")
+
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
