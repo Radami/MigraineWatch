@@ -8,3 +8,14 @@
 .externalNativeBuild
 .cxx
 *.hprof
+.kotlin/
+
+# Signing material. The upload key belongs outside the repo entirely; these patterns are
+# the backstop for the day it gets dropped in the project folder by mistake.
+*.jks
+*.keystore
+keystore.properties
+
+# Where the Android Studio "Generate Signed App Bundle" wizard writes its output.
+# ./gradlew bundleRelease writes to app/build instead, which is already ignored.
+/app/release/

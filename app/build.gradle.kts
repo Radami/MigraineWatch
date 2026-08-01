@@ -96,6 +96,14 @@ android {
             // Hard-coded rather than read from the property: a release must never serve
             // generated weather, whatever a local.properties happens to say.
             buildConfigField("boolean", "USE_MOCK_DATA", "false")
+
+            // The only native code here arrives prebuilt inside AndroidX artifacts, so this
+            // packages their symbol tables rather than anything of ours. It exists to make
+            // Play's crash reports readable if one of them ever faults, and to settle the
+            // console warning about a bundle shipping native code without symbols.
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
         }
     }
 
