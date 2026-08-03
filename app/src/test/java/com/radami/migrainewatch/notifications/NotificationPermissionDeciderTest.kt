@@ -24,6 +24,19 @@ class NotificationPermissionDeciderTest {
         )
     }
 
+    /**
+     * The shape a fresh Android 13 install actually reports: areNotificationsEnabled() is false
+     * only because the permission has not been granted yet. Reading that as "switched off" is
+     * what stopped onboarding ever showing the dialog.
+     */
+    @Test
+    fun `a fresh install is requestable even though the system reports notifications off`() {
+        assertEquals(
+            NotificationPermissionState.REQUESTABLE,
+            decide(permissionGranted = false, notificationsAllowed = false, alreadyAsked = false)
+        )
+    }
+
     @Test
     fun `a denial is blocked rather than requestable, because Android only asks once`() {
         assertEquals(
@@ -41,10 +54,10 @@ class NotificationPermissionDeciderTest {
     }
 
     @Test
-    fun `notifications switched off outrank a pending ask, which would not fix them`() {
+    fun `notifications switched off after a denial stay blocked, since asking is spent`() {
         assertEquals(
             NotificationPermissionState.BLOCKED,
-            decide(permissionGranted = false, notificationsAllowed = false, alreadyAsked = false)
+            decide(permissionGranted = false, notificationsAllowed = false, alreadyAsked = true)
         )
     }
 
