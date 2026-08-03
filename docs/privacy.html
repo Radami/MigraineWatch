@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy — Migraine Watch</title>
+<meta name="description" content="How Migraine Watch handles your data: the symptom log stays on your device, and only your approximate coordinates and any place you search for are sent to the weather service.">
+<meta name="theme-color" content="#2c2521">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
+</head>
+<body>
+
+<header class="site-header">
+    <div class="wrap wrap--narrow">
+        <a class="brand" href="./">
+            <img class="brand-mark" src="logo.png" width="256" height="256" alt="">
+            <span class="wordmark">Migraine <span class="wordmark-accent">Watch</span></span>
+        </a>
+    </div>
+</header>
+
+<main class="wrap wrap--narrow prose">
+    <h1>Privacy policy</h1>
+    <!-- Revise this whenever the policy's substance changes, not on cosmetic edits. -->
+    <p class="updated">Last updated: 4 August 2026</p>
+
+    <p>
+        This policy covers the Migraine Watch Android application
+        (<code>com.radami.migrainewatch</code>). It explains what the app stores, what
+        leaves your device, and what does not.
+    </p>
+
+    <div class="panel">
+        <h2>The short version</h2>
+        <p>
+            Migraine Watch has no server and no user accounts. Everything you record —
+            your symptom log, your settings, your location — is stored on your device.
+            The only things that ever leave it are your approximate coordinates, sent to
+            a weather service to fetch a forecast, and a place name if you choose to
+            search for one. There is no advertising, no tracking, and
+            nothing is ever sold or shared for marketing.
+        </p>
+    </div>
+
+    <h2>What the app stores on your device</h2>
+    <p>All of the following is held in the app's private storage on your phone:</p>
+    <div class="scroll-x">
+        <table>
+            <thead>
+                <tr><th scope="col">Data</th><th scope="col">Why it exists</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Symptom entries</strong> — date, severity, triggers, duration, how much relief you got, medication, and any notes you write</td>
+                    <td>So you can review your history and see it against the weather. This is health information, and it is treated as the most sensitive thing the app holds.</td>
+                </tr>
+                <tr>
+                    <td><strong>Location</strong> — approximate coordinates, the place name, and the time zone</td>
+                    <td>To request the forecast for where you are and show event times in local time.</td>
+                </tr>
+                <tr>
+                    <td><strong>Barometric pressure readings</strong> — past readings and the forecast for your location</td>
+                    <td>To draw the charts and detect pressure events without re-fetching constantly.</td>
+                </tr>
+                <tr>
+                    <td><strong>Settings</strong> — your alert sensitivity and notification preference</td>
+                    <td>To decide which pressure changes are worth telling you about.</td>
+                </tr>
+                <tr>
+                    <td><strong>A record of alerts already sent</strong></td>
+                    <td>So the same event is not announced to you twice.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2>What leaves your device</h2>
+    <p>The app makes two kinds of network request, both to Open-Meteo:</p>
+    <ul>
+        <li>
+            <strong>Forecast and historical pressure.</strong> Sends your latitude,
+            longitude, time zone and the date range being requested to
+            <code>api.open-meteo.com</code> and <code>archive-api.open-meteo.com</code>.
+        </li>
+        <li>
+            <strong>City search.</strong> If you look up a place by name, the text you
+            type is sent to <code>geocoding-api.open-meteo.com</code> to turn it into
+            coordinates.
+        </li>
+    </ul>
+    <p>
+        These requests carry no account identifier, no device identifier and no
+        advertising ID, because the app does not have any. <strong>Your symptom log is
+        never transmitted anywhere.</strong> It is not sent to Open-Meteo, to the
+        developer, or to anyone else.
+    </p>
+    <p>
+        Open-Meteo is an independent weather service and receives the coordinates
+        described above along with your IP address, as any web request would carry. Their
+        handling of that is covered by
+        <a href="https://open-meteo.com/en/terms" rel="noopener">Open-Meteo's own terms and privacy statement</a>.
+    </p>
+
+    <h2>Android backup</h2>
+    <p>
+        The app allows Android's standard backup, which means your app data — including
+        your symptom log — may be copied to your own Google Drive backup if you have
+        Android backup switched on for your device. That backup belongs to your Google
+        account and is governed by
+        <a href="https://policies.google.com/privacy" rel="noopener">Google's privacy policy</a>,
+        not by this one. The developer has no access to it.
+    </p>
+    <p>
+        The same applies when you transfer your data directly to a new phone during setup.
+        You can turn cloud backup off for all apps in your device settings, usually under
+        <em>System &rarr; Backup</em>.
+    </p>
+
+    <h2>Permissions the app uses</h2>
+
+    <p>
+        Two of these are put to you as a request you can refuse. The other two Android grants
+        automatically when the app is installed, with no prompt, because they cannot expose
+        anything personal on their own.
+    </p>
+
+    <h3>Asked for, and refusable</h3>
+    <ul>
+        <li><strong>Approximate location</strong> — used only to work out which forecast to fetch. The app never requests precise location. You can decline it and enter a city by name instead.</li>
+        <li><strong>Notifications</strong> — to deliver the pressure warnings that are the point of the app. Declining it leaves everything else working.</li>
+    </ul>
+
+    <h3>Granted at install, without a prompt</h3>
+    <ul>
+        <li><strong>Internet</strong> — to fetch weather data.</li>
+        <li><strong>Run at startup</strong> — so the background check that fetches forecasts resumes after your phone restarts.</li>
+    </ul>
+
+    <h2>What the app does not do</h2>
+    <ul>
+        <li>No user accounts, sign-in or profile.</li>
+        <li>No tracking of any kind.</li>
+        <li>No advertising, and no advertising identifiers.</li>
+        <li>No third-party SDK that collects data for its own purposes. The app uses Google
+            Play Services only to read the device's own location when you allow it.</li>
+        <li>No selling or sharing of personal information. There is no data to sell.</li>
+    </ul>
+
+    <h2>How long data is kept, and how to delete it</h2>
+    <p>
+        Data stays on your device until you remove it. Symptom entries persist until you
+        delete them in the app. Stored pressure readings build up as the app fetches
+        forecasts and are not deleted on a schedule; they are weather measurements for your
+        area rather than anything about you. The record of which alerts have already been
+        sent is discarded after 30 days.
+    </p>
+    <p>
+        To erase everything, uninstall the app, or use
+        <em>Settings &rarr; Apps &rarr; Migraine Watch &rarr; Storage &rarr; Clear data</em>.
+        Because nothing is held on a server, that is genuinely all of it. If you have
+        Android backup enabled, remember to remove the backup from your Google account as
+        well.
+    </p>
+
+    <h2>Children</h2>
+    <p>
+        Migraine Watch is not directed at children under 13, and it does not knowingly
+        collect information from them. It has no sign-up, so it does not gather age or
+        identity information from anyone.
+    </p>
+
+    <h2>Your rights</h2>
+    <p>
+        Depending on where you live, you may have rights to access, correct, export or
+        erase your personal data. Because all of your data is on your own device and the
+        developer holds none of it, most of these you exercise directly: view and correct
+        entries in the app, and erase them there or by clearing the app's data. If you
+        contact the developer for a copy of your data, there is nothing to send — none of
+        it is held. The app does not currently offer a way to export your log to a file.
+    </p>
+
+    <h2>Changes to this policy</h2>
+    <p>
+        If the app's data handling changes, this page will be updated and the date at the
+        top revised. Material changes will also be noted in the app's release notes.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+        Questions about this policy: <a href="mailto:radami.contact@gmail.com">radami.contact@gmail.com</a>
+    </p>
+</main>
+
+<footer class="site-footer">
+    <div class="wrap wrap--narrow">
+        <ul>
+            <li><a href="./">Home</a></li>
+            <li><a href="privacy.html">Privacy policy</a></li>
+        </ul>
+        <p>
+            Migraine Watch is a tracking aid, not a medical device. It cannot diagnose
+            anything and is no substitute for advice from a clinician.
+        </p>
+    </div>
+</footer>
+
+</body>
+</html>
