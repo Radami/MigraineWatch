@@ -14,9 +14,10 @@ import com.radami.migrainewatch.AlertDetailActivity
 import com.radami.migrainewatch.R
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.format.AppDateFormats
+import com.radami.migrainewatch.format.formatHpa
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -32,7 +33,7 @@ class AlertNotifier @Inject constructor(
         const val DROP_DIRECTION = "drop"
     }
 
-    private val timeFormatter = DateTimeFormatter.ofPattern("EEEE HH:mm")
+    private val timeFormatter = AppDateFormats.WEEKDAY_AND_TIME
 
     /** Safe to call repeatedly; creating an existing channel is a no-op. */
     fun ensureChannel() {
@@ -66,7 +67,7 @@ class AlertNotifier @Inject constructor(
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
-            .setContentTitle("${String.format("%.1f", alert.delta)} hPa $directionLabel")
+            .setContentTitle("${formatHpa(alert.delta)} hPa $directionLabel")
             .setContentText(timingLabel(alert, phase))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)

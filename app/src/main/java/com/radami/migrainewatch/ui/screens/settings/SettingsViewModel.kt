@@ -12,6 +12,8 @@ import com.radami.migrainewatch.domain.AlertNotificationScheduler
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.ReconcileResult
+import com.radami.migrainewatch.format.AppDateFormats
+import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.notifications.AlertNotifier
 import com.radami.migrainewatch.notifications.NotificationPermissionMonitor
 import com.radami.migrainewatch.notifications.NotificationPermissionState
@@ -30,7 +32,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -91,8 +92,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val earliest = symptomRepository.getEarliestDate()
             if (earliest != null) {
-                val formatter = DateTimeFormatter.ofPattern("MMMM yyyy")
-                _trackingSince.value = earliest.format(formatter)
+                _trackingSince.value = earliest.format(AppDateFormats.MONTH_AND_YEAR)
             }
         }
     }
@@ -187,7 +187,7 @@ class SettingsViewModel @Inject constructor(
             val phase = AlertPhase.of(next, now)
             val message = when {
                 notifier.notify(next, phase) ->
-                    "Sent: %.1f hPa %s (%s)".format(next.delta, next.direction, phase)
+                    "Sent: ${formatHpa(next.delta)} hPa ${next.direction} ($phase)"
                 else -> "Blocked — notifications are not permitted"
             }
             _debugMessages.emit(message)

@@ -39,10 +39,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.format.AppDateFormats
+import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.ui.components.PressureChart
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 fun PressureScreen(
@@ -50,7 +50,7 @@ fun PressureScreen(
     viewModel: PressureViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val timeFormatter = remember { DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy, HH:mm").withZone(ZoneId.systemDefault()) }
+    val timeFormatter = remember { AppDateFormats.FULL_DATE_TIME.withZone(ZoneId.systemDefault()) }
 
     val listState = rememberLazyListState()
     LazyColumn(
@@ -194,14 +194,11 @@ fun PressureScreen(
 
 private fun formatThreshold(threshold: Float): String =
     if (threshold == threshold.toInt().toFloat()) threshold.toInt().toString()
-    else String.format("%.1f", threshold)
+    else formatHpa(threshold)
 
 @Composable
 private fun PastEventRow(event: AlertWindow) {
-    val formatter = remember {
-        DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)
-            .withZone(ZoneId.systemDefault())
-    }
+    val formatter = remember { AppDateFormats.DAY_AND_TIME.withZone(ZoneId.systemDefault()) }
     val directionLabel = if (event.direction == "drop") "pressure drop" else "pressure rise"
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
@@ -213,7 +210,7 @@ private fun PastEventRow(event: AlertWindow) {
         Spacer(Modifier.width(12.dp))
         Column {
             Text(
-                "${String.format("%.1f", event.delta)} hPa $directionLabel",
+                "${formatHpa(event.delta)} hPa $directionLabel",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )

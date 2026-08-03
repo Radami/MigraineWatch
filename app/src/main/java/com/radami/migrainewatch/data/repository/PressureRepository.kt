@@ -16,6 +16,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,8 +27,12 @@ class PressureRepository @Inject constructor(
     private val archiveApi: OpenMeteoArchiveApi,
     private val prefs: UserPreferences
 ) {
-    private val isoFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
-    private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+    // Pinned to ROOT because these go into an Open-Meteo query string, not onto a screen.
+    // Without a locale they would follow the device, and a locale whose default numbering
+    // system is not Latin — Arabic (Egypt), for one — renders the digits in its own script,
+    // sending the API a date it cannot parse. The app is unusable on those devices.
+    private val isoFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm", Locale.ROOT)
+    private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ROOT)
 
     fun getReadingsInRange(from: Instant, to: Instant): Flow<List<PressureReading>> =
         dao.getReadingsInRange(from, to)

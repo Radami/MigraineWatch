@@ -58,6 +58,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
 import com.radami.migrainewatch.data.model.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
+import com.radami.migrainewatch.format.AppDateFormats
+import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.ui.components.DayMarker
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.ui.components.PressureChart
@@ -68,7 +70,6 @@ import com.radami.migrainewatch.ui.theme.SeverityMigraine
 import com.radami.migrainewatch.ui.theme.SeverityMild
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 @Composable
@@ -80,7 +81,7 @@ fun TodayScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val today = remember { LocalDate.now() }
     val timeFormatter = remember {
-        DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy, HH:mm").withZone(ZoneId.systemDefault())
+        AppDateFormats.FULL_DATE_TIME.withZone(ZoneId.systemDefault())
     }
 
     LazyColumn(
@@ -148,10 +149,10 @@ fun TodayScreen(
 @Composable
 private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
     val first = alerts.first()
-    val timeFormatter = remember { DateTimeFormatter.ofPattern("EEE HH:mm") }
+    val timeFormatter = AppDateFormats.SHORT_WEEKDAY_AND_TIME
     val zone = remember { ZoneId.systemDefault() }
     val timeLabel = remember(first) { first.start.atZone(zone).format(timeFormatter) }
-    val eventSummary = "${String.format("%.1f", first.delta)} hPa ${first.direction} around $timeLabel"
+    val eventSummary = "${formatHpa(first.delta)} hPa ${first.direction} around $timeLabel"
     val message = if (alerts.size == 1) {
         "Elevated risk · $eventSummary"
     } else {
@@ -306,7 +307,7 @@ private fun WeekStrip(
     pressureEventDays: Map<LocalDate, String>,
     today: LocalDate
 ) {
-    val dayFormatter = remember { DateTimeFormatter.ofPattern("E") }
+    val dayFormatter = AppDateFormats.WEEKDAY
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween

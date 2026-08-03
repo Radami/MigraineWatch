@@ -8,6 +8,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Intercepts calls to Open-Meteo and returns a generated realistic dataset.
@@ -143,7 +144,9 @@ class MockDataInterceptor : Interceptor {
         val systemTimezone = ZoneId.systemDefault().id
         val times = mutableListOf<String>()
         val pressures = mutableListOf<Float>()
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:00")
+        // ROOT for the same reason as the real request it stands in for: this JSON is parsed
+        // back by PressureRepository, so the digits have to stay Latin whatever the device is.
+        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:00", Locale.ROOT)
 
         // Use lat/lon to seed the base pressure so different locations have different values
         // This ensures Scenario A (Nervous Traveler) can verify data changes.

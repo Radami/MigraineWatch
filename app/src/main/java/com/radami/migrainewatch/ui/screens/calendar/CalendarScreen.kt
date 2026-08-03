@@ -64,6 +64,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radami.migrainewatch.data.model.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
+import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.ui.components.DayMarker
 import com.radami.migrainewatch.ui.components.SeveritySwatch
 import com.radami.migrainewatch.ui.theme.DangerRed
@@ -73,7 +74,6 @@ import com.radami.migrainewatch.ui.theme.SeverityMigraine
 import com.radami.migrainewatch.ui.theme.SeverityMild
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -162,7 +162,7 @@ private fun MonthCalendar(
     onNextMonth: () -> Unit,
     onDayTap: (LocalDate) -> Unit
 ) {
-    val monthYearFormatter = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
+    val monthYearFormatter = AppDateFormats.MONTH_AND_YEAR
     val dayHeaders = listOf("S", "M", "T", "W", "T", "F", "S")
 
     Column {
@@ -388,7 +388,7 @@ private fun DayDetailSheet(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("EEEE d MMMM") }
+    val dateFormatter = AppDateFormats.DAY_AND_MONTH
     val severityColor = entry.severity.toColor()
 
     Column(

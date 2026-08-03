@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.radami.migrainewatch.data.model.PressureReading
+import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.ui.theme.ChartMeasuredDark
 import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
 import com.radami.migrainewatch.ui.theme.ChartNowLineDark
@@ -52,8 +53,6 @@ import com.patrykandpatrick.vico.core.entry.FloatEntry
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -243,13 +242,13 @@ fun PressureChart(
     val yMin = dataMin - yPadding
     val yMax = dataMax + yPadding
 
-    // "ha" → "3PM"/"9AM" for hourly steps, "EEE" (Mon/Tue/…) for the 7-day chip
-    val labelPattern = if (stepHours < 24) "ha" else "EEE"
-    val labelFormatter = remember(labelPattern) {
-        DateTimeFormatter.ofPattern(labelPattern, Locale.ENGLISH).withZone(ZoneId.systemDefault())
+    // "3PM"/"9AM" for hourly steps, Mon/Tue/… for the 7-day chip
+    val labelFormatter = remember(stepHours) {
+        val base = if (stepHours < 24) AppDateFormats.HOUR else AppDateFormats.WEEKDAY
+        base.withZone(ZoneId.systemDefault())
     }
     val dayFormatter = remember {
-        DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH).withZone(ZoneId.systemDefault())
+        AppDateFormats.WEEKDAY.withZone(ZoneId.systemDefault())
     }
     val xFormatter = remember(snappedNowEpoch, stepSeconds, labelFormatter, dayFormatter, stepHours) {
         val zone = ZoneId.systemDefault()

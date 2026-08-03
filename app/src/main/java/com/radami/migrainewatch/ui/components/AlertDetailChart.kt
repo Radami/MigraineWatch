@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.ui.theme.ChartMeasuredDark
 import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
 import com.radami.migrainewatch.ui.theme.ChartNowLineDark
@@ -56,8 +57,6 @@ import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
 import com.patrykandpatrick.vico.core.entry.FloatEntry
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -246,12 +245,8 @@ fun AlertDetailChart(
     val dataMax = allY.maxOrNull() ?: return
     val yPadding = maxOf((dataMax - dataMin) * 0.2f, 2f)
 
-    val timeFormatter = remember {
-        DateTimeFormatter.ofPattern("a", Locale.ENGLISH).withZone(zoneId)
-    }
-    val dateFormatter = remember {
-        DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH).withZone(zoneId)
-    }
+    val timeFormatter = remember(zoneId) { AppDateFormats.MERIDIEM.withZone(zoneId) }
+    val dateFormatter = remember(zoneId) { AppDateFormats.WEEKDAY.withZone(zoneId) }
     val xFormatter = remember(chartStartEpoch, timeFormatter, dateFormatter) {
         AxisValueFormatter<AxisPosition.Horizontal.Bottom> { value, _ ->
             // Labels sit at interval midpoints (i + 0.5); describe the interval by its start.

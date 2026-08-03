@@ -36,12 +36,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.format.AppDateFormats
+import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.ui.components.AlertDetailChart
 import com.radami.migrainewatch.ui.theme.alertColorPalette
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,10 +105,7 @@ fun AlertDetailScreen(
 
 @Composable
 private fun AlertSummaryCard(alert: AlertWindow, index: Int) {
-    val timeFormatter = remember {
-        DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)
-            .withZone(ZoneId.systemDefault())
-    }
+    val timeFormatter = remember { AppDateFormats.DAY_AND_TIME.withZone(ZoneId.systemDefault()) }
     val startFormatted = remember(alert.start) { timeFormatter.format(alert.start) }
     val endFormatted = remember(alert.end) { timeFormatter.format(alert.end) }
     val directionLabel = if (alert.direction == "drop") "pressure drop" else "pressure rise"
@@ -138,7 +135,7 @@ private fun AlertSummaryCard(alert: AlertWindow, index: Int) {
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(
-                    "${String.format("%.1f", alert.delta)} hPa $directionLabel",
+                    "${formatHpa(alert.delta)} hPa $directionLabel",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = contentColor

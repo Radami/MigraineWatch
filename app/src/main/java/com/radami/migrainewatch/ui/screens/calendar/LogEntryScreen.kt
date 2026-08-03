@@ -47,11 +47,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radami.migrainewatch.data.model.Severity
+import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.ui.theme.SeverityAura
 import com.radami.migrainewatch.ui.theme.SeverityClear
 import com.radami.migrainewatch.ui.theme.SeverityMigraine
 import com.radami.migrainewatch.ui.theme.SeverityMild
-import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -62,7 +62,7 @@ fun LogEntryScreen(
     viewModel: LogEntryViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy") }
+    val dateFormatter = AppDateFormats.FULL_DATE
 
     LaunchedEffect(state.savedSuccessfully) {
         if (state.savedSuccessfully) onSaved()
