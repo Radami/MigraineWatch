@@ -10,6 +10,9 @@
 *.hprof
 .kotlin/
 
+# Assets for the Play Store listing - don't need to be checked in yet
+/play-assets
+
 # Signing material. The upload key belongs outside the repo entirely; these patterns are
 # the backstop for the day it gets dropped in the project folder by mistake.
 *.jks
