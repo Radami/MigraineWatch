@@ -137,6 +137,91 @@ banner, the alert detail screen and the bottom bar.
 - City search is served by a fake in `FakeGeocodingModule`, which replaces `GeocodingModule`
   so no test depends on the live geocoding service.
 
+## Cutting a release
+
+### Version numbers
+
+Both sit in `defaultConfig` in `app/build.gradle.kts`:
+
+```kotlin
+versionCode = 1
+versionName = "1.0"
+```
+
+They are not two spellings of the same thing:
+
+| | `versionCode` | `versionName` |
+| --- | --- | --- |
+| type | integer | free-form string |
+| read by | Play and Android | people |
+| shown | nowhere user-facing | store listing, system app info |
+| must change | every upload | only when you want it to |
+
+`versionCode` is the identity of the upload. Play refuses a bundle carrying a code it has
+already seen, and Android compares codes to decide whether an install is an upgrade — so it
+has to strictly increase. Gaps are harmless. Bump it for every build that leaves the machine,
+including one that only fixes the upload before it.
+
+`versionName` is a label. Nothing enforces it and nothing compares it; two uploads may share
+one. Change it when the difference is worth telling users about.
+
+So a re-upload that fixes a broken release is `versionCode = 2` with `versionName` left alone,
+while a real release moves both.
+
+### Signing
+
+The upload key is read from `keystore.properties` at the repo root. It is untracked, so it has
+to exist on whichever machine builds the release:
+
+```properties
+storeFile=/home/you/keys/migrainewatch-upload.jks
+storePassword=…
+keyAlias=upload
+keyPassword=…
+```
+
+Without it the build still **succeeds** and produces an *unsigned* bundle. That is deliberate —
+the signing config is only declared when the file is present, so a fresh clone or CI fails on
+whatever it was actually doing rather than on a missing keystore. The cost is that a forgotten
+keystore surfaces at upload time, not build time, so it is worth confirming:
+
+```bash
+unzip -l app/build/outputs/bundle/release/app-release.aab | grep META-INF
+# META-INF/UPLOAD.SF and META-INF/UPLOAD.RSA — present means signed
+```
+
+### Building
+
+```bash
+./gradlew testDebugUnitTest    # not enforced, just cheap
+./gradlew bundleRelease
+```
+
+What you upload is:
+
+```
+app/build/outputs/bundle/release/app-release.aab
+```
+
+`assembleRelease` also exists and leaves an `app-release.apk` under `outputs/apk/release/`.
+That one is for putting a release build on a device by hand — Play wants the `.aab` and
+generates per-device APKs from it itself.
+
+Release builds always call the live Open-Meteo API. `USE_MOCK_DATA` is hard-coded false for
+the release build type, so neither `local.properties` nor `-PuseMockData=true` can reach one.
+
+### Store assets
+
+`play-assets/` holds what the listing needs. The two graphics are generated rather than drawn,
+so they can be rebuilt from the launcher icon if the brand moves:
+
+```bash
+python3 play-assets/make_feature_graphic.py   # 1024x500 feature graphic
+python3 play-assets/make_icon.py              # 512x512 listing icon
+```
+
+Both need `numpy` and `Pillow`. The screenshots alongside them are captured from a device.
+
 ## Architecture
 
 ```
