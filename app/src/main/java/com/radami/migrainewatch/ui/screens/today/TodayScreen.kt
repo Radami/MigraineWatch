@@ -45,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -57,11 +58,10 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
 import com.radami.migrainewatch.data.model.Severity
-import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatHpa
-import com.radami.migrainewatch.ui.components.DayMarker
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.domain.SymptomFreeStreak
 import com.radami.migrainewatch.ui.components.PressureChart
 import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
 import com.radami.migrainewatch.ui.theme.SeverityAura
@@ -70,6 +70,7 @@ import com.radami.migrainewatch.ui.theme.SeverityMigraine
 import com.radami.migrainewatch.ui.theme.SeverityMild
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 @Composable
@@ -79,7 +80,6 @@ fun TodayScreen(
     viewModel: TodayViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val today = remember { LocalDate.now() }
     val timeFormatter = remember {
         AppDateFormats.FULL_DATE_TIME.withZone(ZoneId.systemDefault())
     }
@@ -137,11 +137,7 @@ fun TodayScreen(
         }
 
         item {
-            SymptomLogCard(
-                weekEntries = state.weekEntries,
-                pressureEventDays = state.pressureEventDays,
-                today = today
-            )
+            SymptomFreeCard(streak = state.symptomFreeStreak)
         }
     }
 }
@@ -261,85 +257,162 @@ private fun PressureCard(state: TodayUiState) {
     }
 }
 
+private val STREAK_SEVERITY_DOT_SIZE = 10.dp
+
 @Composable
-private fun SymptomLogCard(
-    weekEntries: Map<LocalDate, SymptomEntry?>,
-    pressureEventDays: Map<LocalDate, String>,
-    today: LocalDate
-) {
+private fun SymptomFreeCard(streak: SymptomFreeStreak?) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    "Symptom log",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                // The strip is a rolling window, so naming the range beats a month label that
-                // would be wrong for the half of the week sitting in the previous month.
-                Text(
-                    "Last 7 days",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-            }
+            Text(
+                "Symptom-free",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
             Spacer(Modifier.height(12.dp))
-            WeekStrip(
-                weekEntries = weekEntries,
-                pressureEventDays = pressureEventDays,
-                today = today
+            if (streak == null) {
+                NotEnoughDataMessage(
+                    hint = "Log a mild, aura or migraine day to start counting."
+                )
+                return@Column
+            }
+            // Both halves date-stamp a past day, so they share one reading of "this year"
+            // rather than each deciding separately whether a year is worth spelling out.
+            val currentYear = remember { LocalDate.now().year }
+
+            CurrentStreak(streak = streak, currentYear = currentYear)
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(12.dp))
+            LongestStreak(longest = streak.longest, currentYear = currentYear)
+        }
+    }
+}
+
+@Composable
+private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
+    val lastEventLabel = remember(streak.lastEvent, currentYear) {
+        val date = streak.lastEvent.date.format(dateFormatterFor(streak.lastEvent.date, currentYear))
+        "Last: ${streak.lastEvent.severity.label} on $date"
+    }
+
+    // The count and the date read as one sentence, so they are announced as one node. Left
+    // unmerged, the figure, its unit and the date below it are each their own node and the
+    // date ends up spoken twice.
+    Column(
+        modifier = Modifier.clearAndSetSemantics {
+            contentDescription = "${dayCount(streak.currentDays)} symptom-free. $lastEventLabel"
+        }
+    ) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                streak.currentDays.toString(),
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                dayUnit(streak.currentDays),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
+
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // The swatch ties the date back to the colour the day already wears in the calendar.
+            Box(
+                modifier = Modifier
+                    .size(STREAK_SEVERITY_DOT_SIZE)
+                    .clip(CircleShape)
+                    .background(streak.lastEvent.severity.toColor())
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                lastEventLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
         }
     }
 }
 
-private val WEEK_STRIP_CELL_SIZE = 40.dp
+/**
+ * Spells the year out only once this year is the wrong thing to assume — a long streak dates its
+ * last event years back, and "Saturday 15 August" would read as a recent one.
+ */
+private fun dateFormatterFor(date: LocalDate, currentYear: Int): DateTimeFormatter =
+    if (date.year == currentYear) AppDateFormats.DAY_AND_MONTH else AppDateFormats.DAY_MONTH_AND_YEAR
 
 @Composable
-private fun WeekStrip(
-    weekEntries: Map<LocalDate, SymptomEntry?>,
-    pressureEventDays: Map<LocalDate, String>,
-    today: LocalDate
-) {
-    val dayFormatter = AppDateFormats.WEEKDAY
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        weekEntries.entries.sortedBy { it.key }.forEach { (date, entry) ->
-            val isToday = date == today
-            val eventDirection = pressureEventDays[date]
-            val dayLabel = date.format(dayFormatter).take(1)
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.semantics {
-                    contentDescription = "$dayLabel ${date}, ${entry?.severity?.name ?: "No entry"}"
-                }
-            ) {
-                Text(
-                    dayLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-                Spacer(Modifier.height(4.dp))
-                DayMarker(
-                    day = date.dayOfMonth,
-                    severityColor = entry?.severity?.toColor(),
-                    eventDirection = eventDirection,
-                    isToday = isToday,
-                    modifier = Modifier.size(WEEK_STRIP_CELL_SIZE)
-                )
-            }
-        }
+private fun LongestStreak(longest: SymptomFreeStreak.Run?, currentYear: Int) {
+    // Label and figure sit side by side rather than spread across the row: the log FAB floats
+    // over the bottom-right corner of this card, so anything right-aligned here disappears
+    // under it on a narrow screen.
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "Longest streak",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+        )
+        Spacer(Modifier.width(8.dp))
+        // A second event is what creates the first gap to measure, so until then there is
+        // genuinely nothing to report rather than a streak of zero.
+        Text(
+            longest?.let { dayCount(it.days) } ?: NOT_ENOUGH_DATA,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold
+        )
     }
+
+    // A run of zero days spans no days at all, so there is no range to name.
+    if (longest == null || longest.days == 0L) return
+
+    val rangeLabel = remember(longest, currentYear) { longest.rangeLabel(currentYear) }
+    Spacer(Modifier.height(2.dp))
+    Text(
+        rangeLabel,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    )
 }
+
+/**
+ * "12 May – 3 Jun", carrying the year on the same terms as [dateFormatterFor] — a record set
+ * years ago would otherwise read as a recent one.
+ */
+private fun SymptomFreeStreak.Run.rangeLabel(currentYear: Int): String {
+    val formatter = if (to.year == currentYear) {
+        AppDateFormats.SHORT_DAY_AND_MONTH
+    } else {
+        AppDateFormats.SHORT_DATE_AND_YEAR
+    }
+    return "${from.format(formatter)} – ${to.format(formatter)}"
+}
+
+@Composable
+private fun NotEnoughDataMessage(hint: String) {
+    Text(
+        NOT_ENOUGH_DATA,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+    )
+    Spacer(Modifier.height(4.dp))
+    Text(
+        hint,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    )
+}
+
+private const val NOT_ENOUGH_DATA = "Not enough data"
+
+private fun dayCount(days: Long): String = "$days ${dayUnit(days)}"
+
+private fun dayUnit(days: Long): String = if (days == 1L) "day" else "days"
 
 private fun Severity.toColor(): Color = when (this) {
     Severity.CLEAR -> SeverityClear

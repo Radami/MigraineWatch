@@ -32,8 +32,17 @@ object AppDateFormats {
     /** "Saturday 1 August" — a date already understood to be in the month on screen. */
     val DAY_AND_MONTH: DateTimeFormatter = display("EEEE d MMMM")
 
+    /** "Saturday 1 August 2026" — the same, where the year can no longer be assumed. */
+    val DAY_MONTH_AND_YEAR: DateTimeFormatter = display("EEEE d MMMM yyyy")
+
     /** "August 2026" — the calendar's month heading. */
     val MONTH_AND_YEAR: DateTimeFormatter = display("MMMM yyyy")
+
+    /** "1 Aug" — a bare date, for a range that has to fit on one line of a narrow screen. */
+    val SHORT_DAY_AND_MONTH: DateTimeFormatter = display("d MMM")
+
+    /** "1 Aug 2026" — the same, where the year can no longer be assumed to be this one. */
+    val SHORT_DATE_AND_YEAR: DateTimeFormatter = display("d MMM yyyy")
 
     /** "Sat 1 Aug, 14:00" — a full timestamp compact enough to sit in a list row. */
     val DAY_AND_TIME: DateTimeFormatter = display("EEE d MMM, HH:mm")
@@ -44,7 +53,7 @@ object AppDateFormats {
     /** "Sat 14:00" — the same thing inside an alert banner, where there is not. */
     val SHORT_WEEKDAY_AND_TIME: DateTimeFormatter = display("EEE HH:mm")
 
-    /** "Sat" — chart day labels and the week strip. */
+    /** "Sat" — chart day labels. */
     val WEEKDAY: DateTimeFormatter = display("EEE")
 
     /** "3PM" — the hourly chart's axis labels. */
