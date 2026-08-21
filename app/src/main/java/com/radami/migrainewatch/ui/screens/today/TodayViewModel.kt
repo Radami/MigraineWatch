@@ -3,14 +3,13 @@ package com.radami.migrainewatch.ui.screens.today
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.radami.migrainewatch.data.model.PressureReading
-import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.SymptomRepository
-import com.radami.migrainewatch.domain.AlertDetector
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.PressureAlertUseCase
+import com.radami.migrainewatch.domain.SymptomFreeStreak
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,10 +19,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
@@ -33,8 +30,7 @@ data class TodayUiState(
     val forecast: List<PressureReading> = emptyList(),
     val alertWindows: List<AlertWindow> = emptyList(),
     val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
-    val weekEntries: Map<LocalDate, SymptomEntry?> = emptyMap(),
-    val pressureEventDays: Map<LocalDate, String> = emptyMap(),
+    val symptomFreeStreak: SymptomFreeStreak? = null,
     val locationName: String = "",
     val lastUpdated: Instant? = null,
     val isLoading: Boolean = true
@@ -64,14 +60,10 @@ class TodayViewModel @Inject constructor(
         val from = queryStart.minus(4, ChronoUnit.DAYS)
         val to = queryStart.plus(7, ChronoUnit.DAYS)
 
-        val today = LocalDate.now()
-        val rangeStart = today.minusDays(6)
-        val rangeEnd = today
-
         viewModelScope.launch {
             combine(
                 pressureRepository.getReadingsInRange(from, to),
-                symptomRepository.getEntriesInRange(rangeStart, rangeEnd),
+                symptomRepository.getAllEntries(),
                 userPreferences.settings
             ) { readings, entries, settings ->
                 Triple(readings, entries, settings)
@@ -83,18 +75,16 @@ class TodayViewModel @Inject constructor(
                 val fore = readings.filter { !it.dateTime.isBefore(now) }
 
                 // Detection goes through the shared use case so the banner and the scheduled
-                // notifications always describe the same set of events.
-                val alerts = withContext(Dispatchers.Default) {
-                    alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now)
-                }
+                // notifications always describe the same set of events. The streak walks the
+                // user's entire history, so it stays off the main thread alongside it.
+                val (alerts, streak) = withContext(Dispatchers.Default) {
+                    val detected = alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now)
 
-                val entriesMap = (0..6).associate { d ->
-                    val day = rangeStart.plusDays(d.toLong())
-                    day to entries.find { it.date == day }
+                    // Today is read here rather than hoisted out of the flow so the count is at
+                    // least right for every emission. It can still go stale if the screen is left
+                    // open across midnight with nothing else emitting.
+                    detected to SymptomFreeStreak.from(entries, LocalDate.now())
                 }
-
-                val zone = ZoneId.systemDefault()
-                val eventDays = AlertDetector.eventDaysByDirection(alerts, zone)
 
                 _uiState.value = TodayUiState(
                     currentPressure = hist.lastOrNull()?.pressureMsl
@@ -103,8 +93,7 @@ class TodayViewModel @Inject constructor(
                     forecast = fore,
                     alertWindows = alerts,
                     alertThresholdHpa = settings.alertThresholdHpa,
-                    weekEntries = entriesMap,
-                    pressureEventDays = eventDays,
+                    symptomFreeStreak = streak,
                     locationName = settings.location.name,
                     lastUpdated = readings.maxOfOrNull { it.fetchedDateTime },
                     isLoading = false
