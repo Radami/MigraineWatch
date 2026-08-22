@@ -20,12 +20,37 @@ for fixes alone, the minor number for anything users would notice.
 - The Today screen counts how long you have gone without symptoms, and remembers your
   longest symptom-free streak and the dates it ran between.
 
+### Changed
+- Calendar days at high risk are now drawn as a circle instead of carrying a small trend
+  arrow. The arrows told you which way the pressure was moving, which people read as decoration
+  rather than a warning; the shape says the thing that matters, which is that the day is one to
+  watch. The day number sits centred in its shape, and the legend gains a "High risk" entry in
+  place of the "Drop" and "Rise" ones.
+
 ### Removed
 - The seven-day symptom strip on the Today screen, replaced by the streak count above. The
   same seven days are still on the Calendar screen.
+- The up and down pressure arrows on the Calendar screen.
+
+### Fixed
+- A pressure event that ended exactly at midnight marked the following day as one to watch,
+  even though the event never ran into it.
 
 ### Internal
 - `SymptomFreeStreak` domain type holds the streak maths, covered by 11 unit tests.
+- `AlertDetector.eventDaysByDirection` becomes `eventDays`, returning a `Set<LocalDate>`. The
+  per-day "which direction held this day longest" tie-break existed only to choose an arrow,
+  so the `"drop"`/`"rise"` strings no longer reach the calendar. They still carry the alert
+  screens and the notification payloads, which is the last of them.
+- `eventDays` trims an end day the alert only touches at its first instant. The old
+  dominant-direction map kept such a day with a zero-second overlap, which was easy to miss
+  behind a small arrow and is not behind a full circle.
+- `DayMarker` takes a `DayRisk` rather than `eventDirection: String?`, and picks between
+  `SeverityShape` and the new `HighRiskShape`. Its fixed-height trend slot is gone, so the day
+  number is simply centred. A high-risk day is always ringed, filled or not — without it a
+  filled circle reads as a severity chip that happens to be round. Exactly one ring is drawn:
+  today's 2 dp `primary` outranks the `outline` used for risk. That risk ring's width is
+  public, because the legend draws the same ring and the two have to match to mean anything.
 - `TodayViewModel` reads the full symptom history rather than a seven-day window, and no
   longer carries `weekEntries` or `pressureEventDays`.
 - `Severity.isSymptomEvent` replaces scattered `!= CLEAR` checks.
