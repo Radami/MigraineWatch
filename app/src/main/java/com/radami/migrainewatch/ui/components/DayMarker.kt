@@ -3,16 +3,10 @@ package com.radami.migrainewatch.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingDown
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,42 +19,68 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-private const val DROP_DIRECTION = "drop"
-
 /**
  * Corner rounding shared by every severity-coloured surface. It is a percentage rather than
- * a fixed dp so an 8 dp legend swatch and a 45 dp day cell read as the same shape.
+ * a fixed dp so a 12 dp legend swatch and a 45 dp day cell read as the same shape.
  */
 val SeverityShape = RoundedCornerShape(percent = 28)
 
-private val TREND_ICON_SIZE = 14.dp
+/**
+ * The silhouette of a high-risk day. Shape, not colour, carries the risk so that the severity
+ * palette is left free to mean only what it has always meant.
+ */
+val HighRiskShape = CircleShape
+
 private val TODAY_BORDER_WIDTH = 2.dp
 
 /**
- * A single day in the calendar grid or the Today week strip: the day number, with a pressure
- * trend arrow underneath when that day is part of an event.
+ * Thinner than today's border on purpose: both rings can land on the same day, and today is
+ * the cell users hunt for, so it has to stay the heavier of the two. Public because the legend
+ * draws the same ring, and the two have to stay identical for the legend to mean anything.
+ */
+val HIGH_RISK_BORDER_WIDTH = 1.5.dp
+
+/** Whether a pressure event crossing the alert threshold touches the day. */
+enum class DayRisk { Normal, High }
+
+/**
+ * A single day in the calendar grid: the day number centred in a shape that says whether the
+ * day is high risk, filled with the severity colour once something has been logged.
  *
  * @param severityColor fill for a logged day; null leaves the marker unfilled.
- * @param eventDirection "drop" or "rise", or null when no pressure event touches the day.
+ * @param risk whether a pressure event crossing the alert threshold touches the day.
  */
 @Composable
 fun DayMarker(
     day: Int,
     severityColor: Color?,
-    eventDirection: String?,
+    risk: DayRisk,
     isToday: Boolean,
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     onClick: (() -> Unit)? = null
 ) {
-    Column(
+    val markerShape = if (risk == DayRisk.High) HighRiskShape else SeverityShape
+
+    Box(
         // Clip and fill first so the click ripple follows the marker's shape.
         modifier = modifier
-            .clip(SeverityShape)
+            .clip(markerShape)
             .background(severityColor ?: Color.Transparent)
+            // A circle is always outlined, filled or not: the ring is what makes the silhouette
+            // read as deliberate rather than as a differently-shaped severity chip. Exactly one
+            // ring is ever drawn, and today outranks risk for the edge — the shape has already
+            // said "high risk" by then.
             .then(
-                if (isToday) Modifier.border(TODAY_BORDER_WIDTH, MaterialTheme.colorScheme.primary, SeverityShape)
-                else Modifier
+                when {
+                    isToday ->
+                        Modifier.border(TODAY_BORDER_WIDTH, MaterialTheme.colorScheme.primary, markerShape)
+
+                    risk == DayRisk.High ->
+                        Modifier.border(HIGH_RISK_BORDER_WIDTH, MaterialTheme.colorScheme.outline, markerShape)
+
+                    else -> Modifier
+                }
             )
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
             .then(
@@ -70,34 +90,13 @@ fun DayMarker(
                     Modifier
                 }
             ),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        contentAlignment = Alignment.Center
     ) {
         Text(
             day.toString(),
             style = MaterialTheme.typography.labelLarge,
             color = if (severityColor != null) Color.White else MaterialTheme.colorScheme.onSurface
         )
-
-        // The trend slot is always laid out, even when there is no event, so the day numbers
-        // sit at the same height in every marker instead of shifting up on event days.
-        Box(
-            modifier = Modifier.height(TREND_ICON_SIZE),
-            contentAlignment = Alignment.Center
-        ) {
-            if (eventDirection != null) {
-                // White on filled severity markers for contrast, tertiary on plain days.
-                val trendTint =
-                    if (severityColor != null) Color.White else MaterialTheme.colorScheme.tertiary
-                Icon(
-                    imageVector = if (eventDirection == DROP_DIRECTION) Icons.AutoMirrored.Filled.TrendingDown
-                    else Icons.AutoMirrored.Filled.TrendingUp,
-                    contentDescription = if (eventDirection == DROP_DIRECTION) "Pressure drop" else "Pressure rise",
-                    tint = trendTint,
-                    modifier = Modifier.size(TREND_ICON_SIZE)
-                )
-            }
-        }
     }
 }
 

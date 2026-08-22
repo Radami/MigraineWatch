@@ -41,7 +41,7 @@ class AlertDetectorTest {
     }
 
     @Test
-    fun `eventDaysByDirection marks every day an alert spans`() {
+    fun `eventDays marks every day an alert spans`() {
         val alert = AlertWindow(
             start = Instant.parse("2023-10-01T18:00:00Z"),
             end = Instant.parse("2023-10-03T06:00:00Z"),
@@ -49,22 +49,22 @@ class AlertDetectorTest {
             direction = "drop"
         )
 
-        val days = AlertDetector.eventDaysByDirection(listOf(alert), ZoneId.of("UTC"))
+        val days = AlertDetector.eventDays(listOf(alert), ZoneId.of("UTC"))
 
         assertEquals(
-            mapOf(
-                LocalDate.parse("2023-10-01") to "drop",
-                LocalDate.parse("2023-10-02") to "drop",
-                LocalDate.parse("2023-10-03") to "drop"
+            setOf(
+                LocalDate.parse("2023-10-01"),
+                LocalDate.parse("2023-10-02"),
+                LocalDate.parse("2023-10-03")
             ),
             days
         )
     }
 
     @Test
-    fun `eventDaysByDirection reports the direction that dominates a shared day`() {
-        // A drop ending in the morning and a rise running the rest of the day: the day cell
-        // has room for one arrow, so the longer of the two wins.
+    fun `eventDays marks both days when opposite directions share one`() {
+        // A drop ending in the morning and a rise running the rest of the day. Both are
+        // qualifying events, so every day either one touches is high risk.
         val drop = AlertWindow(
             start = Instant.parse("2023-10-01T22:00:00Z"),
             end = Instant.parse("2023-10-02T04:00:00Z"),
@@ -78,15 +78,49 @@ class AlertDetectorTest {
             direction = "rise"
         )
 
-        val days = AlertDetector.eventDaysByDirection(listOf(drop, rise), ZoneId.of("UTC"))
+        val days = AlertDetector.eventDays(listOf(drop, rise), ZoneId.of("UTC"))
 
-        assertEquals("drop", days[LocalDate.parse("2023-10-01")])
-        assertEquals("rise", days[LocalDate.parse("2023-10-02")])
+        assertEquals(
+            setOf(LocalDate.parse("2023-10-01"), LocalDate.parse("2023-10-02")),
+            days
+        )
     }
 
     @Test
-    fun `eventDaysByDirection returns nothing when there are no alerts`() {
-        assertTrue(AlertDetector.eventDaysByDirection(emptyList(), ZoneId.of("UTC")).isEmpty())
+    fun `eventDays ignores the day an alert ends on at midnight`() {
+        val alert = AlertWindow(
+            start = Instant.parse("2023-10-01T18:00:00Z"),
+            end = Instant.parse("2023-10-03T00:00:00Z"),
+            delta = 6f,
+            direction = "drop"
+        )
+
+        val days = AlertDetector.eventDays(listOf(alert), ZoneId.of("UTC"))
+
+        assertEquals(
+            setOf(LocalDate.parse("2023-10-01"), LocalDate.parse("2023-10-02")),
+            days
+        )
+    }
+
+    @Test
+    fun `eventDays keeps a single day alert that ends at midnight`() {
+        // Trimming the end day must not empty a window that starts and ends on the same date.
+        val alert = AlertWindow(
+            start = Instant.parse("2023-10-01T00:00:00Z"),
+            end = Instant.parse("2023-10-01T00:00:00Z"),
+            delta = 6f,
+            direction = "drop"
+        )
+
+        val days = AlertDetector.eventDays(listOf(alert), ZoneId.of("UTC"))
+
+        assertEquals(setOf(LocalDate.parse("2023-10-01")), days)
+    }
+
+    @Test
+    fun `eventDays returns nothing when there are no alerts`() {
+        assertTrue(AlertDetector.eventDays(emptyList(), ZoneId.of("UTC")).isEmpty())
     }
 
     @Test
