@@ -7,8 +7,11 @@ import android.graphics.RectF
 import android.text.Layout
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,16 +28,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.radami.migrainewatch.data.model.PressureReading
+import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.domain.ChartStep
+import com.radami.migrainewatch.domain.ChartWindow
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.ui.theme.ChartMeasuredDark
 import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
 import com.radami.migrainewatch.ui.theme.ChartNowLineDark
 import com.radami.migrainewatch.ui.theme.ChartNowLineLight
+import com.radami.migrainewatch.ui.theme.ChartRangeBandDark
+import com.radami.migrainewatch.ui.theme.ChartRangeBandLight
+import com.radami.migrainewatch.ui.theme.alertColorPalette
 import com.patrykandpatrick.vico.compose.axis.axisLabelComponent
 import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
@@ -51,12 +62,25 @@ import com.patrykandpatrick.vico.core.chart.values.AxisValuesOverrider
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
 import com.patrykandpatrick.vico.core.entry.FloatEntry
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+// Every overlay is a wash over the plot rather than a fill: the data has to stay readable
+// through all of them, including where a risk band and the daily range overlap.
+private const val ALERT_BAND_ALPHA = 0.15f
+private const val RANGE_BAND_ALPHA = 0.2f
+private const val NOW_LINE_ALPHA = 0.5f
+
+private val SWATCH_WIDTH = 24.dp
+
+/** Risk gets one swatch per window in view, so they are narrowed to leave the legend on one line. */
+private val RISK_SWATCH_WIDTH = 14.dp
+
 private data class BandEntry(val index: Int, val minY: Float, val maxY: Float)
+
+/** One alert's risk window, in chart x-values, in the colour of the row describing it. */
+private data class AlertBand(val startX: Float, val endX: Float, val color: Color)
 
 /**
  * Pressure at exactly [epoch], linearly interpolated between the two surrounding readings
@@ -75,10 +99,12 @@ private fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
 }
 
 /**
- * Draws the min/max shaded band (behind the chart line) and the "now" dashed line (above it)
- * using Vico's Decoration API, which provides exact chart data-area bounds.
+ * Draws the alert risk bands and the min/max shaded band (behind the chart line) and the
+ * "now" dashed line (above it) using Vico's Decoration API, which provides exact chart
+ * data-area bounds.
  */
 private class ChartOverlayDecoration(
+    private val alertBands: List<AlertBand>,
     private val showBand: Boolean,
     private val bandEntries: List<BandEntry>,
     private val yMin: Float,
@@ -101,6 +127,13 @@ private class ChartOverlayDecoration(
         }
         if (current.isNotEmpty()) add(current)
     }
+
+    private val alertPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+
+    private val alertColorsArgb: List<Int> =
+        alertBands.map { it.color.copy(alpha = ALERT_BAND_ALPHA).toArgb() }
 
     private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -133,6 +166,27 @@ private class ChartOverlayDecoration(
     }
 
     override fun onDrawBehindChart(context: ChartDrawContext, bounds: RectF) {
+        // Risk bands go down first: the daily range reads as a detail of the line, so it has
+        // to stay legible on top of whatever the risk shading paints.
+        drawAlertBands(context, bounds)
+        drawRangeBand(context, bounds)
+    }
+
+    private fun drawAlertBands(context: ChartDrawContext, bounds: RectF) {
+        alertBands.forEachIndexed { index, band ->
+            // An event can begin before the window or run past its end. Clipping to the plot
+            // area shows the part that is in view; the rest is accounted for by the list
+            // beside the chart, which marks what the current range cannot reach.
+            val left = maxOf(context.dataX(band.startX, bounds), bounds.left)
+            val right = minOf(context.dataX(band.endX, bounds), bounds.right)
+            if (right <= left) return@forEachIndexed
+
+            alertPaint.color = alertColorsArgb[index]
+            context.canvas.drawRect(left, bounds.top, right, bounds.bottom, alertPaint)
+        }
+    }
+
+    private fun drawRangeBand(context: ChartDrawContext, bounds: RectF) {
         if (!showBand || bandRuns.isEmpty()) return
         val yRange = yMax - yMin
         // In Android Canvas, Y increases downward: bounds.top = maxY, bounds.bottom = minY.
@@ -162,59 +216,47 @@ private class ChartOverlayDecoration(
 }
 
 /**
- * @param stepHours interval between the 8 chart points: 3 for the 24 h chip, 6 for 48 h, 24 for 7 days.
+ * @param readings every reading the chart may draw from, sorted by time. The chart samples the
+ *   eight instants [window] names out of these rather than plotting them one for one, so it is
+ *   given the whole series and not the slice one range happens to need.
+ * @param window which slice of time the chart draws, and at what resolution.
+ * @param alerts risk windows to shade, in the order the caller lists them. Those
+ *   [ChartWindow.covers] returns false for are left to the caller to account for — the chart
+ *   cannot show them at this range — and only as many as the palette has colours are shaded,
+ *   so no two bands on one chart can be the same colour.
  */
 @Composable
 fun PressureChart(
-    historical: List<PressureReading>,
-    forecast: List<PressureReading>,
-    stepHours: Int,
+    readings: List<PressureReading>,
+    window: ChartWindow,
     modifier: Modifier = Modifier,
-    showLegend: Boolean = true
+    alerts: List<AlertWindow> = emptyList()
 ) {
-    if (historical.isEmpty() && forecast.isEmpty()) return
+    if (readings.isEmpty()) return
 
-    val stepSeconds = stepHours.toLong() * 3600L
+    val isDaily = window.step == ChartStep.OneDay
+    val stepSeconds = window.step.seconds
     val nowEpoch = Instant.now().epochSecond
 
-    // For the daily step, snap to local-timezone noon so the day label sits at the midpoint of each
-    // calendar day. This makes the "now" line fall near the current day's label rather than halfway
-    // to the next day's label (which midnight anchoring would cause in the morning hours).
-    // For sub-day steps, floor to the nearest step boundary.
-    val snappedNowEpoch = if (stepHours >= 24) {
-        LocalDate.now(ZoneId.systemDefault())
-            .atTime(12, 0)
-            .atZone(ZoneId.systemDefault())
-            .toEpochSecond()
-    } else {
-        (nowEpoch / stepSeconds) * stepSeconds
-    }
-
-    // Merged list used by all three derived entry computations — allocated once per cache miss.
-    val all = remember(historical, forecast) { historical + forecast }
-
-    // Chart indices 0..7 map to time offsets -3..+4 steps from snappedNow.
-    // Historical: indices 0..3 (up to and including snappedNow)
-    // Forecast:   indices 3..7 (snappedNow onward) — index 3 is shared so the lines connect.
-    val historicalEntries = remember(all, snappedNowEpoch, stepSeconds) {
-        (0..3).mapNotNull { i ->
-            val anchorEpoch = snappedNowEpoch + (i - 3) * stepSeconds
-            pressureAt(all, anchorEpoch)?.let { FloatEntry(i.toFloat(), it) }
+    // History and forecast are two line series so they can be styled apart, but both sample
+    // the whole series: they share the anchor point, so the two lines connect there.
+    val historicalEntries = remember(readings, window) {
+        window.historyIndices.mapNotNull { i ->
+            pressureAt(readings, window.epochSecondAt(i))?.let { FloatEntry(i.toFloat(), it) }
         }
     }
-    val forecastEntries = remember(all, snappedNowEpoch, stepSeconds) {
-        (3..7).mapNotNull { i ->
-            val anchorEpoch = snappedNowEpoch + (i - 3) * stepSeconds
-            pressureAt(all, anchorEpoch)?.let { FloatEntry(i.toFloat(), it) }
+    val forecastEntries = remember(readings, window) {
+        window.forecastIndices.mapNotNull { i ->
+            pressureAt(readings, window.epochSecondAt(i))?.let { FloatEntry(i.toFloat(), it) }
         }
     }
 
-    val bandEntries = if (stepHours >= 24) {
-        remember(all, snappedNowEpoch, stepSeconds) {
+    val bandEntries = if (isDaily) {
+        remember(readings, window) {
             val half = stepSeconds / 2
-            (0..7).mapNotNull { i ->
-                val anchorEpoch = snappedNowEpoch + (i - 3) * stepSeconds
-                val inWindow = all.filter { abs(it.dateTime.epochSecond - anchorEpoch) <= half }
+            ChartWindow.POINT_INDICES.mapNotNull { i ->
+                val anchorEpoch = window.epochSecondAt(i)
+                val inWindow = readings.filter { abs(it.dateTime.epochSecond - anchorEpoch) <= half }
                 if (inWindow.size < 2) null
                 else BandEntry(i, inWindow.minOf { it.pressureMsl }, inWindow.maxOf { it.pressureMsl })
             }
@@ -228,7 +270,24 @@ fun PressureChart(
 
     val isDark = isSystemInDarkTheme()
     val measuredColor = if (isDark) ChartMeasuredDark else ChartMeasuredLight
+    val rangeBandColor = if (isDark) ChartRangeBandDark else ChartRangeBandLight
     val nowLineColor = if (isDark) ChartNowLineDark else ChartNowLineLight
+
+    // Alerts keep the colour of their position in the list, so a band and the row that
+    // describes it match even when the range leaves out the alerts in between. Taking no more
+    // than the palette holds is what makes that hold: wrapping round would give two events on
+    // one chart the same colour, which is exactly the reading the colours exist to prevent.
+    val palette = alertColorPalette()
+    val alertBands = remember(alerts, window, palette) {
+        alerts.take(palette.size).mapIndexedNotNull { index, alert ->
+            if (!window.covers(alert)) return@mapIndexedNotNull null
+            AlertBand(
+                startX = window.xOf(alert.start),
+                endX = window.xOf(alert.end),
+                color = palette[index]
+            )
+        }
+    }
 
     val dataMin = if (bandEntries.isNotEmpty())
         bandEntries.minOf { it.minY }
@@ -242,21 +301,21 @@ fun PressureChart(
     val yMin = dataMin - yPadding
     val yMax = dataMax + yPadding
 
-    // "3PM"/"9AM" for hourly steps, Mon/Tue/… for the 7-day chip
-    val labelFormatter = remember(stepHours) {
-        val base = if (stepHours < 24) AppDateFormats.HOUR else AppDateFormats.WEEKDAY
+    // Mon/Tue/… for the 7-day chip, "3PM"/"9AM" for the hourly steps
+    val labelFormatter = remember(window.step) {
+        val base = if (isDaily) AppDateFormats.WEEKDAY else AppDateFormats.HOUR
         base.withZone(ZoneId.systemDefault())
     }
     val dayFormatter = remember {
         AppDateFormats.WEEKDAY.withZone(ZoneId.systemDefault())
     }
-    val xFormatter = remember(snappedNowEpoch, stepSeconds, labelFormatter, dayFormatter, stepHours) {
+    val xFormatter = remember(window, labelFormatter, dayFormatter) {
         val zone = ZoneId.systemDefault()
         AxisValueFormatter<AxisPosition.Horizontal.Bottom> { value, _ ->
-            val offset = value.roundToInt() - 3          // chart index → step offset (-3..4)
-            val anchorEpoch = snappedNowEpoch + offset * stepSeconds
+            val index = value.roundToInt()
+            val anchorEpoch = window.epochSecondAt(index)
             val label = labelFormatter.format(Instant.ofEpochSecond(anchorEpoch))
-            if (stepHours >= 24) {
+            if (isDaily) {
                 label
             } else {
                 // Hourly windows can cross midnight, where bare hour labels turn ambiguous.
@@ -265,7 +324,7 @@ fun PressureChart(
                 val day = Instant.ofEpochSecond(anchorEpoch).atZone(zone).toLocalDate()
                 val previousDay =
                     Instant.ofEpochSecond(anchorEpoch - stepSeconds).atZone(zone).toLocalDate()
-                if (offset == -3 || day != previousDay) {
+                if (index == ChartWindow.POINT_INDICES.first || day != previousDay) {
                     "$label\n${dayFormatter.format(Instant.ofEpochSecond(anchorEpoch))}"
                 } else {
                     label
@@ -277,19 +336,21 @@ fun PressureChart(
         AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ -> "${value.toInt()}" }
     }
 
-    // Dashed "now" line: actual current time as a fractional x-value between index 3 and 4.
-    val nowX = 3f + (nowEpoch - snappedNowEpoch).toFloat() / stepSeconds
+    // Dashed "now" line: the actual current time, which sits a fraction of a step past the
+    // anchor the chart snapped to.
+    val nowX = window.xOf(Instant.ofEpochSecond(nowEpoch))
 
     val showBand = bandEntries.size >= 2
-    val decoration = remember(showBand, bandEntries, yMin, yMax, measuredColor, nowX, nowLineColor) {
+    val decoration = remember(alertBands, showBand, bandEntries, yMin, yMax, rangeBandColor, nowX, nowLineColor) {
         ChartOverlayDecoration(
+            alertBands = alertBands,
             showBand = showBand,
             bandEntries = bandEntries,
             yMin = yMin,
             yMax = yMax,
-            bandColorArgb = measuredColor.copy(alpha = 0.2f).toArgb(),
+            bandColorArgb = rangeBandColor.copy(alpha = RANGE_BAND_ALPHA).toArgb(),
             nowX = nowX,
-            nowLineColorArgb = nowLineColor.copy(alpha = 0.5f).toArgb(),
+            nowLineColorArgb = nowLineColor.copy(alpha = NOW_LINE_ALPHA).toArgb(),
         )
     }
 
@@ -322,66 +383,96 @@ fun PressureChart(
                         textAlignment = Layout.Alignment.ALIGN_CENTER
                     ),
                     valueFormatter = xFormatter,
-                    itemPlacer = remember(stepHours) {
+                    itemPlacer = remember(window.step) {
                         AxisItemPlacer.Horizontal.default(
                             spacing = 1,
                             shiftExtremeTicks = false,
-                            addExtremeLabelPadding = stepHours < 24
+                            addExtremeLabelPadding = !isDaily
                         )
                     }
                 ),
                 // Hourly labels mark exact instants, so they sit on the gridlines (FullWidth);
                 // day labels describe a whole day, so they sit centred between them (Segmented,
-                // whose cell edges fall on midnights because the daily points are noon-snapped).
-                horizontalLayout = if (stepHours < 24) HorizontalLayout.FullWidth() else HorizontalLayout.Segmented,
+                // whose cell edges fall on midnights because the daily points are noon-snapped
+                // — an hour off either side of a DST change, which moves no label onto another
+                // day; see ChartWindow.epochSecondAt).
+                horizontalLayout = if (isDaily) HorizontalLayout.Segmented else HorizontalLayout.FullWidth(),
                 modifier = Modifier.fillMaxSize()
             )
         }
 
-        if (showLegend) {
-            Spacer(Modifier.height(8.dp))
-            ChartLegend(
-                lineColor = measuredColor,
-                nowLineColor = nowLineColor,
-                showBand = showBand,
-                bandColor = measuredColor
-            )
-        }
+        Spacer(Modifier.height(8.dp))
+        ChartLegend(
+            lineColor = measuredColor,
+            nowLineColor = nowLineColor,
+            showBand = showBand,
+            bandColor = rangeBandColor,
+            alertColors = alertBands.map { it.color }
+        )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChartLegend(
-    lineColor: androidx.compose.ui.graphics.Color,
-    nowLineColor: androidx.compose.ui.graphics.Color,
+    lineColor: Color,
+    nowLineColor: Color,
     showBand: Boolean,
-    bandColor: androidx.compose.ui.graphics.Color,
+    bandColor: Color,
+    alertColors: List<Color>,
 ) {
-    Row(
+    // Wraps rather than clips: the risk entry appears and disappears with the data, and at a
+    // large font scale the three entries no longer fit one line.
+    FlowRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // "now" always leads, so the legend stays stable when switching chart ranges.
-        LegendItem(color = nowLineColor, label = "now", dashed = true)
-        Spacer(Modifier.width(12.dp))
+        LegendEntry(label = "now") {
+            LegendLine(color = nowLineColor.copy(alpha = NOW_LINE_ALPHA), dashed = true)
+        }
+
         // The pressure line is only drawn when the band isn't (24 h / 48 h ranges).
         if (showBand) {
-            LegendBandItem(color = bandColor, label = "daily range")
+            LegendEntry(label = "daily range") {
+                LegendSwatch(color = bandColor.copy(alpha = RANGE_BAND_ALPHA))
+            }
         } else {
-            LegendItem(color = lineColor, label = "pressure")
+            LegendEntry(label = "pressure") { LegendLine(color = lineColor) }
+        }
+
+        if (alertColors.isNotEmpty()) {
+            // One swatch per shaded window, in chart order, so the legend says how many
+            // risk periods are in view as well as what the shading means.
+            LegendEntry(label = if (alertColors.size == 1) "risk window" else "risk windows") {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    alertColors.forEach { color ->
+                        LegendSwatch(
+                            color = color.copy(alpha = ALERT_BAND_ALPHA),
+                            width = RISK_SWATCH_WIDTH
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun LegendItem(
-    color: androidx.compose.ui.graphics.Color,
-    label: String,
-    dashed: Boolean = false
-) {
-    Canvas(modifier = Modifier.size(width = 24.dp, height = 2.dp)) {
+private fun LegendEntry(label: String, swatch: @Composable () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        swatch()
+        Spacer(Modifier.width(4.dp))
+        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+    }
+}
+
+@Composable
+private fun LegendLine(color: Color, dashed: Boolean = false) {
+    Canvas(modifier = Modifier.size(width = SWATCH_WIDTH, height = 2.dp)) {
         val effect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(6f, 4f)) else null
         drawLine(
             color = color,
@@ -391,18 +482,11 @@ private fun LegendItem(
             pathEffect = effect
         )
     }
-    Spacer(Modifier.width(4.dp))
-    Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
 }
 
 @Composable
-private fun LegendBandItem(
-    color: androidx.compose.ui.graphics.Color,
-    label: String
-) {
-    Canvas(modifier = Modifier.size(width = 24.dp, height = 10.dp)) {
-        drawRect(color = color.copy(alpha = 0.2f))
+private fun LegendSwatch(color: Color, width: Dp = SWATCH_WIDTH) {
+    Canvas(modifier = Modifier.size(width = width, height = 10.dp)) {
+        drawRect(color = color)
     }
-    Spacer(Modifier.width(4.dp))
-    Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
 }

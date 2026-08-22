@@ -10,18 +10,19 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.TaskStackBuilder
-import com.radami.migrainewatch.AlertDetailActivity
+import com.radami.migrainewatch.MainActivity
 import com.radami.migrainewatch.R
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatHpa
+import com.radami.migrainewatch.format.label
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Posts pressure alerts to the system tray and opens the matching detail screen on tap. */
+/** Posts pressure alerts to the system tray and opens the Pressure screen on tap. */
 @Singleton
 class AlertNotifier @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -30,7 +31,6 @@ class AlertNotifier @Inject constructor(
     private companion object {
         const val TAG = "AlertNotifier"
         const val CHANNEL_ID = "pressure_alerts"
-        const val DROP_DIRECTION = "drop"
     }
 
     private val timeFormatter = AppDateFormats.WEEKDAY_AND_TIME
@@ -62,12 +62,9 @@ class AlertNotifier @Inject constructor(
 
         ensureChannel()
 
-        val directionLabel =
-            if (alert.direction == DROP_DIRECTION) "pressure drop" else "pressure rise"
-
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
-            .setContentTitle("${formatHpa(alert.delta)} hPa $directionLabel")
+            .setContentTitle("${formatHpa(alert.delta)} hPa ${alert.direction.label}")
             .setContentText(timingLabel(alert, phase))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
@@ -100,13 +97,14 @@ class AlertNotifier @Inject constructor(
         }
     }
 
-    /** Opens the alert's detail screen with Today underneath it, as if navigated to in-app. */
+    /**
+     * Opens the Pressure screen, which lists the event and shades it on its chart. The alert
+     * itself is not passed along: that screen reads the same detection the notification came
+     * from, so handing it a copy could only ever disagree with what it works out for itself.
+     */
     private fun detailIntent(alert: AlertWindow): PendingIntent {
-        val intent = Intent(context, AlertDetailActivity::class.java).apply {
-            putExtra("startEpoch", alert.start.epochSecond)
-            putExtra("endEpoch", alert.end.epochSecond)
-            putExtra("delta", alert.delta)
-            putExtra("direction", alert.direction)
+        val intent = Intent(context, MainActivity::class.java).apply {
+            putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.Tab.PRESSURE.name)
         }
 
         return TaskStackBuilder.create(context)
@@ -121,7 +119,11 @@ class AlertNotifier @Inject constructor(
      * Stable per event, so a re-posted warning replaces the old one instead of stacking up.
      * Minutes are enough resolution to separate two events; direction separates a drop from a
      * rise that start together.
+     *
+     * Hashed on the wire name and not the enum constant: an enum's hash code is its identity,
+     * which differs between processes, and an id that moved would leave the old notification
+     * in the tray beside the new one.
      */
     private fun notificationId(alert: AlertWindow): Int =
-        (alert.start.epochSecond / 60).toInt() * 31 + alert.direction.hashCode()
+        (alert.start.epochSecond / 60).toInt() * 31 + alert.direction.wireName.hashCode()
 }

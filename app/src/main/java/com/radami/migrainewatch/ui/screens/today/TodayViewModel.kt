@@ -26,8 +26,8 @@ import javax.inject.Inject
 
 data class TodayUiState(
     val currentPressure: Float? = null,
-    val historical: List<PressureReading> = emptyList(),
-    val forecast: List<PressureReading> = emptyList(),
+    /** Every reading the chart may draw from, sorted by time. */
+    val readings: List<PressureReading> = emptyList(),
     val alertWindows: List<AlertWindow> = emptyList(),
     val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
     val symptomFreeStreak: SymptomFreeStreak? = null,
@@ -69,10 +69,13 @@ class TodayViewModel @Inject constructor(
                 Triple(readings, entries, settings)
             }.collectLatest { (readings, entries, settings) ->
                 // Re-evaluate "now" on every emission so the current pressure and the
-                // historical/forecast split don't go stale while the screen stays open.
+                // relevance of an event don't go stale while the screen stays open.
                 val now = Instant.now()
-                val hist = readings.filter { it.dateTime.isBefore(now) }
-                val fore = readings.filter { !it.dateTime.isBefore(now) }
+
+                // The last measured reading, or the earliest forecast one if the screen is
+                // open before any measurement has landed.
+                val current = readings.lastOrNull { it.dateTime.isBefore(now) }
+                    ?: readings.firstOrNull()
 
                 // Detection goes through the shared use case so the banner and the scheduled
                 // notifications always describe the same set of events. The streak walks the
@@ -87,10 +90,8 @@ class TodayViewModel @Inject constructor(
                 }
 
                 _uiState.value = TodayUiState(
-                    currentPressure = hist.lastOrNull()?.pressureMsl
-                        ?: fore.firstOrNull()?.pressureMsl,
-                    historical = hist,
-                    forecast = fore,
+                    currentPressure = current?.pressureMsl,
+                    readings = readings,
                     alertWindows = alerts,
                     alertThresholdHpa = settings.alertThresholdHpa,
                     symptomFreeStreak = streak,

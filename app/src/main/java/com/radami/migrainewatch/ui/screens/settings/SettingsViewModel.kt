@@ -187,7 +187,7 @@ class SettingsViewModel @Inject constructor(
             val phase = AlertPhase.of(next, now)
             val message = when {
                 notifier.notify(next, phase) ->
-                    "Sent: ${formatHpa(next.delta)} hPa ${next.direction} ($phase)"
+                    "Sent: ${formatHpa(next.delta)} hPa ${next.direction.wireName} ($phase)"
                 else -> "Blocked — notifications are not permitted"
             }
             _debugMessages.emit(message)

@@ -6,8 +6,9 @@ import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
-import com.radami.migrainewatch.domain.AlertDetector
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.domain.ChartStep
+import com.radami.migrainewatch.domain.PressureAlertUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,23 +16,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
-enum class TimeRange(val label: String, val hours: Long) {
-    Hours24("24 hrs", 24),
-    Hours48("48 hrs", 48),
-    Days7("7 days", 168)
+/** The chip above the chart, and the resolution each one asks the chart to draw at. */
+enum class TimeRange(val label: String, val step: ChartStep) {
+    Hours24("24 hrs", ChartStep.ThreeHours),
+    Hours48("48 hrs", ChartStep.SixHours),
+    Days7("7 days", ChartStep.OneDay)
 }
 
 data class PressureUiState(
     val currentPressure: Float? = null,
-    val historical: List<PressureReading> = emptyList(),
-    val forecast: List<PressureReading> = emptyList(),
-    val pastEvents: List<AlertWindow> = emptyList(),
+    /** Every reading the chart may draw from, sorted by time. */
+    val readings: List<PressureReading> = emptyList(),
     val alertWindows: List<AlertWindow> = emptyList(),
     val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
     val selectedRange: TimeRange = TimeRange.Days7,
@@ -43,13 +45,22 @@ data class PressureUiState(
 @HiltViewModel
 class PressureViewModel @Inject constructor(
     private val pressureRepository: PressureRepository,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val alertUseCase: PressureAlertUseCase
 ) : ViewModel() {
+
+    private companion object {
+        /**
+         * How much history to read. The widest chip draws three and a half days of it, and
+         * detection reads back [PressureAlertUseCase.DETECTION_HISTORY_HOURS] to find where an
+         * event underway began; a whole day over the longer of the two absorbs the drift
+         * between opening the screen and each later emission.
+         */
+        const val HISTORY_DAYS = 4L
+    }
 
     private val _uiState = MutableStateFlow(PressureUiState())
     val uiState: StateFlow<PressureUiState> = _uiState.asStateFlow()
-
-    private val selectedRange = MutableStateFlow(TimeRange.Days7)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -60,56 +71,55 @@ class PressureViewModel @Inject constructor(
         observeData()
     }
 
+    /**
+     * The range only picks the resolution the chart draws at, so it is written straight to the
+     * state rather than fed back through the data flow: the chip has to select on the tap, not
+     * a database round trip later, and none of the data below depends on it.
+     */
     fun selectRange(range: TimeRange) {
-        selectedRange.value = range
+        _uiState.update { it.copy(selectedRange = range) }
     }
 
     private fun observeData() {
+        // Fixed when the screen opens, as the Today screen's is: a range that slid with the
+        // clock would resubscribe the query on every emission.
+        val queryStart = Instant.now()
+        val from = queryStart.minus(HISTORY_DAYS, ChronoUnit.DAYS)
+        val to = queryStart.plus(PressureAlertUseCase.FORECAST_DAYS, ChronoUnit.DAYS)
+
         viewModelScope.launch {
             combine(
-                selectedRange,
+                pressureRepository.getReadingsInRange(from, to),
                 userPreferences.settings
-            ) { range, settings -> Pair(range, settings) }
-                .collectLatest { (range, settings) ->
+            ) { readings, settings -> Pair(readings, settings) }
+                .collectLatest { (readings, settings) ->
+                    // Re-evaluated per emission so the current reading and the relevance of an
+                    // event don't go stale while the screen stays open.
                     val now = Instant.now()
-                    // Always query the full stored history (30 days), not just the selected
-                    // chart range: the "Last 3 events" card scans all of it. The chart only
-                    // samples the instants it needs, so the wider list doesn't affect it.
-                    val from = now.minus(30, ChronoUnit.DAYS)
-                    val to = now.plus(7, ChronoUnit.DAYS)
 
-                    pressureRepository.getReadingsInRange(from, to)
-                        .collectLatest { readings ->
-                            val hist = readings.filter { it.dateTime.isBefore(now) }
-                            val fore = readings.filter { !it.dateTime.isBefore(now) }
+                    // Detection goes through the shared use case, so the windows shaded here
+                    // are exactly the ones the Today banner and the notifications describe
+                    // rather than a second opinion on the same data.
+                    val alerts = withContext(Dispatchers.Default) {
+                        alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now)
+                    }
 
-                            val (alerts, pastEvents) = withContext(Dispatchers.Default) {
-                                Pair(
-                                    AlertDetector.detect(fore, settings.alertThresholdHpa),
-                                    // Detect over the full series so an event that is still
-                                    // underway keeps its true end (in the future) and is
-                                    // excluded — it's a current alert, not history.
-                                    AlertDetector.detect(readings, settings.alertThresholdHpa)
-                                        .filter { it.end.isBefore(now) }
-                                        .sortedByDescending { it.end }
-                                        .take(3)
-                                )
-                            }
+                    // The last measured reading, or the earliest forecast one if the screen is
+                    // open before any measurement has landed.
+                    val current = readings.lastOrNull { it.dateTime.isBefore(now) }
+                        ?: readings.firstOrNull()
 
-                            _uiState.value = PressureUiState(
-                                currentPressure = hist.lastOrNull()?.pressureMsl
-                                    ?: fore.firstOrNull()?.pressureMsl,
-                                historical = hist,
-                                forecast = fore,
-                                pastEvents = pastEvents,
-                                alertWindows = alerts,
-                                alertThresholdHpa = settings.alertThresholdHpa,
-                                selectedRange = range,
-                                locationName = settings.location.name,
-                                lastUpdated = readings.maxOfOrNull { it.fetchedDateTime },
-                                isLoading = false
-                            )
-                        }
+                    _uiState.update { state ->
+                        state.copy(
+                            currentPressure = current?.pressureMsl,
+                            readings = readings,
+                            alertWindows = alerts,
+                            alertThresholdHpa = settings.alertThresholdHpa,
+                            locationName = settings.location.name,
+                            lastUpdated = readings.maxOfOrNull { it.fetchedDateTime },
+                            isLoading = false
+                        )
+                    }
                 }
         }
     }

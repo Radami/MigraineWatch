@@ -14,7 +14,7 @@ class AlertNotificationDeciderTest {
     private fun alert(
         startHoursFromNow: Long,
         durationHours: Long = 20,
-        direction: String = "drop",
+        direction: PressureDirection = PressureDirection.DROP,
         delta: Float = 12f
     ) = AlertWindow(
         start = now.plus(Duration.ofHours(startHoursFromNow)),
@@ -26,7 +26,7 @@ class AlertNotificationDeciderTest {
     private fun notified(alert: AlertWindow, thresholdHpa: Float = 6f) = NotifiedAlert(
         startDateTime = alert.start,
         endDateTime = alert.end,
-        direction = alert.direction,
+        direction = alert.direction.wireName,
         thresholdHpa = thresholdHpa,
         notifiedDateTime = now
     )
@@ -125,8 +125,8 @@ class AlertNotificationDeciderTest {
 
     @Test
     fun `a drop and a rise starting together are warned about separately`() {
-        val drop = alert(startHoursFromNow = 36, direction = "drop")
-        val rise = alert(startHoursFromNow = 36, direction = "rise")
+        val drop = alert(startHoursFromNow = 36, direction = PressureDirection.DROP)
+        val rise = alert(startHoursFromNow = 36, direction = PressureDirection.RISE)
 
         val pending = decide(listOf(drop, rise), alreadyNotified = listOf(notified(drop)))
 
@@ -153,8 +153,8 @@ class AlertNotificationDeciderTest {
 
     @Test
     fun `returns the full qualifying set so callers can cancel what is missing`() {
-        val soon = alert(startHoursFromNow = 20, direction = "drop")
-        val later = alert(startHoursFromNow = 60, direction = "rise")
+        val soon = alert(startHoursFromNow = 20, direction = PressureDirection.DROP)
+        val later = alert(startHoursFromNow = 60, direction = PressureDirection.RISE)
 
         val pending = decide(listOf(later, soon))
 

@@ -12,6 +12,7 @@ import com.radami.migrainewatch.domain.AlertNotificationDecider
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.PressureAlertUseCase
+import com.radami.migrainewatch.domain.PressureDirection
 import com.radami.migrainewatch.notifications.AlertNotifier
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -61,7 +62,7 @@ class AlertNotificationWorker @AssistedInject constructor(
             NotifiedAlert(
                 startDateTime = alert.start,
                 endDateTime = alert.end,
-                direction = alert.direction,
+                direction = alert.direction.wireName,
                 thresholdHpa = userPreferences.settings.first().alertThresholdHpa,
                 notifiedDateTime = now
             )
@@ -79,13 +80,15 @@ class AlertNotificationWorker @AssistedInject constructor(
             KEY_START_EPOCH to alert.start.epochSecond,
             KEY_END_EPOCH to alert.end.epochSecond,
             KEY_DELTA to alert.delta,
-            KEY_DIRECTION to alert.direction
+            KEY_DIRECTION to alert.direction.wireName
         )
 
         private fun androidx.work.Data.toAlertWindow(): AlertWindow? {
             val start = getLong(KEY_START_EPOCH, -1L)
             val end = getLong(KEY_END_EPOCH, -1L)
-            val direction = getString(KEY_DIRECTION)
+            // Work can outlive the version that enqueued it, so a direction this build
+            // cannot read fails the whole item rather than being defaulted to one of them.
+            val direction = getString(KEY_DIRECTION)?.let { PressureDirection.ofWireName(it) }
             if (start < 0 || end < 0 || direction == null) return null
 
             return AlertWindow(

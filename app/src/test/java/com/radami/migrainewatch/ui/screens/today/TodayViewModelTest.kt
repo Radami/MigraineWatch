@@ -6,6 +6,7 @@ import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.SymptomRepository
 import com.radami.migrainewatch.domain.PressureAlertUseCase
+import com.radami.migrainewatch.domain.PressureDirection
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -89,6 +90,6 @@ class TodayViewModelTest {
         
         val state = viewModel.uiState.value
         assertEquals(1, state.alertWindows.size)
-        assertEquals("drop", state.alertWindows[0].direction)
+        assertEquals(PressureDirection.DROP, state.alertWindows[0].direction)
     }
 }
