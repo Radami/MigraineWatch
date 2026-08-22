@@ -3,7 +3,10 @@ package com.radami.migrainewatch.data.model
 enum class Severity {
     CLEAR, MILD, AURA, MIGRAINE;
 
-    /** "Migraine" — the one spelling of a severity that is shown to the user. */
+    /**
+     * How a severity is spelled wherever the user sees one: "Clear", "Mild", "Aura", "Migraine".
+     * Kept in one place so the screens showing a severity cannot drift into different wording.
+     */
     val label: String get() = name.lowercase().replaceFirstChar { it.uppercase() }
 
     /**
