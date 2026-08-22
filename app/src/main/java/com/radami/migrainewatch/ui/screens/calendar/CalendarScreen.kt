@@ -369,7 +369,7 @@ private fun StatsCard(
                             SeveritySwatch(color = severity.toColor(), size = STATS_SWATCH_SIZE)
                             Spacer(Modifier.width(4.dp))
                             Text(
-                                severity.name.lowercase().replaceFirstChar { it.uppercase() },
+                                severity.label,
                                 style = MaterialTheme.typography.labelSmall
                             )
                         }
@@ -419,7 +419,7 @@ private fun DayDetailSheet(
             SeveritySwatch(color = severityColor, size = LEGEND_SWATCH_SIZE)
             Spacer(Modifier.width(8.dp))
             Text(
-                entry.severity.name.lowercase().replaceFirstChar { it.uppercase() },
+                entry.severity.label,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium
             )

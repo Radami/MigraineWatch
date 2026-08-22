@@ -41,7 +41,7 @@ class TodayViewModelTest {
         Dispatchers.setMain(testDispatcher)
         
         every { userPreferences.settings } returns flowOf(AppSettings())
-        every { symptomRepository.getEntriesInRange(any(), any()) } returns flowOf(emptyList())
+        every { symptomRepository.getAllEntries() } returns flowOf(emptyList())
     }
 
     @After
