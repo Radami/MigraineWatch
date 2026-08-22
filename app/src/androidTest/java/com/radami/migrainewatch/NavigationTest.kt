@@ -69,7 +69,8 @@ class NavigationTest {
         // WorkManager.initialize(); without this MainActivity fails on getInstance().
         WorkManagerTestInitHelper.initializeTestWorkManager(ApplicationProvider.getApplicationContext())
 
-        // Preferences survive between instrumented runs, so pin every value the test depends on.
+        // The sandbox app is installed fresh for the run, so it starts with no location and
+        // onboarding unfinished. Seed everything the test depends on before the activity opens.
         runBlocking {
             userPreferences.saveLocation(HOME_LOCATION)
             userPreferences.setOnboardingComplete(true)

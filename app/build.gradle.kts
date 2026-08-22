@@ -36,6 +36,12 @@ val keystoreProperties = Properties().apply {
         ?.use { load(it) }
 }
 
+/**
+ * The build type the tests run against. Named rather than repeated, since it has to agree in
+ * three places: the build type itself, `testBuildType`, and the id suffix it installs under.
+ */
+val SANDBOX_BUILD_TYPE = "sandbox"
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -77,9 +83,37 @@ android {
         }
     }
 
+    /**
+     * Tests run against [SANDBOX_BUILD_TYPE], not against debug.
+     *
+     * It is the debug build but for its application id and version name, both of which carry a
+     * suffix so that it installs *beside* the app being developed rather than on top of it.
+     * Sharing one id cost real data: `connectedAndroidTest` uninstalls the app under test when
+     * it finishes, so every run wiped the log built up while developing, and a signature
+     * mismatch made it worse by forcing an uninstall before the run as well.
+     *
+     * Note this also moves the JVM unit tests onto this build type — AGP derives both test
+     * variants from `testBuildType` — so the task is `testSandboxUnitTest`, not
+     * `testDebugUnitTest`.
+     */
+    testBuildType = SANDBOX_BUILD_TYPE
+
     buildTypes {
         debug {
             buildConfigField("boolean", "USE_MOCK_DATA", useMockData.toString())
+        }
+
+        create(SANDBOX_BUILD_TYPE) {
+            initWith(getByName("debug"))
+
+            // The whole point: a separate install, with its own data directory.
+            applicationIdSuffix = ".$SANDBOX_BUILD_TYPE"
+            versionNameSuffix = "-$SANDBOX_BUILD_TYPE"
+
+            // initWith carries over `isDebuggable` and the USE_MOCK_DATA field, but leaves the
+            // signing config null, and an unsigned build cannot be installed. Same key as debug,
+            // which costs nothing now that the two ids can never displace each other.
+            signingConfig = signingConfigs.getByName("debug")
         }
 
         release {
@@ -125,6 +159,15 @@ android {
         // MigrationTestHelper reads the exported schemas off the device as assets, so the
         // directory Room writes them to has to be packaged into the instrumented test APK.
         getByName("androidTest").assets.srcDirs(files("$projectDir/schemas"))
+
+        // initWith copies build type *properties*, not source directories, so without this the
+        // sandbox build would silently lack src/debug — and with it DebugAlertReceiver, leaving
+        // the documented `adb shell am broadcast` trigger to do nothing on a manual launch.
+        // Sharing the directory is what makes "the debug build under another id" true.
+        getByName(SANDBOX_BUILD_TYPE) {
+            java.srcDir("src/debug/java")
+            manifest.srcFile("src/debug/AndroidManifest.xml")
+        }
     }
 
     testOptions {

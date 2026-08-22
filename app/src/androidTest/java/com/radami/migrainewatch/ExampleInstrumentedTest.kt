@@ -6,7 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Test
 import org.junit.runner.RunWith
 
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
 
 /**
  * Instrumented test, which will execute on an Android device.
@@ -17,8 +17,11 @@ import org.junit.Assert.*
 class ExampleInstrumentedTest {
     @Test
     fun useAppContext() {
-        // Context of the app under test.
+        // Context of the app under test. Compared against BuildConfig rather than a literal:
+        // tests run against the `sandbox` build type, whose id carries a suffix so that
+        // installing it cannot disturb the build being developed with. Taking the expected id
+        // from the build keeps the suffix the build's business, and still pins it exactly.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.radami.migrainewatch", appContext.packageName)
+        assertEquals(BuildConfig.APPLICATION_ID, appContext.packageName)
     }
 }
