@@ -84,13 +84,17 @@ regardless of these values.
 
 ## Running the tests
 
+Both suites run against the `sandbox` build type rather than `debug` — see
+[The sandbox build type](#the-sandbox-build-type) for why, and why the task names read the way
+they do.
+
 ### Unit tests (JVM, no device needed)
 
 ```bash
-./gradlew testDebugUnitTest
+./gradlew testSandboxUnitTest
 ```
 
-Report: `app/build/reports/tests/testDebugUnitTest/index.html`
+Report: `app/build/reports/tests/testSandboxUnitTest/index.html`
 
 Covers the alert detection logic, `TodayViewModel`, `PressureRepository`, and three
 end-to-end user journeys that drive the real Compose UI under Robolectric.
@@ -99,23 +103,27 @@ Useful variants:
 
 ```bash
 # One class
-./gradlew testDebugUnitTest --tests "*AlertDetectorTest"
+./gradlew testSandboxUnitTest --tests "*AlertDetectorTest"
 
 # One test method
-./gradlew testDebugUnitTest --tests "*TodayViewModelTest.initial state is loading"
+./gradlew testSandboxUnitTest --tests "*TodayViewModelTest.initial state is loading"
 
 # Ignore up-to-date checks
-./gradlew testDebugUnitTest --rerun-tasks
+./gradlew testSandboxUnitTest --rerun-tasks
 ```
 
 ### Instrumented tests (device or emulator required)
 
 ```bash
 adb devices                      # confirm one is attached
-./gradlew connectedDebugAndroidTest
+./gradlew connectedSandboxAndroidTest
 ```
 
-Report: `app/build/reports/androidTests/connected/debug/index.html`
+A run installs `com.radami.migrainewatch.sandbox`, exercises it and uninstalls it again, so it
+never disturbs the app you have been developing with on that device. Pin a particular device
+with `ANDROID_SERIAL=emulator-5556`; without it the task installs on every attached one.
+
+Report: `app/build/reports/androidTests/connected/sandbox/index.html`
 
 Covers the Room DAO against a real in-memory database, and navigation between the alert
 banner, the alert detail screen and the bottom bar.
@@ -123,15 +131,47 @@ banner, the alert detail screen and the bottom bar.
 ### Everything
 
 ```bash
-./gradlew testDebugUnitTest connectedDebugAndroidTest
+./gradlew testSandboxUnitTest connectedSandboxAndroidTest
 ```
+
+### The sandbox build type
+
+Tests do not run against `debug`. They run against `sandbox`, which `initWith(debug)` makes an
+identical build except for an application id of `com.radami.migrainewatch.sandbox` and a
+`-sandbox` version name suffix.
+
+The reason is that `connectedAndroidTest` **uninstalls the app under test when it finishes**.
+With one shared id that is the app you develop with, so every instrumented run deleted its data
+directory and any symptom log accumulated in it. A separate id makes the test install a
+different app on the same device: it appears, runs, and is removed, while the build you have
+been using is neither reinstalled nor touched.
+
+It also removes a second, sharper failure. Installing over an app signed with a different key
+is refused outright — `INSTALL_FAILED_UPDATE_INCOMPATIBLE` — and the test task resolves that by
+uninstalling first, so pointing a test run at a device carrying a release build wiped it. Two
+different ids can never collide that way, which is what lets a store build and a development
+build sit on one emulator.
+
+`testBuildType` decides the variant for *both* test suites, not just the instrumented one, so
+the JVM tests are `testSandboxUnitTest` rather than `testDebugUnitTest` even though nothing
+about them is instrumented. The task name is the only trace of it; the code and configuration
+they compile against are the debug ones.
+
+One thing `initWith` does *not* copy is source directories — it copies build type properties
+alone — so `src/debug/` would belong to `debug` and nothing else. `sourceSets` in
+`app/build.gradle.kts` hands it to `sandbox` as well, which is what keeps `DebugAlertReceiver`
+and its `adb shell am broadcast` trigger working if you launch the sandbox build by hand to
+reproduce a test failure. Without that line it would install and run, and the broadcast would
+quietly reach nothing.
 
 ### Notes on the test setup
 
 - Tests that launch the app seed their own preferences and pick a mock scenario **before**
   launching the activity, so they start as a returning user with deterministic data.
-  Instrumented preferences survive between runs, which is why the values are pinned rather
-  than assumed.
+- Storage is **not** faked. Tests write to a real Room database and a real DataStore, exactly
+  as the app does; the isolation comes from the sandbox build type's own data directory, which
+  is created on install and destroyed on uninstall. Only the network is stubbed, by
+  `FakeHttpClientModule`, since a test cannot depend on live weather.
 - `HiltTestApplication` replaces the app's `Application` class, so tests initialize
   WorkManager themselves via `WorkManagerTestInitHelper`.
 - City search is served by a fake in `FakeGeocodingModule`, which replaces `GeocodingModule`
@@ -210,7 +250,7 @@ unzip -l app/build/outputs/bundle/release/app-release.aab | grep META-INF
 ### Building
 
 ```bash
-./gradlew testDebugUnitTest    # not enforced, just cheap
+./gradlew testSandboxUnitTest    # not enforced, just cheap
 ./gradlew bundleRelease
 ```
 

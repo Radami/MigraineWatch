@@ -33,6 +33,10 @@ for fixes alone, the minor number for anything users would notice.
   handled: the spelling to `format/SeverityFormat.kt`, the colour to `ui/theme/SeverityColors.kt`.
   Together they replace three copies of `toColor()` and two hand-written label lists.
 - Two compact date formats added to `AppDateFormats`.
+- Tests run against a new `sandbox` build type, installed under its own application id.
+  `connectedAndroidTest` uninstalls the app under test when it finishes, so while the tests
+  shared an id with the debug build every run deleted the log accumulated while developing.
+  Task names follow the build type: `testSandboxUnitTest`, `connectedSandboxAndroidTest`.
 
 ## [1.1] — 2026-08-06 · versionCode 2
 
