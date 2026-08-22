@@ -78,11 +78,17 @@ object AlertNotificationDecider {
      * Note this ignores the threshold each was sent at. Once told about an event the user has
      * been told, so raising and then lowering sensitivity does not re-announce it.
      */
-    fun covers(notified: NotifiedAlert, alert: AlertWindow): Boolean =
-        isSameEvent(
-            notified.direction, notified.startDateTime, notified.endDateTime,
+    fun covers(notified: NotifiedAlert, alert: AlertWindow): Boolean {
+        // A row whose direction this version cannot read matches nothing. Re-announcing an
+        // event is a far smaller failure than silently suppressing one on a direction we
+        // guessed at, so an unknown spelling is never treated as a match.
+        val notifiedDirection = PressureDirection.ofWireName(notified.direction) ?: return false
+
+        return isSameEvent(
+            notifiedDirection, notified.startDateTime, notified.endDateTime,
             alert.direction, alert.start, alert.end
         )
+    }
 
     /**
      * Whether two forecasts describe the same event. Shared with the worker so a warning is
@@ -105,10 +111,10 @@ object AlertNotificationDecider {
      * cannot disagree.
      */
     private fun isSameEvent(
-        direction: String,
+        direction: PressureDirection,
         start: Instant,
         end: Instant,
-        otherDirection: String,
+        otherDirection: PressureDirection,
         otherStart: Instant,
         otherEnd: Instant
     ): Boolean {

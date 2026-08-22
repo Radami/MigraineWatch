@@ -18,6 +18,7 @@ class MockDataInterceptor : Interceptor {
     /** Named for what the forecast contains, since that is the only thing a caller picks on. */
     enum class Scenario {
         THREE_EVENTS, // A 12 hPa drop, its 9 hPa recovery, then a 7 hPa drop
+        FOUR_EVENTS,  // The same again with a fourth on the end: one more than the palette holds
         TWO_EVENTS,   // A 9 hPa drop and its 9 hPa recovery
         NO_EVENTS     // Flat
     }
@@ -35,9 +36,9 @@ class MockDataInterceptor : Interceptor {
         private const val LAST_HOUR = 168
 
         /**
-         * Three back-to-back events fill the alert detail chart, which spans 24 h behind to
-         * 60 h ahead: a 12 hPa drop already under way, the 9 hPa recovery from it, then a
-         * 7 hPa drop. Each event's turning point is where the next one starts,
+         * Three back-to-back events fill the Pressure chart's 7 days range, which spans
+         * 3 days behind to 4 ahead: a 12 hPa drop already under way, the 9 hPa recovery from
+         * it, then a 7 hPa drop. Each event's turning point is where the next one starts,
          * so the detector reports three separate alerts and the sensitivity presets peel them
          * off one at a time — High (6) shows all three, Medium (8) two, Low (10) one.
          *
@@ -47,7 +48,8 @@ class MockDataInterceptor : Interceptor {
          */
         private val THREE_EVENT_CURVE = listOf(
             Anchor(FIRST_HOUR, 0f),
-            // Two completed excursions inside the past month, for the "Last 3 events" card.
+            // Two completed excursions inside the past month. They are older than any screen
+            // reaches, so they only ever serve as history for the chart's data to sit on.
             Anchor(-250, 0f), Anchor(-226, -15f), Anchor(-224, -15f), Anchor(-200, 0f),
             Anchor(-160, 0f), Anchor(-136, -15f), Anchor(-134, -15f), Anchor(-110, 0f),
             // Pressure climbs gently into the peak rather than arriving along a flat plateau.
@@ -58,6 +60,29 @@ class MockDataInterceptor : Interceptor {
             Anchor(32, -3f), Anchor(36, -3f),
             Anchor(56, -10f),
             Anchor(LAST_HOUR, -10f)
+        )
+
+        /**
+         * One event more than the alert palette has colours, which is what bounds the Alerts
+         * card: it lists three and says how many it is holding back. Four back-to-back events
+         * laid out like [THREE_EVENT_CURVE] — 20 h of movement, then a 4 h plateau where the
+         * next one begins — so the detector reports four separate alerts.
+         *
+         * Every delta is 12 hPa or more, well clear of all three presets, so the count is four
+         * at every sensitivity. A scenario about what happens above three events must not also
+         * be a scenario about which of them qualify.
+         *
+         * The last event ends 80 h out, so all four sit inside the widest chart range whatever
+         * time of day the test runs at — the cap has to be the only reason a row goes unshaded.
+         */
+        private val FOUR_EVENT_CURVE = listOf(
+            Anchor(FIRST_HOUR, 0f),
+            Anchor(-36, -0.8f), Anchor(-12, 0f),
+            Anchor(8, -12f), Anchor(12, -12f),
+            Anchor(32, 1f), Anchor(36, 1f),
+            Anchor(56, -13f), Anchor(60, -13f),
+            Anchor(80, -1f), Anchor(84, -1f),
+            Anchor(LAST_HOUR, -1f)
         )
 
         /**
@@ -83,6 +108,7 @@ class MockDataInterceptor : Interceptor {
 
         private fun curveFor(scenario: Scenario): List<Anchor> = when (scenario) {
             Scenario.THREE_EVENTS -> THREE_EVENT_CURVE
+            Scenario.FOUR_EVENTS -> FOUR_EVENT_CURVE
             Scenario.TWO_EVENTS -> TWO_EVENT_CURVE
             Scenario.NO_EVENTS -> NO_EVENT_CURVE
         }

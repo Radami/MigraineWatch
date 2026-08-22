@@ -9,7 +9,7 @@ data class AlertWindow(
     val start: Instant,
     val end: Instant,
     val delta: Float,
-    val direction: String  // "drop" | "rise"
+    val direction: PressureDirection
 )
 
 object AlertDetector {
@@ -18,7 +18,12 @@ object AlertDetector {
         val windowMillis = 24L * 60 * 60 * 1000
 
         // Step 1: collect every qualifying 24-hour sliding window.
-        data class RawWindow(val startMillis: Long, val endMillis: Long, val delta: Float, val direction: String)
+        data class RawWindow(
+            val startMillis: Long,
+            val endMillis: Long,
+            val delta: Float,
+            val direction: PressureDirection
+        )
         val raw = mutableListOf<RawWindow>()
         for (i in readings.indices) {
             val startMillis = readings[i].dateTime.toEpochMilli()
@@ -34,7 +39,9 @@ object AlertDetector {
             // last reading instead is fragile with noisy data: neighbouring windows over the
             // same event can flip label, escape the merge in step 2, and end up pinned to the
             // same extremes — i.e. duplicate alerts.
-            val direction = if (maxReading.dateTime <= minReading.dateTime) "drop" else "rise"
+            val direction =
+                if (maxReading.dateTime <= minReading.dateTime) PressureDirection.DROP
+                else PressureDirection.RISE
             raw.add(RawWindow(startMillis, endMillis, delta, direction))
         }
         if (raw.isEmpty()) return emptyList()
@@ -66,9 +73,9 @@ object AlertDetector {
             val minReading = window.minByOrNull { it.pressureMsl }!!
             val delta = maxReading.pressureMsl - minReading.pressureMsl
             val (start, end, direction) = if (maxReading.dateTime <= minReading.dateTime) {
-                Triple(maxReading.dateTime, minReading.dateTime, "drop")
+                Triple(maxReading.dateTime, minReading.dateTime, PressureDirection.DROP)
             } else {
-                Triple(minReading.dateTime, maxReading.dateTime, "rise")
+                Triple(minReading.dateTime, maxReading.dateTime, PressureDirection.RISE)
             }
             AlertWindow(start, end, delta, direction)
         }.sortedBy { it.start }

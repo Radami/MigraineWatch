@@ -65,7 +65,7 @@ your own build at Open-Meteo never turns the suite red.
 Choose the pattern it generates in `data/remote/mock/MockDataInterceptor.kt`:
 
 ```kotlin
-var currentScenario: Scenario = Scenario.THREE_EVENTS  // THREE_EVENTS | TWO_EVENTS | NO_EVENTS
+var currentScenario: Scenario = Scenario.THREE_EVENTS  // THREE_EVENTS | FOUR_EVENTS | TWO_EVENTS | NO_EVENTS
 ```
 
 Each scenario is named for what its forecast contains, and the sizes are exact — the curves
@@ -74,13 +74,16 @@ carry no noise, so a scenario behaves the same at every location:
 | scenario | events | alerts at High / Medium / Low |
 | --- | --- | --- |
 | `THREE_EVENTS` | 12 hPa drop, 9 hPa rise, 7 hPa drop | 3 / 2 / 1 |
+| `FOUR_EVENTS` | 12 hPa drop, 13 hPa rise, 14 hPa drop, 12 hPa rise | 4 / 4 / 4 |
 | `TWO_EVENTS` | 9 hPa drop, 9 hPa rise | 2 / 2 / 0 |
 | `NO_EVENTS` | none | 0 / 0 / 0 |
 
 `THREE_EVENTS` is the default: its events are laid out back to back inside the window the
-alert detail chart draws, and each sensitivity preset drops one of them. City search always
-goes to the real geocoding service — it is never mocked. Release builds use the live API
-regardless of these values.
+Pressure chart's widest range draws, and each sensitivity preset drops one of them.
+`FOUR_EVENTS` holds one more than the alert palette has colours, which is what the Alerts
+card caps its list at; its deltas are all well clear of every preset so the count stays four
+whatever the sensitivity. City search always goes to the real geocoding service — it is never
+mocked. Release builds use the live API regardless of these values.
 
 ## Running the tests
 
@@ -125,8 +128,8 @@ with `ANDROID_SERIAL=emulator-5556`; without it the task installs on every attac
 
 Report: `app/build/reports/androidTests/connected/sandbox/index.html`
 
-Covers the Room DAO against a real in-memory database, and navigation between the alert
-banner, the alert detail screen and the bottom bar.
+Covers the Room DAO against a real in-memory database, and navigation into the Pressure
+screen — from the alert banner, from the notification's intent and from the bottom bar.
 
 ### Everything
 

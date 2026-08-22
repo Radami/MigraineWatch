@@ -59,9 +59,6 @@ object AppDateFormats {
     /** "3PM" — the hourly chart's axis labels. */
     val HOUR: DateTimeFormatter = display("ha")
 
-    /** "PM" — an axis label for a chart whose day is established elsewhere. */
-    val MERIDIEM: DateTimeFormatter = display("a")
-
     private fun display(pattern: String): DateTimeFormatter =
         DateTimeFormatter.ofPattern(pattern, AppLocale.DISPLAY)
 }

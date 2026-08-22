@@ -21,6 +21,19 @@ for fixes alone, the minor number for anything users would notice.
   longest symptom-free streak and the dates it ran between.
 
 ### Changed
+- The Pressure screen absorbs the alert screen. Its chart now shades the risk window of every
+  current pressure event, and the card beneath lists those events in the compact form the past
+  ones used to take. Tapping an alert notification, or the chevron on the Today banner, opens
+  this screen rather than a page of its own.
+- An event outside the range the chart is set to is listed as "not in view" rather than left
+  unexplained: alerts are found up to seven days out, while the 24 hrs range only reaches
+  twelve hours ahead, and even the 7 days range stops four and a half days out.
+- The Alerts card lists at most three events at once, and says how many it is not showing.
+  Three is how many colours the palette holds, and a colour is how a row is matched to its
+  shading on the chart; a fourth row would have to borrow one, and two events wearing the
+  same colour is worse than a fourth row left off.
+- The chart card is headed "Pressure" and carries the current reading beside the heading, the
+  way the Today screen states it, and both cards on the screen now head at the same size.
 - Calendar days at high risk are now drawn as a circle instead of carrying a small trend
   arrow. The arrows told you which way the pressure was moving, which people read as decoration
   rather than a warning; the shape says the thing that matters, which is that the day is one to
@@ -31,17 +44,64 @@ for fixes alone, the minor number for anything users would notice.
 - The seven-day symptom strip on the Today screen, replaced by the streak count above. The
   same seven days are still on the Calendar screen.
 - The up and down pressure arrows on the Calendar screen.
+- The "Last 3 events" card on the Pressure screen. It described events already over and
+  outside every chart range, where the alerts that replace it are the ones still worth acting
+  on.
+- The separate pressure alert screen, merged into the Pressure screen above.
 
 ### Fixed
 - A pressure event that ended exactly at midnight marked the following day as one to watch,
   even though the event never ran into it.
+- Opening the app from an alert notification and then moving to another tab no longer snaps
+  back to Pressure when the screen is rotated.
+- The Alerts card said it had found nothing "in the next 7 days" when it also covers events
+  that finished within the last day. It now names both bounds.
+- Tapping a chart range chip selected it immediately rather than after the database had been
+  read again — which it no longer is, because the range does not change what is queried.
 
 ### Internal
+- `ChartWindow` and `ChartStep` hold the pressure chart's anchoring and the mapping from an
+  instant to a chart x-value. The Pressure screen builds the same window to decide which
+  alerts its chart can reach, so the shading and the "not in view" hint can never disagree.
+  They sit in `domain` and not beside the chart: both are pure `java.time` value types, and a
+  ViewModel working out what its chart can reach should not import the view layer to do it.
+  Covered by 13 unit tests.
+- `PressureChart` takes that window and the alerts to shade rather than a step in hours, and
+  draws each risk band clipped to the plot area and beneath the daily range. `AlertDetailChart`
+  went with the screen it served. It takes one sorted `readings` list rather than a historical
+  and a forecast one, which it only ever concatenated — the split into two line series is by
+  chart index, and the sortedness the interpolation depends on was an unstated invariant of
+  how the caller happened to split.
+- `PressureViewModel` detects through `PressureAlertUseCase`, as the Today screen and the
+  notification scheduler already did, instead of running `AlertDetector` over a window of its
+  own; it no longer reads thirty days of history for the removed card. The selected range no
+  longer sits upstream of the query, so changing it neither re-reads the database nor re-runs
+  detection. Covered by 6 unit tests, one of which pins the deliberate gap between the seven
+  days detection reaches and the four and a half the widest chart range draws.
+- The alert notification opens `MainActivity` with `EXTRA_OPEN_TAB` instead of a second
+  activity, naming a `MainActivity.Tab` rather than a nav route — the notification layer no
+  longer reaches into the nav graph. The name is checked against that enum before it is used
+  (the launcher activity is exported, so anything on the device can name a destination), and
+  it is honoured only on a fresh launch, not on an instance rebuilt around a restored back
+  stack.
+- A `FOUR_EVENTS` mock scenario, one event past the three the Alerts card lists, so the cap
+  and its "N more events not shown" line are covered by a journey test rather than by
+  inspection. Its deltas are all 12 hPa or more so the count holds at every sensitivity, and
+  every event fits the widest chart range so the cap is the only reason a row goes unshaded.
+- `AlertWindow.direction` is a `PressureDirection` rather than a `"drop"`/`"rise"` string,
+  with its user-facing wording in `format` beside the severity labels. The literal spellings
+  survive as `wireName` at the three boundaries that have to keep matching what an earlier
+  install wrote: the `notified_alerts` column, the notification worker's input data, and the
+  unique work name and notification id built from it.
+- `AlertColors` reduces to one hue per alert now that no alert card needs a container colour.
+- The daily range band gets its own `ChartRangeBand` colour instead of the measured line's.
+  Sharing it put a terracotta band a shade away from the second alert's orange, so with the
+  risk shading now drawn on the same chart the two read as one thing; blue is the hue the
+  alert palette leaves free.
 - `SymptomFreeStreak` domain type holds the streak maths, covered by 11 unit tests.
 - `AlertDetector.eventDaysByDirection` becomes `eventDays`, returning a `Set<LocalDate>`. The
   per-day "which direction held this day longest" tie-break existed only to choose an arrow,
-  so the `"drop"`/`"rise"` strings no longer reach the calendar. They still carry the alert
-  screens and the notification payloads, which is the last of them.
+  so direction no longer reaches the calendar at all.
 - `eventDays` trims an end day the alert only touches at its first instant. The old
   dominant-direction map kept such a day with a zero-second overlap, which was easy to miss
   behind a small arrow and is not behind a full circle.

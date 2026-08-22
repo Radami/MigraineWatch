@@ -21,6 +21,11 @@ data class NotifiedAlert(
      */
     @ColumnInfo(defaultValue = "0")
     val endDateTime: Instant,
+    /**
+     * A `PressureDirection.wireName`. Stored as the string it has always been so rows written
+     * by an earlier install keep matching, and read back through `ofWireName` rather than
+     * being trusted as a constant name.
+     */
     val direction: String,
     /** The sensitivity in force when it was sent. Diagnostic only — see the decider. */
     val thresholdHpa: Float,

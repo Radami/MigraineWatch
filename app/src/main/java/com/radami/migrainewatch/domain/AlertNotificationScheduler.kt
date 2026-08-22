@@ -143,6 +143,6 @@ class AlertNotificationScheduler @Inject constructor(
      */
     private fun workName(notification: PendingAlertNotification): String {
         val alert = notification.alert
-        return "$WORK_NAME_PREFIX${alert.direction}_${alert.start.epochSecond / 3600}"
+        return "$WORK_NAME_PREFIX${alert.direction.wireName}_${alert.start.epochSecond / 3600}"
     }
 }
