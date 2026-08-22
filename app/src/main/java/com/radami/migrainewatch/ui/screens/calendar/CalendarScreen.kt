@@ -65,13 +65,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radami.migrainewatch.data.model.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.format.AppDateFormats
+import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.ui.components.DayMarker
 import com.radami.migrainewatch.ui.components.SeveritySwatch
 import com.radami.migrainewatch.ui.theme.DangerRed
-import com.radami.migrainewatch.ui.theme.SeverityAura
-import com.radami.migrainewatch.ui.theme.SeverityClear
-import com.radami.migrainewatch.ui.theme.SeverityMigraine
-import com.radami.migrainewatch.ui.theme.SeverityMild
+import com.radami.migrainewatch.ui.theme.color
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -253,7 +251,7 @@ private fun DayCell(
 
     DayMarker(
         day = day,
-        severityColor = entry?.severity?.toColor(),
+        severityColor = entry?.severity?.color,
         eventDirection = eventDirection,
         isToday = isToday,
         modifier = modifier
@@ -272,10 +270,8 @@ private fun CalendarLegend() {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        LegendItem(color = SeverityClear, label = "Clear")
-        LegendItem(color = SeverityMild, label = "Mild")
-        LegendItem(color = SeverityAura, label = "Aura")
-        LegendItem(color = SeverityMigraine, label = "Migraine")
+        // Declaration order of the enum, which runs clear to worst.
+        Severity.entries.forEach { LegendItem(color = it.color, label = it.label) }
         LegendTrendItem(icon = Icons.AutoMirrored.Filled.TrendingDown, label = "Drop")
         LegendTrendItem(icon = Icons.AutoMirrored.Filled.TrendingUp, label = "Rise")
     }
@@ -366,7 +362,7 @@ private fun StatsCard(
                             fontWeight = FontWeight.Bold
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            SeveritySwatch(color = severity.toColor(), size = STATS_SWATCH_SIZE)
+                            SeveritySwatch(color = severity.color, size = STATS_SWATCH_SIZE)
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 severity.label,
@@ -389,7 +385,7 @@ private fun DayDetailSheet(
     onDelete: () -> Unit
 ) {
     val dateFormatter = AppDateFormats.DAY_AND_MONTH
-    val severityColor = entry.severity.toColor()
+    val severityColor = entry.severity.color
 
     Column(
         modifier = Modifier
@@ -500,11 +496,4 @@ private fun DayDetailSheet(
             }
         }
     }
-}
-
-private fun Severity.toColor(): Color = when (this) {
-    Severity.CLEAR -> SeverityClear
-    Severity.MILD -> SeverityMild
-    Severity.AURA -> SeverityAura
-    Severity.MIGRAINE -> SeverityMigraine
 }
