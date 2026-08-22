@@ -44,7 +44,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -57,17 +56,14 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
-import com.radami.migrainewatch.data.model.Severity
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatHpa
+import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.SymptomFreeStreak
 import com.radami.migrainewatch.ui.components.PressureChart
 import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
-import com.radami.migrainewatch.ui.theme.SeverityAura
-import com.radami.migrainewatch.ui.theme.SeverityClear
-import com.radami.migrainewatch.ui.theme.SeverityMigraine
-import com.radami.migrainewatch.ui.theme.SeverityMild
+import com.radami.migrainewatch.ui.theme.color
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -328,7 +324,7 @@ private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
                 modifier = Modifier
                     .size(STREAK_SEVERITY_DOT_SIZE)
                     .clip(CircleShape)
-                    .background(streak.lastEvent.severity.toColor())
+                    .background(streak.lastEvent.severity.color)
             )
             Spacer(Modifier.width(6.dp))
             Text(
@@ -413,10 +409,3 @@ private const val NOT_ENOUGH_DATA = "Not enough data"
 private fun dayCount(days: Long): String = "$days ${dayUnit(days)}"
 
 private fun dayUnit(days: Long): String = if (days == 1L) "day" else "days"
-
-private fun Severity.toColor(): Color = when (this) {
-    Severity.CLEAR -> SeverityClear
-    Severity.MILD -> SeverityMild
-    Severity.AURA -> SeverityAura
-    Severity.MIGRAINE -> SeverityMigraine
-}
