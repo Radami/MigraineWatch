@@ -144,8 +144,8 @@ banner, the alert detail screen and the bottom bar.
 Both sit in `defaultConfig` in `app/build.gradle.kts`:
 
 ```kotlin
-versionCode = 1
-versionName = "1.0"
+versionCode = 2
+versionName = "1.1"
 ```
 
 They are not two spellings of the same thing:
@@ -167,6 +167,23 @@ one. Change it when the difference is worth telling users about.
 
 So a re-upload that fixes a broken release is `versionCode = 2` with `versionName` left alone,
 while a real release moves both.
+
+### The changelog
+
+`CHANGELOG.md` records what each version contains. It is written **as the work lands**, in the
+same commit as the change itself — reconstructed from the git log at release time, entries end
+up describing commits rather than describing what changed for the user, and the store listing
+is the only place most users ever read about this app.
+
+Everything in progress goes under `## [Unreleased]`. Entries above that section's `### Internal`
+heading are for users and are what the store text is written from; refactors, tests and build
+changes go under `Internal` and never leave the repository. If a change has no user-visible
+effect it belongs under `Internal`; if it has one, say what a user would notice rather than what
+the code now does.
+
+At release time the `## [Unreleased]` heading becomes the version being cut —
+`## [1.2] — 2026-09-01 · versionCode 3` — a fresh empty `## [Unreleased]` opens above it, and
+the link definitions at the bottom of the file get the new tag.
 
 ### Signing
 
@@ -209,6 +226,34 @@ generates per-device APKs from it itself.
 
 Release builds always call the live Open-Meteo API. `USE_MOCK_DATA` is hard-coded false for
 the release build type, so neither `local.properties` nor `-PuseMockData=true` can reach one.
+
+### Tagging
+
+Every upload gets an annotated tag on the commit it was built from, so a bug report naming a
+version can be traced to the exact code that user is running:
+
+```bash
+git tag -a v1.2 -m "Release 1.2 (versionCode 3)"
+git push origin main v1.2
+```
+
+Annotated rather than lightweight — the tag then carries its own date and author, and
+`git describe` will use it. If a fix lands after tagging, that is a new version, not a re-tag:
+Play has already tied that `versionCode` to a specific bundle, and moving a pushed tag makes
+the two disagree about what shipped.
+
+`v1.0` and `v1.1` were tagged after the fact, from the release history rather than at upload:
+
+| Tag | `versionCode` | Commit | |
+| --- | --- | --- | --- |
+| `v1.0` | 1 | `e09dc6a` | Fix minor Play build issues |
+| `v1.1` | 2 | `6ac19b3` | Exclude play assets from github |
+
+### Release notes
+
+Play's "What's new" box takes 500 characters per language, so it is a **trim** of the version's
+changelog section rather than a copy of it: keep the user-facing entries, drop everything under
+`Internal`, lead with the change people will actually notice, and drop fixes nobody reported.
 
 ### Store assets
 
