@@ -28,9 +28,9 @@ import javax.inject.Inject
 data class CalendarUiState(
     val currentMonth: YearMonth = YearMonth.now(),
     val entriesInMonth: Map<LocalDate, SymptomEntry> = emptyMap(),
-    // Days touched by a pressure event, mapped to the dominant direction ("drop"/"rise")
-    // on that day — the direction whose events overlap the day the longest.
-    val pressureEventDays: Map<LocalDate, String> = emptyMap(),
+    // Days touched by a pressure event that crossed the user's alert threshold. The calendar
+    // marks these as high risk; which way the pressure moved is not shown.
+    val highRiskDays: Set<LocalDate> = emptySet(),
     // Entry counts per severity for the statistics card. All periods are relative to
     // today, not to the month being browsed in the calendar.
     val monthLogCounts: Map<Severity, Int> = emptyMap(),
@@ -103,9 +103,9 @@ class CalendarViewModel @Inject constructor(
                     .collectLatest { (entries, readings, statsEntries) ->
                         val entriesMap = entries.associateBy { it.date }
 
-                        val eventDays = withContext(Dispatchers.Default) {
+                        val highRiskDays = withContext(Dispatchers.Default) {
                             val alerts = AlertDetector.detect(readings, settings.alertThresholdHpa)
-                            AlertDetector.eventDaysByDirection(alerts, ZoneId.systemDefault())
+                            AlertDetector.eventDays(alerts, ZoneId.systemDefault())
                         }
 
                         val thisMonth = YearMonth.now()
@@ -122,7 +122,7 @@ class CalendarViewModel @Inject constructor(
                         _uiState.value = CalendarUiState(
                             currentMonth = month,
                             entriesInMonth = entriesMap,
-                            pressureEventDays = eventDays,
+                            highRiskDays = highRiskDays,
                             monthLogCounts = monthLogCounts,
                             lastMonthLogCounts = lastMonthLogCounts,
                             last12MonthsLogCounts = last12MonthsLogCounts,

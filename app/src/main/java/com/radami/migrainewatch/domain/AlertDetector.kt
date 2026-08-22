@@ -92,28 +92,29 @@ object AlertDetector {
     }
 
     /**
-     * Maps every day an alert touches to the direction that dominates it. A day covered by
-     * several events (e.g. a drop ending and a rise starting) reports only the direction it
-     * spends the most time in, so a day is never marked with two conflicting trends.
+     * Every day an alert touches, in any direction. The calendar marks a day as high risk or
+     * not, so which way the pressure moved — and how long each direction held the day — carries
+     * no information here; a day touched by any qualifying event is a day to watch.
      */
-    fun eventDaysByDirection(alerts: List<AlertWindow>, zone: ZoneId): Map<LocalDate, String> {
-        val overlapsPerDay = mutableMapOf<LocalDate, MutableMap<String, Long>>()
+    fun eventDays(alerts: List<AlertWindow>, zone: ZoneId): Set<LocalDate> {
+        val days = mutableSetOf<LocalDate>()
         alerts.forEach { alert ->
-            var day = alert.start.atZone(zone).toLocalDate()
-            val lastDay = alert.end.atZone(zone).toLocalDate()
+            val firstDay = alert.start.atZone(zone).toLocalDate()
+            val endDay = alert.end.atZone(zone).toLocalDate()
+
+            // An alert ending exactly at midnight spends no time in the day it lands on, so
+            // that day is not one to watch. Only a window spanning at least two days can end
+            // this way without disappearing entirely.
+            val endsAtMidnight = alert.end == endDay.atStartOfDay(zone).toInstant()
+            val lastDay = if (endsAtMidnight && endDay.isAfter(firstDay)) endDay.minusDays(1) else endDay
+
+            var day = firstDay
             while (!day.isAfter(lastDay)) {
-                val dayStart = day.atStartOfDay(zone).toInstant()
-                val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant()
-                val overlapSeconds =
-                    minOf(alert.end, dayEnd).epochSecond - maxOf(alert.start, dayStart).epochSecond
-
-                overlapsPerDay.getOrPut(day) { mutableMapOf() }
-                    .merge(alert.direction, overlapSeconds, Long::plus)
-
+                days.add(day)
                 day = day.plusDays(1)
             }
         }
 
-        return overlapsPerDay.mapValues { (_, directions) -> directions.maxBy { it.value }.key }
+        return days
     }
 }

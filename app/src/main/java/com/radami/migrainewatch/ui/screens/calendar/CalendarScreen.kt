@@ -28,8 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.TrendingDown
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -67,6 +65,9 @@ import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.ui.components.DayMarker
+import com.radami.migrainewatch.ui.components.DayRisk
+import com.radami.migrainewatch.ui.components.HIGH_RISK_BORDER_WIDTH
+import com.radami.migrainewatch.ui.components.HighRiskShape
 import com.radami.migrainewatch.ui.components.SeveritySwatch
 import com.radami.migrainewatch.ui.theme.DangerRed
 import com.radami.migrainewatch.ui.theme.color
@@ -102,7 +103,7 @@ fun CalendarScreen(
                     MonthCalendar(
                         month = state.currentMonth,
                         entries = state.entriesInMonth,
-                        pressureEventDays = state.pressureEventDays,
+                        highRiskDays = state.highRiskDays,
                         today = today,
                         onPrevMonth = viewModel::previousMonth,
                         onNextMonth = viewModel::nextMonth,
@@ -154,7 +155,7 @@ fun CalendarScreen(
 private fun MonthCalendar(
     month: YearMonth,
     entries: Map<LocalDate, SymptomEntry>,
-    pressureEventDays: Map<LocalDate, String>,
+    highRiskDays: Set<LocalDate>,
     today: LocalDate,
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
@@ -223,7 +224,7 @@ private fun MonthCalendar(
                             day = dayNum,
                             entry = entry,
                             isToday = isToday,
-                            eventDirection = pressureEventDays[date],
+                            risk = if (date in highRiskDays) DayRisk.High else DayRisk.Normal,
                             onClick = { onDayTap(date) },
                             modifier = Modifier.weight(1f)
                         )
@@ -243,21 +244,23 @@ private fun DayCell(
     day: Int,
     entry: SymptomEntry?,
     isToday: Boolean,
-    eventDirection: String?,
+    risk: DayRisk,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val severityLabel = entry?.severity?.name ?: "No entry"
+    // The shape alone carries the risk on screen, so talk-back has to spell it out.
+    val riskLabel = if (risk == DayRisk.High) ", high risk" else ""
 
     DayMarker(
         day = day,
         severityColor = entry?.severity?.color,
-        eventDirection = eventDirection,
+        risk = risk,
         isToday = isToday,
         modifier = modifier
             .aspectRatio(1f)
             .padding(2.dp),
-        contentDescription = "Day $day $severityLabel",
+        contentDescription = "Day $day $severityLabel$riskLabel",
         onClick = onClick
     )
 }
@@ -272,22 +275,24 @@ private fun CalendarLegend() {
     ) {
         // Declaration order of the enum, which runs clear to worst.
         Severity.entries.forEach { LegendItem(color = it.color, label = it.label) }
-        LegendTrendItem(icon = Icons.AutoMirrored.Filled.TrendingDown, label = "Drop")
-        LegendTrendItem(icon = Icons.AutoMirrored.Filled.TrendingUp, label = "Rise")
+        LegendHighRiskItem()
     }
 }
 
+/**
+ * The one legend entry that stands for a shape rather than a colour, so it is drawn as an
+ * unfilled circle in the same outline the unlogged high-risk days use.
+ */
 @Composable
-private fun LegendTrendItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
+private fun LegendHighRiskItem() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.tertiary,
-            modifier = Modifier.size(12.dp)
+        Box(
+            modifier = Modifier
+                .size(LEGEND_SWATCH_SIZE)
+                .border(HIGH_RISK_BORDER_WIDTH, MaterialTheme.colorScheme.outline, HighRiskShape)
         )
         Spacer(Modifier.width(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall)
+        Text("High risk", style = MaterialTheme.typography.labelSmall)
     }
 }
 
