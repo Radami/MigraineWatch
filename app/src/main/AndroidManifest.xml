@@ -30,12 +30,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".AlertDetailActivity"
-            android:exported="false"
-            android:theme="@style/Theme.MigraineWatch"
-            android:parentActivityName=".MainActivity" />
-
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"

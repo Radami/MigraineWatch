@@ -1,6 +1,5 @@
 package com.radami.migrainewatch
 
-import android.app.Application
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
@@ -21,6 +20,7 @@ import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.data.preferences.LocationData
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.remote.mock.MockDataInterceptor
+import com.radami.migrainewatch.ui.theme.ALERT_COLOR_COUNT
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.HiltTestApplication
@@ -32,7 +32,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import javax.inject.Inject
 
@@ -145,6 +144,10 @@ class UserJourneyTest {
             .performScrollToNode(matcher)
     }
 
+    /** How many nodes on screen match, without asserting that any do. */
+    private fun countOf(matcher: SemanticsMatcher): Int =
+        composeTestRule.onAllNodes(matcher).fetchSemanticsNodes().size
+
     /**
      * Bottom bar destinations are found in the unmerged tree: the description sits on the
      * item's icon, and the merged tab node exposes only its label.
@@ -192,18 +195,40 @@ class UserJourneyTest {
         awaitDisplayed(hasContentDescription("Pressure alert banner"))
         composeTestRule.onNodeWithText("Elevated risk", substring = true).assertIsDisplayed()
 
-        // 3. Tapping through hands the alert to a separate activity. Robolectric only records
-        //    the intent, so the test launches the recorded one to continue the journey.
+        // 3. Tapping through switches to the Pressure tab, which is where every current
+        //    event is listed and shaded on the chart
         composeTestRule.onNodeWithContentDescription("View details").performClick()
 
-        val detailIntent = shadowOf(ApplicationProvider.getApplicationContext<Application>())
-            .nextStartedActivity
-        assertEquals(AlertDetailActivity::class.java.name, detailIntent.component?.className)
-        scenarios += ActivityScenario.launch<AlertDetailActivity>(detailIntent)
-
-        // 4. Verify detailed chart and card
-        awaitDisplayed(hasText("Pressure around this event"))
+        // 4. Verify the chart and the event that raised the banner
+        awaitDisplayed(hasContentDescription("Time range 7 days"))
+        scrollToInList(hasText("hPa pressure drop", substring = true))
         composeTestRule.onNodeWithText("hPa pressure drop", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun scenarioD_TheCrowdedForecast() {
+        // 1. A week holding one more event than the alert palette has colours
+        launchApp(MockDataInterceptor.Scenario.FOUR_EVENTS)
+
+        // 2. The Pressure tab is where every current event is listed
+        clickBottomNav("Pressure screen")
+        awaitDisplayed(hasContentDescription("Time range 7 days"))
+        scrollToInList(hasText("Alerts"))
+
+        // 3. Only as many rows as there are colours to tell one event's shading from another's
+        assertEquals(
+            "one row per colour in the palette",
+            ALERT_COLOR_COUNT,
+            countOf(hasText("hPa pressure", substring = true))
+        )
+
+        // 4. The three kept are the three soonest, not the three last: the scenario runs
+        //    drop, rise, drop, rise, so keeping the wrong end would invert these counts.
+        assertEquals("drops shown", 2, countOf(hasContentDescription("pressure drop")))
+        assertEquals("rises shown", 1, countOf(hasContentDescription("pressure rise")))
+
+        // 5. And the card says what it is holding back, so three never passes for all of them
+        composeTestRule.onNodeWithText("1 more event not shown").assertIsDisplayed()
     }
 
     @Test

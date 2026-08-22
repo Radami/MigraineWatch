@@ -1,5 +1,7 @@
 package com.radami.migrainewatch
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -27,8 +29,10 @@ import org.junit.Test
 import javax.inject.Inject
 
 /**
- * Covers the two navigation bugs reported against the alert banner: the banner disappearing
- * after a round trip to another screen, and the bottom bar losing its selection.
+ * Covers the two navigation bugs reported against the alert banner — the banner disappearing
+ * after a round trip to another screen, and the bottom bar losing its selection — and the way
+ * into the app from an alert, which is the Pressure tab whether it is reached by the banner or
+ * by the notification.
  */
 @HiltAndroidTest
 class NavigationTest {
@@ -61,6 +65,9 @@ class NavigationTest {
 
     private var scenario: ActivityScenario<MainActivity>? = null
 
+    private val context: Context
+        get() = ApplicationProvider.getApplicationContext()
+
     @Before
     fun setup() {
         hiltRule.inject()
@@ -78,7 +85,17 @@ class NavigationTest {
         }
 
         MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.TWO_EVENTS
-        scenario = ActivityScenario.launch(MainActivity::class.java)
+    }
+
+    /**
+     * Starts the app as the launcher would, or — with [openTab] — as the alert notification
+     * does, which asks for a tab other than the one the app normally opens on.
+     */
+    private fun launchApp(openTab: MainActivity.Tab? = null) {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            openTab?.let { putExtra(MainActivity.EXTRA_OPEN_TAB, it.name) }
+        }
+        scenario = ActivityScenario.launch(intent)
     }
 
     @After
@@ -108,12 +125,14 @@ class NavigationTest {
     }
 
     @Test
-    fun alertBannerSurvivesRoundTripToDetail() {
+    fun alertBannerSurvivesRoundTripToPressure() {
+        launchApp()
         awaitDisplayed(hasContentDescription("Pressure alert banner"))
 
-        // The banner opens the alert in its own activity
+        // The banner leads to the Pressure tab, which lists the event and shades it
         composeTestRule.onNodeWithContentDescription("View details").performClick()
-        awaitDisplayed(hasText("Pressure around this event"))
+        awaitDisplayed(hasContentDescription("Time range 7 days"))
+        composeTestRule.onNode(isSelectable() and hasText("Pressure")).assertIsSelected()
 
         // Coming back must leave Today exactly as it was, banner included
         Espresso.pressBack()
@@ -122,11 +141,25 @@ class NavigationTest {
     }
 
     @Test
+    fun notificationOpensPressureWithTodayUnderneath() {
+        launchApp(openTab = MainActivity.Tab.PRESSURE)
+
+        awaitDisplayed(hasContentDescription("Time range 7 days"))
+        composeTestRule.onNode(isSelectable() and hasText("Pressure")).assertIsSelected()
+
+        // Today is still the destination beneath it, so back is not an exit from the app
+        Espresso.pressBack()
+        awaitDisplayed(hasContentDescription("Pressure alert banner"))
+        composeTestRule.onNode(isSelectable() and hasText("Today")).assertIsSelected()
+    }
+
+    @Test
     fun alertBannerAndTabSelectionSurviveBottomBarRoundTrip() {
+        launchApp()
         awaitDisplayed(hasContentDescription("Pressure alert banner"))
 
         clickBottomNav("Pressure screen")
-        awaitDisplayed(hasText("Pressure history"))
+        awaitDisplayed(hasContentDescription("Time range 7 days"))
 
         clickBottomNav("Today screen")
 

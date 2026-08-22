@@ -24,7 +24,7 @@ class AlertDetectorTest {
         val alerts = AlertDetector.detect(readings, 5f)
         
         assertEquals(1, alerts.size)
-        assertEquals("drop", alerts[0].direction)
+        assertEquals(PressureDirection.DROP, alerts[0].direction)
         assertEquals(10f, alerts[0].delta, 0.01f)
     }
 
@@ -46,7 +46,7 @@ class AlertDetectorTest {
             start = Instant.parse("2023-10-01T18:00:00Z"),
             end = Instant.parse("2023-10-03T06:00:00Z"),
             delta = 9f,
-            direction = "drop"
+            direction = PressureDirection.DROP
         )
 
         val days = AlertDetector.eventDays(listOf(alert), ZoneId.of("UTC"))
@@ -69,13 +69,13 @@ class AlertDetectorTest {
             start = Instant.parse("2023-10-01T22:00:00Z"),
             end = Instant.parse("2023-10-02T04:00:00Z"),
             delta = 8f,
-            direction = "drop"
+            direction = PressureDirection.DROP
         )
         val rise = AlertWindow(
             start = Instant.parse("2023-10-02T06:00:00Z"),
             end = Instant.parse("2023-10-02T22:00:00Z"),
             delta = 8f,
-            direction = "rise"
+            direction = PressureDirection.RISE
         )
 
         val days = AlertDetector.eventDays(listOf(drop, rise), ZoneId.of("UTC"))
@@ -92,7 +92,7 @@ class AlertDetectorTest {
             start = Instant.parse("2023-10-01T18:00:00Z"),
             end = Instant.parse("2023-10-03T00:00:00Z"),
             delta = 6f,
-            direction = "drop"
+            direction = PressureDirection.DROP
         )
 
         val days = AlertDetector.eventDays(listOf(alert), ZoneId.of("UTC"))
@@ -110,7 +110,7 @@ class AlertDetectorTest {
             start = Instant.parse("2023-10-01T00:00:00Z"),
             end = Instant.parse("2023-10-01T00:00:00Z"),
             delta = 6f,
-            direction = "drop"
+            direction = PressureDirection.DROP
         )
 
         val days = AlertDetector.eventDays(listOf(alert), ZoneId.of("UTC"))
@@ -157,7 +157,10 @@ class AlertDetectorTest {
             assertTrue(a.direction != b.direction || a.end.isBefore(b.start))
         }
         // ...and the three mock events survive as alternating drop / rise / drop.
-        assertEquals(listOf("drop", "rise", "drop"), alerts.map { it.direction })
+        assertEquals(
+            listOf(PressureDirection.DROP, PressureDirection.RISE, PressureDirection.DROP),
+            alerts.map { it.direction }
+        )
     }
 
 }

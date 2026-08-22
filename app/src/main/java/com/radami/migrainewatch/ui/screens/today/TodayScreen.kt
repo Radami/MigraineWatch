@@ -61,9 +61,12 @@ import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.SymptomFreeStreak
+import com.radami.migrainewatch.domain.ChartStep
+import com.radami.migrainewatch.domain.ChartWindow
 import com.radami.migrainewatch.ui.components.PressureChart
 import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
 import com.radami.migrainewatch.ui.theme.color
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -71,7 +74,7 @@ import kotlin.math.roundToInt
 
 @Composable
 fun TodayScreen(
-    onAlertTap: (List<AlertWindow>) -> Unit,
+    onViewAlerts: () -> Unit,
     onChangeLocation: () -> Unit,
     viewModel: TodayViewModel = hiltViewModel()
 ) {
@@ -123,7 +126,7 @@ fun TodayScreen(
             ) {
                 val alerts = state.alertWindows
                 if (alerts.isNotEmpty()) {
-                    AlertBanner(alerts = alerts, onClick = { onAlertTap(alerts) })
+                    AlertBanner(alerts = alerts, onClick = onViewAlerts)
                 }
             }
         }
@@ -144,7 +147,7 @@ private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
     val timeFormatter = AppDateFormats.SHORT_WEEKDAY_AND_TIME
     val zone = remember { ZoneId.systemDefault() }
     val timeLabel = remember(first) { first.start.atZone(zone).format(timeFormatter) }
-    val eventSummary = "${formatHpa(first.delta)} hPa ${first.direction} around $timeLabel"
+    val eventSummary = "${formatHpa(first.delta)} hPa ${first.direction.label} around $timeLabel"
     val message = if (alerts.size == 1) {
         "Elevated risk · $eventSummary"
     } else {
@@ -215,12 +218,11 @@ private fun PressureCard(state: TodayUiState) {
                 )
             }
             Spacer(Modifier.height(12.dp))
-            if (state.historical.isNotEmpty() || state.forecast.isNotEmpty()) {
+            if (state.readings.isNotEmpty()) {
                 PressureChart(
-                    historical = state.historical,
-                    forecast = state.forecast,
-                    modifier = Modifier.fillMaxWidth(),
-                    stepHours = 24
+                    readings = state.readings,
+                    window = ChartWindow.around(Instant.now(), ChartStep.OneDay),
+                    modifier = Modifier.fillMaxWidth()
                 )
             } else if (state.isLoading) {
                 Box(

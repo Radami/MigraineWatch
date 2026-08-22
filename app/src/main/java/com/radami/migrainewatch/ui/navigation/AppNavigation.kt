@@ -1,6 +1,5 @@
 package com.radami.migrainewatch.ui.navigation
 
-import android.content.Intent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -11,16 +10,16 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.radami.migrainewatch.AlertDetailActivity
 import com.radami.migrainewatch.ui.screens.calendar.CalendarScreen
 import com.radami.migrainewatch.ui.screens.calendar.LogEntryScreen
 import com.radami.migrainewatch.ui.screens.onboarding.OnboardingScreen
@@ -28,14 +27,23 @@ import com.radami.migrainewatch.ui.screens.pressure.PressureScreen
 import com.radami.migrainewatch.ui.screens.settings.SettingsScreen
 import com.radami.migrainewatch.ui.screens.today.TodayScreen
 
+/**
+ * @param openTab a tab to show on top of [startDestination] once, for a notification that
+ *   opens the app on a screen other than the one it normally starts on.
+ */
 @Composable
-fun AppNavigation(startDestination: String) {
+fun AppNavigation(startDestination: String, openTab: Screen? = null) {
     val navController = rememberNavController()
-    val context = LocalContext.current
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
     val showBottomBar = currentDestination?.route in bottomNavItems.map { it.screen.route }
+
+    // Navigating rather than starting there keeps Today underneath, so back out of an alert
+    // leaves the user where the app would have opened anyway.
+    LaunchedEffect(openTab) {
+        openTab?.let { navController.navigateToTab(it) }
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -59,15 +67,7 @@ fun AppNavigation(startDestination: String) {
                     bottomNavItems.forEach { item ->
                         NavigationBarItem(
                             selected = currentDestination?.hierarchy?.any { it.route == item.screen.route } == true,
-                            onClick = {
-                                navController.navigate(item.screen.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
+                            onClick = { navController.navigateToTab(item.screen) },
                             icon = {
                                 Icon(
                                     imageVector = item.icon,
@@ -97,21 +97,9 @@ fun AppNavigation(startDestination: String) {
             }
             composable(Screen.Today.route) {
                 TodayScreen(
-                    onAlertTap = { alerts ->
-                        val first = alerts.first()
-                        context.startActivity(
-                            Intent(context, AlertDetailActivity::class.java).apply {
-                                putExtra("startEpoch", first.start.epochSecond)
-                                putExtra("endEpoch", first.end.epochSecond)
-                                putExtra("delta", first.delta)
-                                putExtra("direction", first.direction)
-                                putExtra("allStartEpochs", alerts.map { it.start.epochSecond }.toLongArray())
-                                putExtra("allEndEpochs", alerts.map { it.end.epochSecond }.toLongArray())
-                                putExtra("allDeltas", alerts.map { it.delta }.toFloatArray())
-                                putExtra("allDirections", alerts.joinToString(",") { it.direction })
-                            }
-                        )
-                    },
+                    // The banner names the next event; the Pressure tab is where every one of
+                    // them is listed and shaded on the chart.
+                    onViewAlerts = { navController.navigateToTab(Screen.Pressure) },
                     onChangeLocation = { navController.navigate(Screen.Onboarding.route) }
                 )
             }
@@ -139,5 +127,19 @@ fun AppNavigation(startDestination: String) {
                 )
             }
         }
+    }
+}
+
+/**
+ * Switches to a bottom-bar tab: one entry per tab on the back stack, each remembering where it
+ * was left, and back always returning to the start destination rather than retracing the tabs.
+ */
+private fun NavController.navigateToTab(screen: Screen) {
+    navigate(screen.route) {
+        popUpTo(graph.findStartDestination().id) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
     }
 }
