@@ -39,7 +39,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -48,10 +47,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radami.migrainewatch.data.model.Severity
 import com.radami.migrainewatch.format.AppDateFormats
-import com.radami.migrainewatch.ui.theme.SeverityAura
-import com.radami.migrainewatch.ui.theme.SeverityClear
-import com.radami.migrainewatch.ui.theme.SeverityMigraine
-import com.radami.migrainewatch.ui.theme.SeverityMild
+import com.radami.migrainewatch.format.description
+import com.radami.migrainewatch.format.label
+import com.radami.migrainewatch.ui.theme.color
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -155,34 +153,16 @@ private fun Step1Severity(
         fontWeight = FontWeight.SemiBold
     )
     Spacer(Modifier.height(4.dp))
-    SeverityOption(
-        severity = Severity.CLEAR,
-        label = "Clear",
-        description = "No symptoms today",
-        selected = selectedSeverity == Severity.CLEAR,
-        onClick = { onSelect(Severity.CLEAR) }
-    )
-    SeverityOption(
-        severity = Severity.MILD,
-        label = "Mild",
-        description = "Manageable ache or tension",
-        selected = selectedSeverity == Severity.MILD,
-        onClick = { onSelect(Severity.MILD) }
-    )
-    SeverityOption(
-        severity = Severity.AURA,
-        label = "Aura",
-        description = "Visual / sensory warning signs",
-        selected = selectedSeverity == Severity.AURA,
-        onClick = { onSelect(Severity.AURA) }
-    )
-    SeverityOption(
-        severity = Severity.MIGRAINE,
-        label = "Migraine",
-        description = "Full episode, hard to function",
-        selected = selectedSeverity == Severity.MIGRAINE,
-        onClick = { onSelect(Severity.MIGRAINE) }
-    )
+
+    // Declaration order of the enum, which runs clear to worst.
+    Severity.entries.forEach { severity ->
+        SeverityOption(
+            severity = severity,
+            selected = selectedSeverity == severity,
+            onClick = { onSelect(severity) }
+        )
+    }
+
     Spacer(Modifier.height(4.dp))
     Button(
         onClick = onContinue,
@@ -196,12 +176,12 @@ private fun Step1Severity(
 @Composable
 private fun SeverityOption(
     severity: Severity,
-    label: String,
-    description: String,
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val color = severity.toColor()
+    val label = severity.label
+    val description = severity.description
+    val color = severity.color
     OutlinedCard(
         onClick = onClick,
         border = BorderStroke(
@@ -349,11 +329,4 @@ private fun Step3Details(
     ) {
         Text(if (isSaving) "Saving…" else "Save")
     }
-}
-
-private fun Severity.toColor(): Color = when (this) {
-    Severity.CLEAR -> SeverityClear
-    Severity.MILD -> SeverityMild
-    Severity.AURA -> SeverityAura
-    Severity.MIGRAINE -> SeverityMigraine
 }
