@@ -99,6 +99,23 @@ object AlertDetector {
     }
 
     /**
+     * The span of days [alert] spends any time in, first to last. Callers that only need to ask
+     * whether one day is touched test it with `day in daysTouched(alert, zone)`.
+     */
+    fun daysTouched(alert: AlertWindow, zone: ZoneId): ClosedRange<LocalDate> {
+        val firstDay = alert.start.atZone(zone).toLocalDate()
+        val endDay = alert.end.atZone(zone).toLocalDate()
+
+        // An alert ending exactly at midnight spends no time in the day it lands on, so that
+        // day is not one to watch. Only a window spanning at least two days can end this way
+        // without disappearing entirely.
+        val endsAtMidnight = alert.end == endDay.atStartOfDay(zone).toInstant()
+        val lastDay = if (endsAtMidnight && endDay.isAfter(firstDay)) endDay.minusDays(1) else endDay
+
+        return firstDay..lastDay
+    }
+
+    /**
      * Every day an alert touches, in any direction. The calendar marks a day as high risk or
      * not, so which way the pressure moved — and how long each direction held the day — carries
      * no information here; a day touched by any qualifying event is a day to watch.
@@ -106,17 +123,9 @@ object AlertDetector {
     fun eventDays(alerts: List<AlertWindow>, zone: ZoneId): Set<LocalDate> {
         val days = mutableSetOf<LocalDate>()
         alerts.forEach { alert ->
-            val firstDay = alert.start.atZone(zone).toLocalDate()
-            val endDay = alert.end.atZone(zone).toLocalDate()
-
-            // An alert ending exactly at midnight spends no time in the day it lands on, so
-            // that day is not one to watch. Only a window spanning at least two days can end
-            // this way without disappearing entirely.
-            val endsAtMidnight = alert.end == endDay.atStartOfDay(zone).toInstant()
-            val lastDay = if (endsAtMidnight && endDay.isAfter(firstDay)) endDay.minusDays(1) else endDay
-
-            var day = firstDay
-            while (!day.isAfter(lastDay)) {
+            val span = daysTouched(alert, zone)
+            var day = span.start
+            while (!day.isAfter(span.endInclusive)) {
                 days.add(day)
                 day = day.plusDays(1)
             }

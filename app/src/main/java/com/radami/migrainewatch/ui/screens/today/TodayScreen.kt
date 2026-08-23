@@ -9,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,8 +24,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingDown
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Warning
@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -60,13 +61,15 @@ import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.domain.DayOutlook
+import com.radami.migrainewatch.domain.OutlookRisk
 import com.radami.migrainewatch.domain.SymptomFreeStreak
-import com.radami.migrainewatch.domain.ChartStep
-import com.radami.migrainewatch.domain.ChartWindow
-import com.radami.migrainewatch.ui.components.PressureChart
-import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
+import com.radami.migrainewatch.ui.components.DayEmphasis
+import com.radami.migrainewatch.ui.components.DayMarker
+import com.radami.migrainewatch.ui.components.DayRisk
+import com.radami.migrainewatch.ui.components.HighRiskLegendSwatch
+import com.radami.migrainewatch.ui.components.TodayLegendSwatch
 import com.radami.migrainewatch.ui.theme.color
-import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -120,11 +123,11 @@ fun TodayScreen(
 
         item {
             AnimatedVisibility(
-                visible = state.alertWindows.isNotEmpty(),
+                visible = state.pendingAlerts.isNotEmpty(),
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
-                val alerts = state.alertWindows
+                val alerts = state.pendingAlerts
                 if (alerts.isNotEmpty()) {
                     AlertBanner(alerts = alerts, onClick = onViewAlerts)
                 }
@@ -132,7 +135,7 @@ fun TodayScreen(
         }
 
         item {
-            PressureCard(state = state)
+            OutlookCard(state = state)
         }
 
         item {
@@ -141,6 +144,11 @@ fun TodayScreen(
     }
 }
 
+/**
+ * @param alerts events under way or still ahead, earliest first, and never empty. The banner
+ *   heads the one arriving soonest and counts the rest, so a caller passing a finished event
+ *   would have it announced as the next thing coming.
+ */
 @Composable
 private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
     val first = alerts.first()
@@ -187,71 +195,203 @@ private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
     }
 }
 
+private val OUTLOOK_MARKER_SIZE = 36.dp
+
+/**
+ * How far a day the forecast never reached is faded. It sits on top of the fading a quiet day
+ * already gets from [DayEmphasis.ByRisk], so it only has to open a gap below that — enough to
+ * read as "nothing known here" rather than "checked, and quiet".
+ */
+private const val UNKNOWN_DAY_ALPHA = 0.6f
+
+/** The weekday above a day worth looking at, and above one that isn't. */
+private const val WEEKDAY_ALPHA_AT_RISK = 0.9f
+private const val WEEKDAY_ALPHA = 0.45f
+
+/**
+ * The week ahead at a glance: what today looks like, then which of the days after it carry a
+ * pressure event. The days are drawn with the calendar's own [DayMarker], so a day marked to
+ * watch here has the silhouette it will have there.
+ */
 @Composable
-private fun PressureCard(state: TodayUiState) {
+private fun OutlookCard(state: TodayUiState) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Barometric pressure",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        "3 days back · 4 days ahead",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-                Text(
-                    state.currentPressure?.let { "${it.roundToInt()} hPa" } ?: "—",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            Text(
+                "${DayOutlook.DAYS}-day outlook",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
             Spacer(Modifier.height(12.dp))
-            if (state.readings.isNotEmpty()) {
-                PressureChart(
-                    readings = state.readings,
-                    window = ChartWindow.around(Instant.now(), ChartStep.OneDay),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            } else if (state.isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "Loading pressure data…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "Unable to load — check your connection",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                }
+
+            // Nothing can be said about the week before the first load lands, and a week the
+            // forecast never reached is a failure to report rather than a row of empty days.
+            val today = state.outlook.firstOrNull()
+            if (today == null || state.outlook.all { it.risk == OutlookRisk.Unknown }) {
+                OutlookPlaceholder(isLoading = state.isLoading)
+                return@Column
             }
+
+            TodayHeadline(today = today, outlook = state.outlook)
+            Spacer(Modifier.height(16.dp))
+            OutlookStrip(outlook = state.outlook)
+            Spacer(Modifier.height(12.dp))
+            OutlookLegend()
         }
+    }
+}
+
+@Composable
+private fun TodayHeadline(today: DayOutlook, outlook: List<DayOutlook>) {
+    val isElevated = today.risk == OutlookRisk.Elevated
+
+    Text(
+        todayLabel(today),
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+        // Today's own risk is the one thing on this card worth colouring: everything below is
+        // context for it.
+        color = if (isElevated) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+    )
+    Spacer(Modifier.height(2.dp))
+    Text(
+        weekAheadLabel(outlook),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    )
+}
+
+@Composable
+private fun OutlookStrip(outlook: List<DayOutlook>) {
+    val weekdayFormatter = remember { AppDateFormats.WEEKDAY }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        outlook.forEachIndexed { index, day ->
+            OutlookDay(
+                day = day,
+                // Only the first column is today, and it is today by construction rather than
+                // by a date comparison that could disagree with the list it was built from.
+                isToday = index == 0,
+                weekday = weekdayFormatter.format(day.date)
+            )
+        }
+    }
+}
+
+@Composable
+private fun OutlookDay(day: DayOutlook, isToday: Boolean, weekday: String) {
+    // The column reads as one thing, so it is announced as one: left alone, the weekday, the
+    // day number and the swing are three separate stops that never mention the risk.
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clearAndSetSemantics {
+            contentDescription = outlookDayDescription(day, isToday, weekday)
+        }
+    ) {
+        // The whole column leans one way or the other, label included: a bold number under a
+        // weekday of the same weight as every other would be a smaller signal than it should be.
+        val atRisk = day.risk == OutlookRisk.Elevated
+
+        Text(
+            weekday,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (atRisk) FontWeight.SemiBold else null,
+            color = MaterialTheme.colorScheme.onSurface.copy(
+                alpha = if (atRisk) WEEKDAY_ALPHA_AT_RISK else WEEKDAY_ALPHA
+            )
+        )
+        Spacer(Modifier.height(4.dp))
+        DayMarker(
+            day = day.date.dayOfMonth,
+            severityColor = null,
+            risk = if (atRisk) DayRisk.High else DayRisk.Normal,
+            isToday = isToday,
+            modifier = Modifier
+                .size(OUTLOOK_MARKER_SIZE)
+                .alpha(if (day.risk == OutlookRisk.Unknown) UNKNOWN_DAY_ALPHA else 1f),
+            // Only here: the calendar is a grid people read a specific day out of, so its
+            // numbers all carry the same weight.
+            emphasis = DayEmphasis.ByRisk
+        )
+    }
+}
+
+/**
+ * What the rings in the strip mean. Both swatches are drawn by the marker itself rather than
+ * redrawn here, so the legend cannot drift from the days: high risk in the calendar's own
+ * words and swatch, since the two screens mark a day to watch the same way.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun OutlookLegend() {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Today first, matching the strip: its first column is the one this entry explains.
+        LegendItem(swatch = { TodayLegendSwatch() }, label = "Today")
+        LegendItem(swatch = { HighRiskLegendSwatch() }, label = "High risk")
+    }
+}
+
+@Composable
+private fun LegendItem(swatch: @Composable () -> Unit, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        swatch()
+        Spacer(Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+private fun OutlookPlaceholder(isLoading: Boolean) {
+    Text(
+        if (isLoading) "Loading forecast…" else "Unable to load — check your connection",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+    )
+}
+
+private fun todayLabel(today: DayOutlook): String = when (today.risk) {
+    OutlookRisk.Elevated -> "Elevated risk today"
+    OutlookRisk.Clear -> "Clear today"
+    OutlookRisk.Unknown -> "No forecast for today"
+}
+
+/**
+ * What the days after today add up to. Only the days the forecast actually reached can be
+ * called clear, so a short forecast says how far it got rather than reporting quiet days it
+ * knows nothing about.
+ */
+private fun weekAheadLabel(outlook: List<DayOutlook>): String {
+    val ahead = outlook.drop(1)
+    val toWatch = ahead.count { it.risk == OutlookRisk.Elevated }
+    if (toWatch > 0) return "$toWatch of the next ${ahead.size} days to watch"
+
+    val covered = ahead.count { it.risk != OutlookRisk.Unknown }
+    if (covered == 0) return "No forecast beyond today"
+    return "Clear for the next ${dayCount(covered.toLong())}"
+}
+
+private fun outlookDayDescription(day: DayOutlook, isToday: Boolean, weekday: String): String {
+    val name = if (isToday) "Today" else "$weekday ${day.date.dayOfMonth}"
+    return when (day.risk) {
+        OutlookRisk.Elevated ->
+            "$name, elevated risk, ${formatHpa(day.peakDelta ?: 0f)} hPa ${day.direction?.label}"
+
+        OutlookRisk.Clear -> "$name, clear"
+        OutlookRisk.Unknown -> "$name, no forecast"
     }
 }
 

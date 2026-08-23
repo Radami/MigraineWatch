@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -43,12 +44,35 @@ val HIGH_RISK_BORDER_WIDTH = 1.5.dp
 /** Whether a pressure event crossing the alert threshold touches the day. */
 enum class DayRisk { Normal, High }
 
+/** How much weight the day number carries relative to the days around it. */
+enum class DayEmphasis {
+
+    /**
+     * Every day reads the same. What a calendar grid wants: the numbers are how a day is
+     * found, so a quiet day has to stay as legible as a busy one.
+     */
+    Uniform,
+
+    /**
+     * A day at risk is set in bold and the rest recede. For a short strip read at a glance,
+     * where the point is which days to look at rather than which day is which.
+     */
+    ByRisk
+}
+
+/** How far a day recedes under [DayEmphasis.ByRisk] when nothing touches it. */
+private const val UNEMPHASISED_DAY_ALPHA = 0.5f
+
+/** The size every legend swatch is drawn at, so two legends on different screens match. */
+val LEGEND_SWATCH_SIZE = 12.dp
+
 /**
  * A single day in the calendar grid: the day number centred in a shape that says whether the
  * day is high risk, filled with the severity colour once something has been logged.
  *
  * @param severityColor fill for a logged day; null leaves the marker unfilled.
  * @param risk whether a pressure event crossing the alert threshold touches the day.
+ * @param emphasis whether the number leans on [risk] for its weight.
  */
 @Composable
 fun DayMarker(
@@ -57,6 +81,7 @@ fun DayMarker(
     risk: DayRisk,
     isToday: Boolean,
     modifier: Modifier = Modifier,
+    emphasis: DayEmphasis = DayEmphasis.Uniform,
     contentDescription: String? = null,
     onClick: (() -> Unit)? = null
 ) {
@@ -92,12 +117,50 @@ fun DayMarker(
             ),
         contentAlignment = Alignment.Center
     ) {
+        val emphasised = emphasis == DayEmphasis.ByRisk && risk == DayRisk.High
+
+        // Only an unfilled number can recede: white on a severity fill is the one pairing
+        // that has to stay at full strength to stay readable at all.
+        val recedes = emphasis == DayEmphasis.ByRisk && risk == DayRisk.Normal && severityColor == null
+
         Text(
             day.toString(),
             style = MaterialTheme.typography.labelLarge,
-            color = if (severityColor != null) Color.White else MaterialTheme.colorScheme.onSurface
+            fontWeight = if (emphasised) FontWeight.Bold else null,
+            color = when {
+                severityColor != null -> Color.White
+                recedes -> MaterialTheme.colorScheme.onSurface.copy(alpha = UNEMPHASISED_DAY_ALPHA)
+                else -> MaterialTheme.colorScheme.onSurface
+            }
         )
     }
+}
+
+/**
+ * The ring a high-risk day wears, at legend size. Shared rather than redrawn per screen: a
+ * legend showing anything other than the exact ring the day wears explains nothing.
+ */
+@Composable
+fun HighRiskLegendSwatch(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(LEGEND_SWATCH_SIZE)
+            .border(HIGH_RISK_BORDER_WIDTH, MaterialTheme.colorScheme.outline, HighRiskShape)
+    )
+}
+
+/**
+ * The ring today wears, at legend size. Drawn in the plain day silhouette rather than the
+ * circle: the circle is what says "high risk", and a legend entry that borrowed it would be
+ * explaining two things at once.
+ */
+@Composable
+fun TodayLegendSwatch(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(LEGEND_SWATCH_SIZE)
+            .border(TODAY_BORDER_WIDTH, MaterialTheme.colorScheme.primary, SeverityShape)
+    )
 }
 
 /** The colour chip that stands for a severity in legends and summaries. */

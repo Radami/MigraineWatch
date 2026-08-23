@@ -17,10 +17,18 @@ for fixes alone, the minor number for anything users would notice.
 ## [Unreleased]
 
 ### Added
+- The Today screen opens on a seven-day outlook. It says whether today is one to watch, how
+  many of the six days after it are, and circles each day a pressure event touches — the same
+  mark a high-risk day wears on the calendar, under the same "High risk" legend. Days worth
+  looking at are set in bold and the quiet ones recede, so the answer is there before the
+  strip is read. Days the forecast has not reached are dimmed rather than shown as quiet.
 - The Today screen counts how long you have gone without symptoms, and remembers your
   longest symptom-free streak and the dates it ran between.
 
 ### Changed
+- The 7-day chart draws the daily minimum and maximum as two lines with the range shaded
+  between them, curved the same way the hourly ranges curve. The shading alone muddied against
+  a risk window drawn over it; the lines keep an edge to read where the two overlap.
 - The Pressure screen absorbs the alert screen. Its chart now shades the risk window of every
   current pressure event, and the card beneath lists those events in the compact form the past
   ones used to take. Tapping an alert notification, or the chevron on the Today banner, opens
@@ -41,6 +49,9 @@ for fixes alone, the minor number for anything users would notice.
   place of the "Drop" and "Rise" ones.
 
 ### Removed
+- The barometric pressure card on the Today screen, replaced by the outlook above. It drew the
+  same chart the Pressure screen draws, which is where the range chips and the list of current
+  events are.
 - The seven-day symptom strip on the Today screen, replaced by the streak count above. The
   same seven days are still on the Calendar screen.
 - The up and down pressure arrows on the Calendar screen.
@@ -50,6 +61,12 @@ for fixes alone, the minor number for anything users would notice.
 - The separate pressure alert screen, merged into the Pressure screen above.
 
 ### Fixed
+- The Today banner announced an event that had already finished, headed "Next", while the
+  event genuinely coming went unmentioned — a pressure event stays current for a day after it
+  ends, and the banner took the earliest of those rather than the soonest still to come. It
+  now heads the next event under way or ahead, and stays away when there is none. The day it
+  passed through keeps its mark on the outlook and the calendar, and the Pressure screen goes
+  on showing the window you have just come through.
 - A pressure event that ended exactly at midnight marked the following day as one to watch,
   even though the event never ran into it.
 - Opening the app from an alert notification and then moving to another tab no longer snaps
@@ -94,7 +111,29 @@ for fixes alone, the minor number for anything users would notice.
   install wrote: the `notified_alerts` column, the notification worker's input data, and the
   unique work name and notification id built from it.
 - `AlertColors` reduces to one hue per alert now that no alert card needs a container colour.
-- The daily range band gets its own `ChartRangeBand` colour instead of the measured line's.
+- `DayOutlook` and `OutlookRisk` hold what the Today screen says about a day, built from the
+  alerts the shared use case already found. A day is only called clear once the readings cover
+  it to midnight, so a short forecast reads as unknown rather than quiet. Covered by 7 unit
+  tests. `AlertDetector.daysTouched` is extracted from `eventDays` so the calendar and the
+  outlook decide which days an event touches in one place.
+- `TodayUiState` drops `readings` and `currentPressure` with the card that drew them, and its
+  `alertWindows` becomes `pendingAlerts` — filtered where `now` is already known rather than
+  in a composable with no clock. Covered by a Today ViewModel test and by three new
+  `PressureAlertUseCase` tests pinning the relevance window itself, which nothing had.
+- `RELEVANCE_HOURS` says why a finished event is kept: the Pressure screen's history half and
+  the Today outlook's day marks both want one, while anything announcing to the user does not.
+  It previously justified itself by naming the screens that read it.
+- `DayMarker` takes a `DayEmphasis`, which decides whether the day number leans on the day's
+  risk for its weight. The outlook strip asks for `ByRisk`; the calendar keeps the `Uniform`
+  default, because its numbers are how a specific day is found and a quiet day there has to
+  stay as legible as a busy one.
+- `HighRiskLegendSwatch` and `LEGEND_SWATCH_SIZE` move to `DayMarker.kt` beside the ring and
+  the width they are built from, so the outlook's legend and the calendar's are one drawing
+  rather than two that have to be kept in step.
+- `PressureChart` strokes the daily range's edges with Vico's own `DefaultPointConnector`,
+  the connector its line spec uses, rather than a cubic of its own — the curvature depends on
+  the chart bounds, so an approximation would not match the line beside it.
+- The daily range gets its own `ChartRangeLine` colour instead of the measured line's.
   Sharing it put a terracotta band a shade away from the second alert's orange, so with the
   risk shading now drawn on the same chart the two read as one thing; blue is the hue the
   alert palette leaves free.

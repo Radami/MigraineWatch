@@ -66,8 +66,8 @@ import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.ui.components.DayMarker
 import com.radami.migrainewatch.ui.components.DayRisk
-import com.radami.migrainewatch.ui.components.HIGH_RISK_BORDER_WIDTH
-import com.radami.migrainewatch.ui.components.HighRiskShape
+import com.radami.migrainewatch.ui.components.HighRiskLegendSwatch
+import com.radami.migrainewatch.ui.components.LEGEND_SWATCH_SIZE
 import com.radami.migrainewatch.ui.components.SeveritySwatch
 import com.radami.migrainewatch.ui.theme.DangerRed
 import com.radami.migrainewatch.ui.theme.color
@@ -236,7 +236,6 @@ private fun MonthCalendar(
     }
 }
 
-private val LEGEND_SWATCH_SIZE = 12.dp
 private val STATS_SWATCH_SIZE = 8.dp
 
 @Composable
@@ -286,11 +285,7 @@ private fun CalendarLegend() {
 @Composable
 private fun LegendHighRiskItem() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(LEGEND_SWATCH_SIZE)
-                .border(HIGH_RISK_BORDER_WIDTH, MaterialTheme.colorScheme.outline, HighRiskShape)
-        )
+        HighRiskLegendSwatch()
         Spacer(Modifier.width(4.dp))
         Text("High risk", style = MaterialTheme.typography.labelSmall)
     }
