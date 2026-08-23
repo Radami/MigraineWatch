@@ -180,10 +180,10 @@ class UserJourneyTest {
         awaitDisplayed(hasContentDescription("Location"))
         awaitDisplayed(hasText("Zurich", substring = true))
 
-        // 5. Verify pressure data is present. Whether the card starts on screen depends on
+        // 5. Verify the forecast is present. Whether the card starts on screen depends on
         //    how tall the alert banner above it ends up, so scroll it into view first.
-        scrollToInList(hasText("Barometric pressure"))
-        composeTestRule.onNodeWithText("Barometric pressure").assertIsDisplayed()
+        scrollToInList(hasText("7-day outlook"))
+        composeTestRule.onNodeWithText("7-day outlook").assertIsDisplayed()
     }
 
     @Test
