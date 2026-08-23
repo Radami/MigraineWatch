@@ -43,8 +43,8 @@ import com.radami.migrainewatch.ui.theme.ChartMeasuredDark
 import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
 import com.radami.migrainewatch.ui.theme.ChartNowLineDark
 import com.radami.migrainewatch.ui.theme.ChartNowLineLight
-import com.radami.migrainewatch.ui.theme.ChartRangeBandDark
-import com.radami.migrainewatch.ui.theme.ChartRangeBandLight
+import com.radami.migrainewatch.ui.theme.ChartRangeLineDark
+import com.radami.migrainewatch.ui.theme.ChartRangeLineLight
 import com.radami.migrainewatch.ui.theme.alertColorPalette
 import com.patrykandpatrick.vico.compose.axis.axisLabelComponent
 import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
@@ -54,6 +54,7 @@ import com.patrykandpatrick.vico.compose.chart.line.lineChart
 import com.patrykandpatrick.vico.core.axis.AxisItemPlacer
 import com.patrykandpatrick.vico.core.axis.AxisPosition
 import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter
+import com.patrykandpatrick.vico.core.chart.DefaultPointConnector
 import com.patrykandpatrick.vico.core.chart.decoration.Decoration
 import com.patrykandpatrick.vico.core.chart.draw.ChartDrawContext
 import com.patrykandpatrick.vico.core.chart.layout.HorizontalLayout
@@ -67,17 +68,24 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 // Every overlay is a wash over the plot rather than a fill: the data has to stay readable
-// through all of them, including where a risk band and the daily range overlap.
+// through all of them, including where a risk window and the daily range overlap.
 private const val ALERT_BAND_ALPHA = 0.15f
 private const val RANGE_BAND_ALPHA = 0.2f
 private const val NOW_LINE_ALPHA = 0.5f
+
+/** Stroke width of the daily min and max lines, in dp. */
+private const val RANGE_LINE_WIDTH_DP = 2f
+
+/** Whether a traced run opens a new path contour or continues the one in progress. */
+private enum class RunStart { MoveTo, LineTo }
 
 private val SWATCH_WIDTH = 24.dp
 
 /** Risk gets one swatch per window in view, so they are narrowed to leave the legend on one line. */
 private val RISK_SWATCH_WIDTH = 14.dp
 
-private data class BandEntry(val index: Int, val minY: Float, val maxY: Float)
+/** The lowest and highest pressure seen on the day the chart draws at x = [index]. */
+private data class RangeEntry(val index: Int, val minY: Float, val maxY: Float)
 
 /** One alert's risk window, in chart x-values, in the colour of the row describing it. */
 private data class AlertBand(val startX: Float, val endX: Float, val color: Color)
@@ -99,25 +107,27 @@ private fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
 }
 
 /**
- * Draws the alert risk bands and the min/max shaded band (behind the chart line) and the
+ * Draws the alert risk bands (behind the chart line) and the daily min/max range and the
  * "now" dashed line (above it) using Vico's Decoration API, which provides exact chart
  * data-area bounds.
  */
 private class ChartOverlayDecoration(
     private val alertBands: List<AlertBand>,
-    private val showBand: Boolean,
-    private val bandEntries: List<BandEntry>,
+    private val showRangeLines: Boolean,
+    private val rangeEntries: List<RangeEntry>,
     private val yMin: Float,
     private val yMax: Float,
-    private val bandColorArgb: Int,
+    private val rangeLineColorArgb: Int,
+    private val rangeBandColorArgb: Int,
     private val nowX: Float,
     private val nowLineColorArgb: Int,
 ) : Decoration {
 
-    // Group consecutive entries so gaps in data don't produce incorrect slanted polygon faces.
-    private val bandRuns: List<List<BandEntry>> = buildList {
-        var current = mutableListOf<BandEntry>()
-        for (entry in bandEntries) {
+    // Group consecutive entries so a gap in the data breaks the lines there rather than
+    // bridging it with a segment that describes no day.
+    private val rangeRuns: List<List<RangeEntry>> = buildList {
+        var current = mutableListOf<RangeEntry>()
+        for (entry in rangeEntries) {
             if (current.isEmpty() || entry.index == current.last().index + 1) {
                 current.add(entry)
             } else {
@@ -137,22 +147,34 @@ private class ChartOverlayDecoration(
 
     private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = bandColorArgb
+        color = rangeBandColorArgb
     }
+
+    private val rangePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        color = rangeLineColorArgb
+    }
+
+    // The very connector Vico's own line spec uses, so the daily min/max lines curve exactly
+    // like the pressure line the hourly ranges draw.
+    private val pointConnector = DefaultPointConnector()
 
     private val nowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = nowLineColorArgb
     }
 
-    // Density-dependent now-line properties are initialised lazily on first draw.
+    // Density-dependent stroke properties are initialised lazily on first draw.
     private var initialisedDensity = 0f
 
-    private fun ensureNowPaintDensity(density: Float) {
+    private fun ensurePaintDensity(density: Float) {
         if (initialisedDensity == density) return
         initialisedDensity = density
         nowPaint.strokeWidth = 2f * density
         nowPaint.pathEffect = DashPathEffect(floatArrayOf(10f * density, 6f * density), 0f)
+        rangePaint.strokeWidth = RANGE_LINE_WIDTH_DP * density
     }
 
     // Maps a chart x-value to a pixel position via Vico's horizontal dimensions — the same
@@ -166,10 +188,7 @@ private class ChartOverlayDecoration(
     }
 
     override fun onDrawBehindChart(context: ChartDrawContext, bounds: RectF) {
-        // Risk bands go down first: the daily range reads as a detail of the line, so it has
-        // to stay legible on top of whatever the risk shading paints.
         drawAlertBands(context, bounds)
-        drawRangeBand(context, bounds)
     }
 
     private fun drawAlertBands(context: ChartDrawContext, bounds: RectF) {
@@ -186,30 +205,100 @@ private class ChartOverlayDecoration(
         }
     }
 
-    private fun drawRangeBand(context: ChartDrawContext, bounds: RectF) {
-        if (!showBand || bandRuns.isEmpty()) return
-        val yRange = yMax - yMin
-        // In Android Canvas, Y increases downward: bounds.top = maxY, bounds.bottom = minY.
-        fun valueToY(v: Float) = bounds.bottom - (v - yMin) / yRange * bounds.height()
+    private fun drawDailyRange(context: ChartDrawContext, bounds: RectF) {
+        if (!showRangeLines || rangeRuns.isEmpty()) return
 
         val path = Path()
-        for (run in bandRuns) {
-            path.reset()
-            run.forEachIndexed { i, entry ->
-                val x = context.dataX(entry.index.toFloat(), bounds)
-                val y = valueToY(entry.maxY)
-                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        for (run in rangeRuns) {
+            // A run of one has no neighbour to trace towards, so there is no area to fill:
+            // the day is drawn as the vertical it spans instead of vanishing.
+            if (run.size == 1) {
+                drawSingleDay(context, bounds, run.first())
+                continue
             }
-            run.reversed().forEach { entry ->
-                path.lineTo(context.dataX(entry.index.toFloat(), bounds), valueToY(entry.minY))
-            }
-            path.close()
-            context.canvas.drawPath(path, bandPaint)
+
+            drawBand(context, bounds, path, run)
+
+            // The two extremes are stroked on top of their own fill, so the range keeps a
+            // crisp edge where the wash overlaps a risk window's shading.
+            strokeExtreme(context, bounds, path, run) { it.maxY }
+            strokeExtreme(context, bounds, path, run) { it.minY }
         }
     }
 
+    // In Android Canvas, Y increases downward: bounds.top = yMax, bounds.bottom = yMin.
+    private fun valueToY(value: Float, bounds: RectF) =
+        bounds.bottom - (value - yMin) / (yMax - yMin) * bounds.height()
+
+    // Down the max edge, back along the min edge: the two verticals the traversal closes over
+    // are the ends of the run, so the fill follows the same curves the strokes do.
+    private fun drawBand(
+        context: ChartDrawContext,
+        bounds: RectF,
+        path: Path,
+        run: List<RangeEntry>,
+    ) {
+        path.reset()
+        traceRun(context, bounds, path, run, RunStart.MoveTo) { it.maxY }
+        traceRun(context, bounds, path, run.asReversed(), RunStart.LineTo) { it.minY }
+        path.close()
+        context.canvas.drawPath(path, bandPaint)
+    }
+
+    private fun strokeExtreme(
+        context: ChartDrawContext,
+        bounds: RectF,
+        path: Path,
+        run: List<RangeEntry>,
+        valueOf: (RangeEntry) -> Float,
+    ) {
+        path.reset()
+        traceRun(context, bounds, path, run, RunStart.MoveTo, valueOf)
+        context.canvas.drawPath(path, rangePaint)
+    }
+
+    private fun traceRun(
+        context: ChartDrawContext,
+        bounds: RectF,
+        path: Path,
+        run: List<RangeEntry>,
+        start: RunStart,
+        valueOf: (RangeEntry) -> Float,
+    ) {
+        var prevX = 0f
+        var prevY = 0f
+        run.forEachIndexed { i, entry ->
+            val x = context.dataX(entry.index.toFloat(), bounds)
+            val y = valueToY(valueOf(entry), bounds)
+            when {
+                i > 0 -> pointConnector
+                    .connect(path, prevX, prevY, x, y, context.horizontalDimensions, bounds)
+                start == RunStart.MoveTo -> path.moveTo(x, y)
+                else -> path.lineTo(x, y)
+            }
+            prevX = x
+            prevY = y
+        }
+    }
+
+    private fun drawSingleDay(context: ChartDrawContext, bounds: RectF, entry: RangeEntry) {
+        val x = context.dataX(entry.index.toFloat(), bounds)
+        context.canvas.drawLine(
+            x,
+            valueToY(entry.maxY, bounds),
+            x,
+            valueToY(entry.minY, bounds),
+            rangePaint
+        )
+    }
+
     override fun onDrawAboveChart(context: ChartDrawContext, bounds: RectF) {
-        ensureNowPaintDensity(context.density)
+        ensurePaintDensity(context.density)
+
+        // The daily range is the data at this step, so it goes above the gridlines and the
+        // risk shading; only the "now" marker sits on top of it.
+        drawDailyRange(context, bounds)
+
         val x = context.dataX(nowX, bounds)
         context.canvas.drawLine(x, bounds.top, x, bounds.bottom, nowPaint)
     }
@@ -251,14 +340,14 @@ fun PressureChart(
         }
     }
 
-    val bandEntries = if (isDaily) {
+    val rangeEntries = if (isDaily) {
         remember(readings, window) {
             val half = stepSeconds / 2
             ChartWindow.POINT_INDICES.mapNotNull { i ->
                 val anchorEpoch = window.epochSecondAt(i)
                 val inWindow = readings.filter { abs(it.dateTime.epochSecond - anchorEpoch) <= half }
                 if (inWindow.size < 2) null
-                else BandEntry(i, inWindow.minOf { it.pressureMsl }, inWindow.maxOf { it.pressureMsl })
+                else RangeEntry(i, inWindow.minOf { it.pressureMsl }, inWindow.maxOf { it.pressureMsl })
             }
         }
     } else emptyList()
@@ -270,7 +359,7 @@ fun PressureChart(
 
     val isDark = isSystemInDarkTheme()
     val measuredColor = if (isDark) ChartMeasuredDark else ChartMeasuredLight
-    val rangeBandColor = if (isDark) ChartRangeBandDark else ChartRangeBandLight
+    val rangeLineColor = if (isDark) ChartRangeLineDark else ChartRangeLineLight
     val nowLineColor = if (isDark) ChartNowLineDark else ChartNowLineLight
 
     // Alerts keep the colour of their position in the list, so a band and the row that
@@ -289,12 +378,12 @@ fun PressureChart(
         }
     }
 
-    val dataMin = if (bandEntries.isNotEmpty())
-        bandEntries.minOf { it.minY }
+    val dataMin = if (rangeEntries.isNotEmpty())
+        rangeEntries.minOf { it.minY }
     else
         (historicalEntries + forecastEntries).minOfOrNull { it.y } ?: return
-    val dataMax = if (bandEntries.isNotEmpty())
-        bandEntries.maxOf { it.maxY }
+    val dataMax = if (rangeEntries.isNotEmpty())
+        rangeEntries.maxOf { it.maxY }
     else
         (historicalEntries + forecastEntries).maxOfOrNull { it.y } ?: return
     val yPadding = maxOf((dataMax - dataMin) * 0.2f, 2f)
@@ -340,15 +429,16 @@ fun PressureChart(
     // anchor the chart snapped to.
     val nowX = window.xOf(Instant.ofEpochSecond(nowEpoch))
 
-    val showBand = bandEntries.size >= 2
-    val decoration = remember(alertBands, showBand, bandEntries, yMin, yMax, rangeBandColor, nowX, nowLineColor) {
+    val showRangeLines = rangeEntries.size >= 2
+    val decoration = remember(alertBands, showRangeLines, rangeEntries, yMin, yMax, rangeLineColor, nowX, nowLineColor) {
         ChartOverlayDecoration(
             alertBands = alertBands,
-            showBand = showBand,
-            bandEntries = bandEntries,
+            showRangeLines = showRangeLines,
+            rangeEntries = rangeEntries,
             yMin = yMin,
             yMax = yMax,
-            bandColorArgb = rangeBandColor.copy(alpha = RANGE_BAND_ALPHA).toArgb(),
+            rangeLineColorArgb = rangeLineColor.toArgb(),
+            rangeBandColorArgb = rangeLineColor.copy(alpha = RANGE_BAND_ALPHA).toArgb(),
             nowX = nowX,
             nowLineColorArgb = nowLineColor.copy(alpha = NOW_LINE_ALPHA).toArgb(),
         )
@@ -360,7 +450,7 @@ fun PressureChart(
                 .fillMaxWidth()
                 .height(200.dp)
         ) {
-            val lineColor = if (showBand) android.graphics.Color.TRANSPARENT else measuredColor.toArgb()
+            val lineColor = if (showRangeLines) android.graphics.Color.TRANSPARENT else measuredColor.toArgb()
             Chart(
                 chart = lineChart(
                     lines = listOf(
@@ -405,8 +495,8 @@ fun PressureChart(
         ChartLegend(
             lineColor = measuredColor,
             nowLineColor = nowLineColor,
-            showBand = showBand,
-            bandColor = rangeBandColor,
+            showRangeLines = showRangeLines,
+            rangeLineColor = rangeLineColor,
             alertColors = alertBands.map { it.color }
         )
     }
@@ -417,8 +507,8 @@ fun PressureChart(
 private fun ChartLegend(
     lineColor: Color,
     nowLineColor: Color,
-    showBand: Boolean,
-    bandColor: Color,
+    showRangeLines: Boolean,
+    rangeLineColor: Color,
     alertColors: List<Color>,
 ) {
     // Wraps rather than clips: the risk entry appears and disappears with the data, and at a
@@ -435,10 +525,11 @@ private fun ChartLegend(
             LegendLine(color = nowLineColor.copy(alpha = NOW_LINE_ALPHA), dashed = true)
         }
 
-        // The pressure line is only drawn when the band isn't (24 h / 48 h ranges).
-        if (showBand) {
-            LegendEntry(label = "daily range") {
-                LegendSwatch(color = bandColor.copy(alpha = RANGE_BAND_ALPHA))
+        // The pressure line is only drawn when the daily min/max lines aren't
+        // (24 h / 48 h ranges).
+        if (showRangeLines) {
+            LegendEntry(label = "daily min/max") {
+                LegendRangeSwatch(color = rangeLineColor)
             }
         } else {
             LegendEntry(label = "pressure") { LegendLine(color = lineColor) }
@@ -481,6 +572,25 @@ private fun LegendLine(color: Color, dashed: Boolean = false) {
             strokeWidth = 2.dp.toPx(),
             pathEffect = effect
         )
+    }
+}
+
+/** The daily range as the chart draws it: a wash between two lines. */
+@Composable
+private fun LegendRangeSwatch(color: Color) {
+    Canvas(modifier = Modifier.size(width = SWATCH_WIDTH, height = 10.dp)) {
+        drawRect(color = color.copy(alpha = RANGE_BAND_ALPHA))
+
+        // The edges sit fully inside the swatch, so neither stroke is clipped in half.
+        val stroke = RANGE_LINE_WIDTH_DP.dp.toPx()
+        listOf(stroke / 2, size.height - stroke / 2).forEach { y ->
+            drawLine(
+                color = color,
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = stroke
+            )
+        }
     }
 }
 
