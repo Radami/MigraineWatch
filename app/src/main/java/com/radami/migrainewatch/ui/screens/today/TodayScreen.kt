@@ -33,7 +33,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -77,7 +76,7 @@ import kotlin.math.roundToInt
 
 @Composable
 fun TodayScreen(
-    onViewAlerts: () -> Unit,
+    onViewPressure: () -> Unit,
     onChangeLocation: () -> Unit,
     viewModel: TodayViewModel = hiltViewModel()
 ) {
@@ -129,13 +128,13 @@ fun TodayScreen(
             ) {
                 val alerts = state.pendingAlerts
                 if (alerts.isNotEmpty()) {
-                    AlertBanner(alerts = alerts, onClick = onViewAlerts)
+                    AlertBanner(alerts = alerts, onClick = onViewPressure)
                 }
             }
         }
 
         item {
-            OutlookCard(state = state)
+            OutlookCard(state = state, onDayClick = onViewPressure)
         }
 
         item {
@@ -152,24 +151,30 @@ fun TodayScreen(
 @Composable
 private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
     val first = alerts.first()
-    val timeFormatter = AppDateFormats.SHORT_WEEKDAY_AND_TIME
+    val timeFormatter = AppDateFormats.WEEKDAY_AND_TIME
     val zone = remember { ZoneId.systemDefault() }
     val timeLabel = remember(first) { first.start.atZone(zone).format(timeFormatter) }
-    val eventSummary = "${formatHpa(first.delta)} hPa ${first.direction.label} around $timeLabel"
-    val message = if (alerts.size == 1) {
-        "Elevated risk · $eventSummary"
-    } else {
-        "Elevated risk · Multiple events\nNext: $eventSummary"
-    }
+
+    // The banner says that something is coming and when it starts, and stops there. How big the
+    // swing is and which way it goes are what the screen behind the chevron is for, and reading
+    // them off a two-line banner never told anyone anything they could act on.
+    val headline = if (alerts.size == 1) "Elevated risk" else "Elevated risk · Multiple events"
+    val message = "$headline\nNext: from $timeLabel"
+
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = ALERT_BANNER_SHAPE,
         color = MaterialTheme.colorScheme.errorContainer,
+        // Clipped before it is made clickable: a modifier passed to Surface sits outside the
+        // clipping Surface does for its own shape, so an unclipped ripple would flash square
+        // corners over the rounded ones.
         modifier = Modifier
             .fillMaxWidth()
+            .clip(ALERT_BANNER_SHAPE)
+            .clickable(onClickLabel = "View pressure detail", onClick = onClick)
             .semantics { contentDescription = "Pressure alert banner" }
     ) {
         Row(
-            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -184,18 +189,28 @@ private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = onClick) {
-                Icon(
-                    Icons.Default.ChevronRight,
-                    contentDescription = "View details",
-                    tint = MaterialTheme.colorScheme.onErrorContainer
-                )
-            }
+
+            // A plain icon now, not a button: the whole banner is the target, and a nested one
+            // would be a second thing to tap and a second thing to announce for the same trip.
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer
+            )
         }
     }
 }
 
+/** Shared by the banner's fill and the clip its ripple has to stay inside. */
+private val ALERT_BANNER_SHAPE = RoundedCornerShape(12.dp)
+
 private val OUTLOOK_MARKER_SIZE = 36.dp
+
+/**
+ * The ripple a tapped day shows. Rounded rather than square because the column is barely wider
+ * than the marker inside it, so a hard-cornered flash reads as a glitch rather than a press.
+ */
+private val OUTLOOK_DAY_SHAPE = RoundedCornerShape(8.dp)
 
 /**
  * How far a day the forecast never reached is faded. It sits on top of the fading a quiet day
@@ -214,7 +229,7 @@ private const val WEEKDAY_ALPHA = 0.45f
  * watch here has the silhouette it will have there.
  */
 @Composable
-private fun OutlookCard(state: TodayUiState) {
+private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -237,7 +252,7 @@ private fun OutlookCard(state: TodayUiState) {
 
             TodayHeadline(today = today, outlook = state.outlook)
             Spacer(Modifier.height(16.dp))
-            OutlookStrip(outlook = state.outlook)
+            OutlookStrip(outlook = state.outlook, onDayClick = onDayClick)
             Spacer(Modifier.height(12.dp))
             OutlookLegend()
         }
@@ -269,7 +284,7 @@ private fun TodayHeadline(today: DayOutlook, outlook: List<DayOutlook>) {
 }
 
 @Composable
-private fun OutlookStrip(outlook: List<DayOutlook>) {
+private fun OutlookStrip(outlook: List<DayOutlook>, onDayClick: () -> Unit) {
     val weekdayFormatter = remember { AppDateFormats.WEEKDAY }
 
     Row(
@@ -282,21 +297,27 @@ private fun OutlookStrip(outlook: List<DayOutlook>) {
                 // Only the first column is today, and it is today by construction rather than
                 // by a date comparison that could disagree with the list it was built from.
                 isToday = index == 0,
-                weekday = weekdayFormatter.format(day.date)
+                weekday = weekdayFormatter.format(day.date),
+                onClick = onDayClick
             )
         }
     }
 }
 
 @Composable
-private fun OutlookDay(day: DayOutlook, isToday: Boolean, weekday: String) {
+private fun OutlookDay(day: DayOutlook, isToday: Boolean, weekday: String, onClick: () -> Unit) {
     // The column reads as one thing, so it is announced as one: left alone, the weekday, the
-    // day number and the swing are three separate stops that never mention the risk.
+    // day number and the swing are three separate stops that never mention the risk. The tap
+    // target is the whole column rather than the marker, so the weekday above it works too.
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clearAndSetSemantics {
-            contentDescription = outlookDayDescription(day, isToday, weekday)
-        }
+        modifier = Modifier
+            .clip(OUTLOOK_DAY_SHAPE)
+            .clickable(onClickLabel = "View pressure detail", onClick = onClick)
+            .padding(vertical = 4.dp)
+            .clearAndSetSemantics {
+                contentDescription = outlookDayDescription(day, isToday, weekday)
+            }
     ) {
         // The whole column leans one way or the other, label included: a bold number under a
         // weekday of the same weight as every other would be a smaller signal than it should be.

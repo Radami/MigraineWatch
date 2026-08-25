@@ -130,7 +130,7 @@ class NavigationTest {
         awaitDisplayed(hasContentDescription("Pressure alert banner"))
 
         // The banner leads to the Pressure tab, which lists the event and shades it
-        composeTestRule.onNodeWithContentDescription("View details").performClick()
+        composeTestRule.onNodeWithContentDescription("Pressure alert banner").performClick()
         awaitDisplayed(hasContentDescription("Time range 7 days"))
         composeTestRule.onNode(isSelectable() and hasText("Pressure")).assertIsSelected()
 
