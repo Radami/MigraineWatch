@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.radami.migrainewatch.ui.components.CardHeading
 import com.radami.migrainewatch.BuildConfig
 import com.radami.migrainewatch.R
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
@@ -305,15 +306,14 @@ private fun SettingsList(viewModel: SettingsViewModel) {
 private val DEBUG_ACTION_SPACING = 0.dp
 private val DebugActionPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
 
+/**
+ * Settings has no cards, but its sections do the same job a card heading does, so they are
+ * drawn by the same composable rather than by a style of their own. Only the leading space is
+ * local: a section here follows the previous one's content directly instead of a card edge.
+ */
 @Composable
 private fun SectionHeader(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 8.dp)
-    )
+    CardHeading(title, modifier = Modifier.padding(top = 8.dp))
 }
 
 @Composable
