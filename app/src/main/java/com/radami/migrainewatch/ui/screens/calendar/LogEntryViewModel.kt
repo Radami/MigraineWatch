@@ -67,6 +67,13 @@ fun Iterable<String>.inTriggerOrder(): List<String> = sortedWith(
 
 val DURATION_OPTIONS = listOf("<2h", "2-6h", "6-12h", ">12h")
 
+/**
+ * How much the medication helped, in quarters. Offered as a short list rather than a
+ * continuous scale: nobody recalls relief to the percentage point hours later, and a scale
+ * that invites 63% only makes the entry harder to give.
+ */
+val RELIEF_OPTIONS = listOf(0, 25, 50, 75, 100)
+
 @HiltViewModel
 class LogEntryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -119,7 +126,8 @@ class LogEntryViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(durationBucket = duration)
     }
 
-    fun setRelief(percent: Int) {
+    /** Null clears the field, which is not the same as recording 0% — that is a real answer. */
+    fun setRelief(percent: Int?) {
         _uiState.value = _uiState.value.copy(reliefPercent = percent)
     }
 
