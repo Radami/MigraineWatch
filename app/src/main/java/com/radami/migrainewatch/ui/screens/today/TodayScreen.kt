@@ -63,6 +63,7 @@ import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.DayOutlook
 import com.radami.migrainewatch.domain.OutlookRisk
 import com.radami.migrainewatch.domain.SymptomFreeStreak
+import com.radami.migrainewatch.ui.components.CardHeading
 import com.radami.migrainewatch.ui.components.DayEmphasis
 import com.radami.migrainewatch.ui.components.DayMarker
 import com.radami.migrainewatch.ui.components.DayRisk
@@ -235,11 +236,7 @@ private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                "${DayOutlook.DAYS}-day outlook",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            CardHeading("${DayOutlook.DAYS}-day outlook")
             Spacer(Modifier.height(12.dp))
 
             // Nothing can be said about the week before the first load lands, and a week the
@@ -425,11 +422,7 @@ private fun SymptomFreeCard(streak: SymptomFreeStreak?) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                "Symptom-free",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            CardHeading("Symptom-free")
             Spacer(Modifier.height(12.dp))
             if (streak == null) {
                 NotEnoughDataMessage(
