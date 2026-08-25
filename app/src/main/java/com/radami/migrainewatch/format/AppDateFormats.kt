@@ -47,11 +47,8 @@ object AppDateFormats {
     /** "Sat 1 Aug, 14:00" — a full timestamp compact enough to sit in a list row. */
     val DAY_AND_TIME: DateTimeFormatter = display("EEE d MMM, HH:mm")
 
-    /** "Saturday 14:00" — notification text, where there is room to spell the day out. */
+    /** "Saturday 14:00" — notification and banner text, where the day is worth spelling out. */
     val WEEKDAY_AND_TIME: DateTimeFormatter = display("EEEE HH:mm")
-
-    /** "Sat 14:00" — the same thing inside an alert banner, where there is not. */
-    val SHORT_WEEKDAY_AND_TIME: DateTimeFormatter = display("EEE HH:mm")
 
     /** "Sat" — chart day labels. */
     val WEEKDAY: DateTimeFormatter = display("EEE")

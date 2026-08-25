@@ -97,9 +97,10 @@ fun AppNavigation(startDestination: String, openTab: Screen? = null) {
             }
             composable(Screen.Today.route) {
                 TodayScreen(
-                    // The banner names the next event; the Pressure tab is where every one of
-                    // them is listed and shaded on the chart.
-                    onViewAlerts = { navController.navigateToTab(Screen.Pressure) },
+                    // Both the banner and the outlook days lead here: they name an event or a
+                    // day, and the Pressure tab is where every one of them is listed and shaded
+                    // on the chart.
+                    onViewPressure = { navController.navigateToTab(Screen.Pressure) },
                     onChangeLocation = { navController.navigate(Screen.Onboarding.route) }
                 )
             }

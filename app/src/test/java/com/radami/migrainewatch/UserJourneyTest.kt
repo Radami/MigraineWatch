@@ -195,9 +195,9 @@ class UserJourneyTest {
         awaitDisplayed(hasContentDescription("Pressure alert banner"))
         composeTestRule.onNodeWithText("Elevated risk", substring = true).assertIsDisplayed()
 
-        // 3. Tapping through switches to the Pressure tab, which is where every current
-        //    event is listed and shaded on the chart
-        composeTestRule.onNodeWithContentDescription("View details").performClick()
+        // 3. Tapping the banner — anywhere on it — switches to the Pressure tab, which is
+        //    where every current event is listed and shaded on the chart
+        composeTestRule.onNodeWithContentDescription("Pressure alert banner").performClick()
 
         // 4. Verify the chart and the event that raised the banner
         awaitDisplayed(hasContentDescription("Time range 7 days"))
