@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.radami.migrainewatch.ui.components.CardHeading
+import com.radami.migrainewatch.ui.components.SectionHeading
 import com.radami.migrainewatch.BuildConfig
 import com.radami.migrainewatch.R
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
@@ -135,7 +135,7 @@ private fun SettingsList(viewModel: SettingsViewModel) {
         }
 
         item {
-            SectionHeader("Alert sensitivity")
+            SettingsSectionHeading("Alert sensitivity")
         }
         item {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -183,7 +183,7 @@ private fun SettingsList(viewModel: SettingsViewModel) {
         }
 
         item { HorizontalDivider() }
-        item { SectionHeader("Notifications") }
+        item { SettingsSectionHeading("Notifications") }
         item {
             val context = LocalContext.current
             val permissionLauncher = rememberLauncherForActivityResult(
@@ -243,7 +243,7 @@ private fun SettingsList(viewModel: SettingsViewModel) {
 
         if (BuildConfig.DEBUG) {
             item { HorizontalDivider() }
-            item { SectionHeader("Debug") }
+            item { SettingsSectionHeading("Debug") }
             item {
                 // Drives the alert pipeline over whatever forecast is loaded. The mock data is
                 // built to cover every sensitivity preset on its own, so there is nothing to
@@ -307,13 +307,16 @@ private val DEBUG_ACTION_SPACING = 0.dp
 private val DebugActionPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
 
 /**
- * Settings has no cards, but its sections do the same job a card heading does, so they are
- * drawn by the same composable rather than by a style of their own. Only the leading space is
- * local: a section here follows the previous one's content directly instead of a card edge.
+ * The leading space a section heading needs here. Settings has no cards, so a heading follows
+ * the previous section's content directly rather than a card edge, and has to open the gap
+ * itself.
  */
+private val SECTION_HEADING_TOP_SPACE = 8.dp
+
+/** [SectionHeading] with the space Settings needs above it. */
 @Composable
-private fun SectionHeader(title: String) {
-    CardHeading(title, modifier = Modifier.padding(top = 8.dp))
+private fun SettingsSectionHeading(title: String) {
+    SectionHeading(title, modifier = Modifier.padding(top = SECTION_HEADING_TOP_SPACE))
 }
 
 @Composable
