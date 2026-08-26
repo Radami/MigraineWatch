@@ -54,20 +54,18 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
-import com.radami.migrainewatch.format.formatAlertSummary
-import com.radami.migrainewatch.format.AlertTimingDetail
-import com.radami.migrainewatch.format.formatAlertTiming
-import com.radami.migrainewatch.format.AppDateFormats
-import com.radami.migrainewatch.format.formatHpa
-import com.radami.migrainewatch.format.label
-import com.radami.migrainewatch.domain.PressureDirection
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.DayOutlook
 import com.radami.migrainewatch.domain.OutlookRisk
+import com.radami.migrainewatch.domain.PressureDirection
 import com.radami.migrainewatch.domain.SymptomFreeStreak
+import com.radami.migrainewatch.format.AlertTimingDetail
+import com.radami.migrainewatch.format.AppDateFormats
+import com.radami.migrainewatch.format.formatAlertSummary
+import com.radami.migrainewatch.format.formatAlertTiming
+import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.ui.components.CardHeading
 import com.radami.migrainewatch.ui.components.DayEmphasis
 import com.radami.migrainewatch.ui.components.DayMarker
@@ -78,7 +76,6 @@ import com.radami.migrainewatch.ui.theme.color
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.roundToInt
 
 @Composable
 fun TodayScreen(
@@ -303,8 +300,12 @@ private fun OutlookStrip(outlook: List<DayOutlook>, onDayClick: () -> Unit) {
         outlook.forEachIndexed { index, day ->
             OutlookDay(
                 day = day,
-                // Only the first column is today, and it is today by construction rather than
-                // by a date comparison that could disagree with the list it was built from.
+                // Only the first column is today, and it is today by construction rather
+                // than by a date comparison that could disagree with the list it was built
+                // from. Left open across midnight with nothing emitting, the whole strip goes
+                // stale together — the ViewModel's LocalDate.now() dated these days — so the
+                // ring stays on the column the dates agree is today rather than drifting off
+                // its own strip. Wrong by a day, but not wrong about itself.
                 isToday = index == 0,
                 weekday = weekdayFormatter.format(day.date),
                 onClick = onDayClick
@@ -400,9 +401,13 @@ private fun todayLabel(today: DayOutlook): String = when (today.risk) {
 }
 
 /**
- * What the days after today add up to. Only the days the forecast actually reached can be
- * called clear, so a short forecast says how far it got rather than reporting quiet days it
- * knows nothing about.
+ * What the days after today add up to.
+ *
+ * Only the days the forecast actually reached can be called clear, so a short forecast says
+ * how far it got rather than reporting quiet days it knows nothing about. The count of days to
+ * watch is deliberately not hedged the same way: a detected event is known whatever the
+ * forecast does after it, and a day the readings never reached cannot add to the count anyway,
+ * so "2 of the next 6 days" stays true where coverage runs out early.
  *
  * Today is dropped rather than counted, so the days counted here and the days circled in the
  * strip are deliberately different sets: [TodayHeadline] above already speaks for today, and
