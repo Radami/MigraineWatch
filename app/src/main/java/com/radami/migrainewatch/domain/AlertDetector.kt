@@ -5,6 +5,17 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
+/**
+ * One pressure event.
+ *
+ * @param start when the pressure last turned, and [end] when it finished turning — the real
+ *   extremes, so the shading on the chart covers the whole rise or drop however long it took.
+ * @param delta the largest swing inside any *24-hour* window of the event, which is not the
+ *   swing from [start] to [end]: an event can run longer than a day, and this one is the
+ *   figure the threshold was actually tested against. Reporting the start-to-end swing instead
+ *   meant showing a number that no 24-hour period ever reached, so the same event could be
+ *   labelled 11.1 hPa and then vanish when the threshold was raised to 10.
+ */
 data class AlertWindow(
     val start: Instant,
     val end: Instant,
@@ -67,17 +78,22 @@ object AlertDetector {
         // Step 3: pin each event's start/end to the actual pressure extremes within the merged
         // window so the displayed times reflect when pressure peaked and troughed, not the
         // sliding-window boundaries.
+        //
+        // The extremes set the times only. The swing between them is deliberately *not* used as
+        // the event's delta: the merged window can be far wider than a day — 50 hours, on data
+        // that produced this comment — so that figure answers a question nobody asked and no
+        // threshold tested. What carries through instead is `w.delta`, the largest qualifying
+        // 24-hour swing found in step 1, which is what the user's sensitivity is set against.
         val pinned = mergedRaw.map { w ->
             val window = readings.filter { it.dateTime.toEpochMilli() in w.startMillis..w.endMillis }
             val maxReading = window.maxByOrNull { it.pressureMsl }!!
             val minReading = window.minByOrNull { it.pressureMsl }!!
-            val delta = maxReading.pressureMsl - minReading.pressureMsl
             val (start, end, direction) = if (maxReading.dateTime <= minReading.dateTime) {
                 Triple(maxReading.dateTime, minReading.dateTime, PressureDirection.DROP)
             } else {
                 Triple(minReading.dateTime, maxReading.dateTime, PressureDirection.RISE)
             }
-            AlertWindow(start, end, delta, direction)
+            AlertWindow(start, end, w.delta, direction)
         }.sortedBy { it.start }
 
         // Step 4: pinning can land two windows on overlapping (or identical) extremes when the

@@ -43,6 +43,7 @@ import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.ChartWindow
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.PressureDirection
+import com.radami.migrainewatch.format.formatAlertHeadline
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.format.label
@@ -293,7 +294,7 @@ private fun AlertRow(alert: AlertWindow, color: Color, visibility: ChartVisibili
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                "${formatHpa(alert.delta)} hPa $directionLabel",
+                formatAlertHeadline(alert.delta, alert.direction),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)

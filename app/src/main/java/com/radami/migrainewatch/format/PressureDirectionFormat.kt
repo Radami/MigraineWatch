@@ -1,5 +1,6 @@
 package com.radami.migrainewatch.format
 
+import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.PressureDirection
 
 /**
@@ -15,3 +16,19 @@ val PressureDirection.label: String
         PressureDirection.DROP -> "pressure drop"
         PressureDirection.RISE -> "pressure rise"
     }
+
+/**
+ * How an event is named for the user: the direction first, then the swing in brackets.
+ *
+ * The swing is bracketed and qualified rather than led with, because it is a 24-hour figure
+ * and the event it describes can be longer than that. Leading with a bare "11.1 hPa" invited
+ * the reading that the number was the event's total, which made the same event look like it
+ * had changed size when the sensitivity moved. What the direction says is the part that never
+ * changes; the figure is the supporting detail. See [AlertWindow.delta].
+ */
+fun formatAlertSummary(delta: Float, direction: PressureDirection): String =
+    "${direction.label} (${formatHpa(delta)} hPa in 24h)"
+
+/** The same, opening a line rather than sitting inside one: "Pressure rise (8.2 hPa in 24h)". */
+fun formatAlertHeadline(delta: Float, direction: PressureDirection): String =
+    formatAlertSummary(delta, direction).replaceFirstChar { it.uppercase() }

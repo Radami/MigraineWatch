@@ -55,7 +55,25 @@ class PressureAlertUseCase @Inject constructor(
 
         /** The forecast horizon Open-Meteo gives us. */
         const val FORECAST_DAYS = 7L
+
+        /**
+         * The cadence Open-Meteo publishes at. A reading stands for the hour it opens rather
+         * than for an instant, which is what separates the last reading from the last moment
+         * the readings describe — see [coverageEnd].
+         */
+        const val READING_INTERVAL_HOURS = 1L
     }
+
+    /**
+     * The instant [readings] stop describing, or null when there are none.
+     *
+     * Deliberately not the last reading's timestamp. An hourly series for [FORECAST_DAYS] ends
+     * at 23:00 on its final day, so a caller that treated that timestamp as the horizon would
+     * find the last day of its own seven-day forecast short of data and refuse to call it
+     * clear. The hour that reading opens is covered too.
+     */
+    fun coverageEnd(readings: List<PressureReading>): Instant? =
+        readings.maxOfOrNull { it.dateTime }?.plus(READING_INTERVAL_HOURS, ChronoUnit.HOURS)
 
     /**
      * Alerts within [readings], which the caller has already collected. Callers that hold a

@@ -56,9 +56,11 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
+import com.radami.migrainewatch.format.formatAlertSummary
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.format.label
+import com.radami.migrainewatch.domain.PressureDirection
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.DayOutlook
 import com.radami.migrainewatch.domain.OutlookRisk
@@ -391,6 +393,10 @@ private fun todayLabel(today: DayOutlook): String = when (today.risk) {
  * What the days after today add up to. Only the days the forecast actually reached can be
  * called clear, so a short forecast says how far it got rather than reporting quiet days it
  * knows nothing about.
+ *
+ * Today is dropped rather than counted, so the days counted here and the days circled in the
+ * strip are deliberately different sets: [TodayHeadline] above already speaks for today, and
+ * counting it twice would have the card say the same thing in two voices.
  */
 private fun weekAheadLabel(outlook: List<DayOutlook>): String {
     val ahead = outlook.drop(1)
@@ -406,7 +412,8 @@ private fun outlookDayDescription(day: DayOutlook, isToday: Boolean, weekday: St
     val name = if (isToday) "Today" else "$weekday ${day.date.dayOfMonth}"
     return when (day.risk) {
         OutlookRisk.Elevated ->
-            "$name, elevated risk, ${formatHpa(day.peakDelta ?: 0f)} hPa ${day.direction?.label}"
+            "$name, elevated risk, " +
+                formatAlertSummary(day.peakDelta ?: 0f, day.direction ?: PressureDirection.DROP)
 
         OutlookRisk.Clear -> "$name, clear"
         OutlookRisk.Unknown -> "$name, no forecast"
