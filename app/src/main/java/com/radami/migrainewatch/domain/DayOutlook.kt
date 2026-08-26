@@ -42,22 +42,26 @@ data class DayOutlook(
          * The next [DAYS] days from [today], each marked with the events in [alerts] that touch
          * it.
          *
-         * @param forecastEnd the last instant the readings reach, or null when there are none.
-         *   A day is only called clear once the forecast covers all of it; past that point the
-         *   days are [OutlookRisk.Unknown] rather than quietly reported as safe.
+         * @param coveredThrough the instant the readings stop describing, or null when there
+         *   are none. Not the last reading's timestamp: readings are samples, and the interval
+         *   one opens is covered by it, so the caller works this out — see
+         *   [PressureAlertUseCase.coverageEnd]. A day is only called clear once coverage
+         *   reaches its final midnight; past that point the days are [OutlookRisk.Unknown]
+         *   rather than quietly reported as safe.
          */
         fun forecast(
             alerts: List<AlertWindow>,
-            forecastEnd: Instant?,
+            coveredThrough: Instant?,
             today: LocalDate,
             zone: ZoneId
         ): List<DayOutlook> = (0 until DAYS).map { offset ->
             val date = today.plusDays(offset.toLong())
             val touching = alerts.filter { date in AlertDetector.daysTouched(it, zone) }
 
-            // The day is covered only if the readings run past its final midnight.
+            // The day is covered only once the readings describe it right through to its final
+            // midnight.
             val dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant()
-            val covered = forecastEnd != null && !forecastEnd.isBefore(dayEnd)
+            val covered = coveredThrough != null && !coveredThrough.isBefore(dayEnd)
 
             // A touched day is elevated whether or not the forecast reaches its end: the event
             // is already known, and nothing later in the day can un-know it.

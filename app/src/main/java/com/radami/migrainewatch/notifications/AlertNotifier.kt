@@ -14,6 +14,7 @@ import com.radami.migrainewatch.MainActivity
 import com.radami.migrainewatch.R
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.format.formatAlertHeadline
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.format.label
@@ -64,7 +65,7 @@ class AlertNotifier @Inject constructor(
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
-            .setContentTitle("${formatHpa(alert.delta)} hPa ${alert.direction.label}")
+            .setContentTitle(formatAlertHeadline(alert.delta, alert.direction))
             .setContentText(timingLabel(alert, phase))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)

@@ -191,9 +191,14 @@ class UserJourneyTest {
         // 1. Force a storm scenario so the app starts with a 9 hPa drop in its data
         launchApp(MockDataInterceptor.Scenario.TWO_EVENTS)
 
-        // 2. Verify "Elevated risk" banner is displayed
+        // 2. Verify "Elevated risk" banner is displayed. The outlook headline below it says
+        //    "Elevated risk today" as well, so the text alone matches two nodes; the banner is
+        //    one merged node carrying both its description and its text, so ask for both.
         awaitDisplayed(hasContentDescription("Pressure alert banner"))
-        composeTestRule.onNodeWithText("Elevated risk", substring = true).assertIsDisplayed()
+        composeTestRule.onNode(
+            hasContentDescription("Pressure alert banner") and
+                hasText("Elevated risk", substring = true)
+        ).assertIsDisplayed()
 
         // 3. Tapping the banner — anywhere on it — switches to the Pressure tab, which is
         //    where every current event is listed and shaded on the chart
@@ -201,8 +206,8 @@ class UserJourneyTest {
 
         // 4. Verify the chart and the event that raised the banner
         awaitDisplayed(hasContentDescription("Time range 7 days"))
-        scrollToInList(hasText("hPa pressure drop", substring = true))
-        composeTestRule.onNodeWithText("hPa pressure drop", substring = true).assertIsDisplayed()
+        scrollToInList(hasText("Pressure drop (", substring = true))
+        composeTestRule.onNodeWithText("Pressure drop (", substring = true).assertIsDisplayed()
     }
 
     @Test
@@ -219,7 +224,8 @@ class UserJourneyTest {
         assertEquals(
             "one row per colour in the palette",
             ALERT_COLOR_COUNT,
-            countOf(hasText("hPa pressure", substring = true))
+            // Unique to an alert row: the card's own subtitle also mentions hPa.
+            countOf(hasText("hPa in 24h", substring = true))
         )
 
         // 4. The three kept are the three soonest, not the three last: the scenario runs

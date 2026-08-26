@@ -90,10 +90,12 @@ class TodayViewModel @Inject constructor(
                     val today = LocalDate.now()
 
                     // The outlook can only call a day clear as far as the readings reach, so it
-                    // is told where they stop rather than assuming a full forecast arrived.
+                    // is told where they stop rather than assuming a full forecast arrived. How
+                    // far that is belongs to the use case: the last reading is not the last
+                    // moment covered.
                     val days = DayOutlook.forecast(
                         alerts = detected,
-                        forecastEnd = readings.maxOfOrNull { it.dateTime },
+                        coveredThrough = alertUseCase.coverageEnd(readings),
                         today = today,
                         zone = ZoneId.systemDefault()
                     )
