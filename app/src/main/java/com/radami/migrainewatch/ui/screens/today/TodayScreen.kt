@@ -59,11 +59,9 @@ import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.DayOutlook
 import com.radami.migrainewatch.domain.OutlookRisk
-import com.radami.migrainewatch.domain.PressureDirection
 import com.radami.migrainewatch.domain.SymptomFreeStreak
 import com.radami.migrainewatch.format.AlertTimingDetail
 import com.radami.migrainewatch.format.AppDateFormats
-import com.radami.migrainewatch.format.formatAlertSummary
 import com.radami.migrainewatch.format.formatAlertTiming
 import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.ui.components.DayEmphasis
@@ -394,47 +392,6 @@ private fun OutlookPlaceholder(isLoading: Boolean) {
     )
 }
 
-private fun todayLabel(today: DayOutlook): String = when (today.risk) {
-    OutlookRisk.Elevated -> "Elevated risk today"
-    OutlookRisk.Clear -> "Clear today"
-    OutlookRisk.Unknown -> "No forecast for today"
-}
-
-/**
- * What the days after today add up to.
- *
- * Only the days the forecast actually reached can be called clear, so a short forecast says
- * how far it got rather than reporting quiet days it knows nothing about. The count of days to
- * watch is deliberately not hedged the same way: a detected event is known whatever the
- * forecast does after it, and a day the readings never reached cannot add to the count anyway,
- * so "2 of the next 6 days" stays true where coverage runs out early.
- *
- * Today is dropped rather than counted, so the days counted here and the days circled in the
- * strip are deliberately different sets: [TodayHeadline] above already speaks for today, and
- * counting it twice would have the card say the same thing in two voices.
- */
-private fun weekAheadLabel(outlook: List<DayOutlook>): String {
-    val ahead = outlook.drop(1)
-    val toWatch = ahead.count { it.risk == OutlookRisk.Elevated }
-    if (toWatch > 0) return "$toWatch of the next ${ahead.size} days to watch"
-
-    val covered = ahead.count { it.risk != OutlookRisk.Unknown }
-    if (covered == 0) return "No forecast beyond today"
-    return "Clear for the next ${dayCount(covered.toLong())}"
-}
-
-private fun outlookDayDescription(day: DayOutlook, isToday: Boolean, weekday: String): String {
-    val name = if (isToday) "Today" else "$weekday ${day.date.dayOfMonth}"
-    return when (day.risk) {
-        OutlookRisk.Elevated ->
-            "$name, elevated risk, " +
-                formatAlertSummary(day.peakDelta ?: 0f, day.direction ?: PressureDirection.DROP)
-
-        OutlookRisk.Clear -> "$name, clear"
-        OutlookRisk.Unknown -> "$name, no forecast"
-    }
-}
-
 private val STREAK_SEVERITY_DOT_SIZE = 10.dp
 
 @Composable
@@ -584,6 +541,3 @@ private fun NotEnoughDataMessage(hint: String) {
 
 private const val NOT_ENOUGH_DATA = "Not enough data"
 
-private fun dayCount(days: Long): String = "$days ${dayUnit(days)}"
-
-private fun dayUnit(days: Long): String = if (days == 1L) "day" else "days"

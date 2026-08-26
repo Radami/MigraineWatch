@@ -238,6 +238,27 @@ class UserJourneyTest {
     }
 
     @Test
+    fun scenarioE_TheWeekPlanner() {
+        // 1. A week with events in it, so the strip has days worth tapping
+        launchApp(MockDataInterceptor.Scenario.TWO_EVENTS)
+
+        // 2. The outlook strip announces each column as one thing — the weekday, the number
+        //    and the risk are cleared and replaced by a single description, so this is what a
+        //    screen reader hears and what a tap has to land on. The comma keeps it clear of
+        //    the "Today" bottom-nav tab.
+        scrollToInList(hasText("7-day outlook"))
+        awaitDisplayed(hasContentDescription("Today,", substring = true))
+
+        // 3. Tapping a day goes to the Pressure tab, the same place the banner leads: the
+        //    strip names a day, and that is where the day's events are listed and shaded.
+        composeTestRule.onNodeWithContentDescription("Today,", substring = true).performClick()
+
+        // 4. Verify we arrived. A day column is barely wider than its marker, so this also
+        //    pins that the whole column is the target rather than the number inside it.
+        awaitDisplayed(hasContentDescription("Time range 7 days"))
+    }
+
+    @Test
     fun scenarioC_TheStoic() {
         // 1. Start with a storm (~10 hPa drop)
         launchApp(MockDataInterceptor.Scenario.TWO_EVENTS)

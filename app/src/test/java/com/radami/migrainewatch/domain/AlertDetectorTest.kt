@@ -13,6 +13,7 @@ import kotlin.math.sin
 class AlertDetectorTest {
 
     private val now = Instant.parse("2023-10-01T12:00:00Z")
+    private val utc = ZoneId.of("UTC")
 
     @Test
     fun `detect returns alert when pressure drops more than threshold`() {
@@ -38,6 +39,95 @@ class AlertDetectorTest {
         val alerts = AlertDetector.detect(readings, 5f)
 
         assertTrue(alerts.isEmpty())
+    }
+
+    /**
+     * [AlertDetector.daysTouched] is tested directly as well as through `eventDays`, because
+     * the outlook asks it a different question: `eventDays` walks the range, while
+     * `date in daysTouched(...)` leans on its endpoints. A range whose endpoints were wrong in
+     * a way the walk happened to absorb would pass one and fail the other.
+     */
+    @Test
+    fun `daysTouched spans an alert from its first day to its last`() {
+        val alert = AlertWindow(
+            start = Instant.parse("2023-10-01T18:00:00Z"),
+            end = Instant.parse("2023-10-03T06:00:00Z"),
+            delta = 9f,
+            direction = PressureDirection.DROP
+        )
+
+        val span = AlertDetector.daysTouched(alert, utc)
+
+        assertEquals(LocalDate.of(2023, 10, 1), span.start)
+        assertEquals(LocalDate.of(2023, 10, 3), span.endInclusive)
+    }
+
+    @Test
+    fun `daysTouched contains every day between the endpoints and nothing outside them`() {
+        val alert = AlertWindow(
+            start = Instant.parse("2023-10-01T18:00:00Z"),
+            end = Instant.parse("2023-10-03T06:00:00Z"),
+            delta = 9f,
+            direction = PressureDirection.DROP
+        )
+
+        val span = AlertDetector.daysTouched(alert, utc)
+
+        assertTrue(LocalDate.of(2023, 9, 30) !in span)
+        assertTrue(LocalDate.of(2023, 10, 1) in span)
+        assertTrue(LocalDate.of(2023, 10, 2) in span)
+        assertTrue(LocalDate.of(2023, 10, 3) in span)
+        assertTrue(LocalDate.of(2023, 10, 4) !in span)
+    }
+
+    @Test
+    fun `daysTouched drops a day the alert only reaches at midnight`() {
+        // Ends exactly as the 3rd begins, so it spends no time in the 3rd.
+        val alert = AlertWindow(
+            start = Instant.parse("2023-10-01T18:00:00Z"),
+            end = Instant.parse("2023-10-03T00:00:00Z"),
+            delta = 9f,
+            direction = PressureDirection.DROP
+        )
+
+        val span = AlertDetector.daysTouched(alert, utc)
+
+        assertEquals(LocalDate.of(2023, 10, 2), span.endInclusive)
+        assertTrue(LocalDate.of(2023, 10, 3) !in span)
+    }
+
+    @Test
+    fun `daysTouched keeps a day the alert both starts and ends on at midnight`() {
+        // Dropping the end day here would leave the event touching no day at all.
+        val alert = AlertWindow(
+            start = Instant.parse("2023-10-02T00:00:00Z"),
+            end = Instant.parse("2023-10-02T00:00:00Z"),
+            delta = 9f,
+            direction = PressureDirection.DROP
+        )
+
+        val span = AlertDetector.daysTouched(alert, utc)
+
+        assertEquals(LocalDate.of(2023, 10, 2), span.start)
+        assertTrue(LocalDate.of(2023, 10, 2) in span)
+    }
+
+    @Test
+    fun `daysTouched reads the days in the zone it is given`() {
+        // 23:00 UTC on the 1st is already the 2nd in Berlin, so the same instant lands on a
+        // different day depending on the zone the outlook and the calendar are drawn in.
+        val alert = AlertWindow(
+            start = Instant.parse("2023-10-01T23:00:00Z"),
+            end = Instant.parse("2023-10-01T23:30:00Z"),
+            delta = 9f,
+            direction = PressureDirection.DROP
+        )
+
+        assertEquals(LocalDate.of(2023, 10, 1), AlertDetector.daysTouched(alert, utc).start)
+        assertEquals(
+            LocalDate.of(2023, 10, 2),
+            AlertDetector.daysTouched(alert, ZoneId.of("Europe/Berlin")).start
+        )
     }
 
     @Test

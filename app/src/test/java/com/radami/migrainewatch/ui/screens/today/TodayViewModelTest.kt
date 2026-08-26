@@ -189,6 +189,32 @@ class TodayViewModelTest {
         )
     }
 
+    @Test
+    fun `readings that stop before today leave every day unknown`() = runTest {
+        val now = Instant.now()
+        // A stale cache: history only, nothing covering today or after. The card has a
+        // placeholder for exactly this, and it can only reach it if no day is called clear.
+        val readings = (1..12).map { hoursAgo ->
+            PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS), 1013f, 1013f, now)
+        }
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
+
+        val outlook = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState().outlook
+
+        assertEquals(DayOutlook.DAYS, outlook.count { it.risk == OutlookRisk.Unknown })
+    }
+
+    @Test
+    fun `no readings at all leave every day unknown`() = runTest {
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
+
+        val outlook = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState().outlook
+
+        assertEquals(DayOutlook.DAYS, outlook.count { it.risk == OutlookRisk.Unknown })
+    }
+
     /**
      * The composition, not either half of it: `coverageEnd` and `DayOutlook.forecast` each
      * looked right on their own while the screen still refused to call its own last day clear.
