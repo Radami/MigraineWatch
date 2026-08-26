@@ -57,10 +57,13 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
 import com.radami.migrainewatch.format.formatAlertSummary
+import com.radami.migrainewatch.format.AlertTimingDetail
+import com.radami.migrainewatch.format.formatAlertTiming
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.domain.PressureDirection
+import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.DayOutlook
 import com.radami.migrainewatch.domain.OutlookRisk
@@ -130,8 +133,9 @@ fun TodayScreen(
                 exit = fadeOut()
             ) {
                 val alerts = state.pendingAlerts
-                if (alerts.isNotEmpty()) {
-                    AlertBanner(alerts = alerts, onClick = onViewPressure)
+                val phase = state.leadAlertPhase
+                if (alerts.isNotEmpty() && phase != null) {
+                    AlertBanner(alerts = alerts, phase = phase, onClick = onViewPressure)
                 }
             }
         }
@@ -148,21 +152,27 @@ fun TodayScreen(
 
 /**
  * @param alerts events under way or still ahead, earliest first, and never empty. The banner
- *   heads the one arriving soonest and counts the rest, so a caller passing a finished event
- *   would have it announced as the next thing coming.
+ *   heads the first — the one under way when there is one, otherwise the one arriving soonest
+ *   — and counts the rest, so a caller passing a finished event would have it announced as
+ *   something the user still has ahead of them.
+ * @param phase where that first event sits relative to now, which is the difference between
+ *   telling the user something is coming and telling them they are already in it. It comes
+ *   from the ViewModel because a composable has no clock of its own.
  */
 @Composable
-private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
+private fun AlertBanner(alerts: List<AlertWindow>, phase: AlertPhase, onClick: () -> Unit) {
     val first = alerts.first()
-    val timeFormatter = AppDateFormats.WEEKDAY_AND_TIME
     val zone = remember { ZoneId.systemDefault() }
-    val timeLabel = remember(first) { first.start.atZone(zone).format(timeFormatter) }
 
-    // The banner says that something is coming and when it starts, and stops there. How big the
-    // swing is and which way it goes are what the screen behind the chevron is for, and reading
-    // them off a two-line banner never told anyone anything they could act on.
+    // The banner says which way the risk runs and when, and stops there. How big the swing is
+    // is what the screen behind the chevron is for, and reading it off a two-line banner never
+    // told anyone anything they could act on. The wording is the notification's own, so the two
+    // cannot describe the same event differently.
+    val timing = remember(first, phase, zone) {
+        formatAlertTiming(first, phase, AlertTimingDetail.Brief, zone)
+    }
     val headline = if (alerts.size == 1) "Elevated risk" else "Elevated risk · Multiple events"
-    val message = "$headline\nNext: from $timeLabel"
+    val message = "$headline\n$timing"
 
     Surface(
         shape = ALERT_BANNER_SHAPE,

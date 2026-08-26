@@ -6,6 +6,7 @@ import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.SymptomRepository
+import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.DayOutlook
 import com.radami.migrainewatch.domain.PressureAlertUseCase
@@ -34,6 +35,14 @@ data class TodayUiState(
      * banner warns, and there is nothing to warn about once an event is over.
      */
     val pendingAlerts: List<AlertWindow> = emptyList(),
+    /**
+     * Where the first of [pendingAlerts] sits relative to now, or null when there are none.
+     *
+     * Worked out here rather than in the banner, for the same reason the list itself is
+     * filtered here: a composable has no clock, and an event's phase turns over on its own
+     * while nothing redraws.
+     */
+    val leadAlertPhase: AlertPhase? = null,
     val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
     val symptomFreeStreak: SymptomFreeStreak? = null,
     val locationName: String = "",
@@ -103,9 +112,14 @@ class TodayViewModel @Inject constructor(
                     Triple(detected, SymptomFreeStreak.from(entries, today), days)
                 }
 
+                // The banner leads with the earliest still-live event, which is the one under
+                // way when there is one — it is the event the user is actually in.
+                val pending = alerts.filter { it.end.isAfter(now) }
+
                 _uiState.value = TodayUiState(
                     outlook = outlook,
-                    pendingAlerts = alerts.filter { it.end.isAfter(now) },
+                    pendingAlerts = pending,
+                    leadAlertPhase = pending.firstOrNull()?.let { AlertPhase.of(it, now) },
                     alertThresholdHpa = settings.alertThresholdHpa,
                     symptomFreeStreak = streak,
                     locationName = settings.location.name,

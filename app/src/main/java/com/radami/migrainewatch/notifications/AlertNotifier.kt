@@ -15,11 +15,9 @@ import com.radami.migrainewatch.R
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.format.formatAlertHeadline
-import com.radami.migrainewatch.format.AppDateFormats
-import com.radami.migrainewatch.format.formatHpa
-import com.radami.migrainewatch.format.label
+import com.radami.migrainewatch.format.AlertTimingDetail
+import com.radami.migrainewatch.format.formatAlertTiming
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,8 +31,6 @@ class AlertNotifier @Inject constructor(
         const val TAG = "AlertNotifier"
         const val CHANNEL_ID = "pressure_alerts"
     }
-
-    private val timeFormatter = AppDateFormats.WEEKDAY_AND_TIME
 
     /** Safe to call repeatedly; creating an existing channel is a no-op. */
     fun ensureChannel() {
@@ -66,7 +62,7 @@ class AlertNotifier @Inject constructor(
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentTitle(formatAlertHeadline(alert.delta, alert.direction))
-            .setContentText(timingLabel(alert, phase))
+            .setContentText(formatAlertTiming(alert, phase, AlertTimingDetail.WithEnd))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
@@ -80,21 +76,6 @@ class AlertNotifier @Inject constructor(
             // Permission can be revoked between the check above and posting.
             Log.e(TAG, "Failed to post alert notification", error)
             false
-        }
-    }
-
-    /**
-     * An event still ahead is described by when it arrives. One already running is described by
-     * when it ends, because "starts" would be describing the past — the user is in it.
-     */
-    private fun timingLabel(alert: AlertWindow, phase: AlertPhase): String {
-        val zone = ZoneId.systemDefault()
-        val startLabel = timeFormatter.format(alert.start.atZone(zone))
-
-        return when (phase) {
-            AlertPhase.AHEAD -> "Starts $startLabel"
-            AlertPhase.UNDERWAY ->
-                "Underway since $startLabel · eases ${timeFormatter.format(alert.end.atZone(zone))}"
         }
     }
 
