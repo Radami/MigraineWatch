@@ -5,6 +5,7 @@ import com.radami.migrainewatch.data.preferences.AppSettings
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.SymptomRepository
+import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.DayOutlook
 import com.radami.migrainewatch.domain.OutlookRisk
 import com.radami.migrainewatch.domain.PressureAlertUseCase
@@ -22,6 +23,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -138,6 +140,53 @@ class TodayViewModelTest {
         assertTrue(toWatch.isNotEmpty())
         assertEquals(10f, toWatch.first().peakDelta!!, 0.01f)
         assertEquals(PressureDirection.DROP, toWatch.first().direction)
+    }
+
+    @Test
+    fun `an event already under way is reported as under way, not as the next one coming`() = runTest {
+        val now = Instant.now()
+        // A 10 hPa drop that began six hours ago and has six to run: still pending, because it
+        // has not finished, but its start is in the past and "starts" would be a lie about it.
+        val readings = listOf(
+            PressureReading(now.minus(6, ChronoUnit.HOURS), 1020f, 1020f, now),
+            PressureReading(now.plus(6, ChronoUnit.HOURS), 1010f, 1010f, now)
+        )
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
+        every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
+
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+
+        val state = viewModel.loadedState()
+
+        assertEquals(1, state.pendingAlerts.size)
+        assertEquals(AlertPhase.UNDERWAY, state.leadAlertPhase)
+    }
+
+    @Test
+    fun `an event still ahead is reported as ahead`() = runTest {
+        val now = Instant.now()
+        val readings = listOf(
+            PressureReading(now.plus(6, ChronoUnit.HOURS), 1020f, 1020f, now),
+            PressureReading(now.plus(18, ChronoUnit.HOURS), 1010f, 1010f, now)
+        )
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
+        every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
+
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+
+        assertEquals(AlertPhase.AHEAD, viewModel.loadedState().leadAlertPhase)
+    }
+
+    @Test
+    fun `no pending event leaves the banner nothing to word`() = runTest {
+        val now = Instant.now()
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns
+            flowOf(listOf(PressureReading(now, 1013f, 1013f, now)))
+
+        assertNull(
+            TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+                .loadedState().leadAlertPhase
+        )
     }
 
     /**
