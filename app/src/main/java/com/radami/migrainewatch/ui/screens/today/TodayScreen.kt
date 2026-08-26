@@ -66,11 +66,11 @@ import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatAlertSummary
 import com.radami.migrainewatch.format.formatAlertTiming
 import com.radami.migrainewatch.format.label
-import com.radami.migrainewatch.ui.components.CardHeading
 import com.radami.migrainewatch.ui.components.DayEmphasis
 import com.radami.migrainewatch.ui.components.DayMarker
 import com.radami.migrainewatch.ui.components.DayRisk
 import com.radami.migrainewatch.ui.components.HighRiskLegendSwatch
+import com.radami.migrainewatch.ui.components.SectionHeading
 import com.radami.migrainewatch.ui.components.TodayLegendSwatch
 import com.radami.migrainewatch.ui.theme.color
 import java.time.LocalDate
@@ -151,7 +151,7 @@ fun TodayScreen(
  * @param alerts events under way or still ahead, earliest first, and never empty. The banner
  *   heads the first — the one under way when there is one, otherwise the one arriving soonest
  *   — and counts the rest, so a caller passing a finished event would have it announced as
- *   something the user still has ahead of them.
+ *   something the user still has ahead.
  * @param phase where that first event sits relative to now, which is the difference between
  *   telling the user something is coming and telling them they are already in it. It comes
  *   from the ViewModel because a composable has no clock of its own.
@@ -161,7 +161,7 @@ private fun AlertBanner(alerts: List<AlertWindow>, phase: AlertPhase, onClick: (
     val first = alerts.first()
     val zone = remember { ZoneId.systemDefault() }
 
-    // The banner says which way the risk runs and when, and stops there. How big the swing is
+    // The banner says which way the risk runs and when, and stops there. How big the swing
     // is what the screen behind the chevron is for, and reading it off a two-line banner never
     // told anyone anything they could act on. The wording is the notification's own, so the two
     // cannot describe the same event differently.
@@ -245,7 +245,7 @@ private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            CardHeading("${DayOutlook.DAYS}-day outlook")
+            SectionHeading("${DayOutlook.DAYS}-day outlook")
             Spacer(Modifier.height(12.dp))
 
             // Nothing can be said about the week before the first load lands, and a week the
@@ -444,7 +444,7 @@ private fun SymptomFreeCard(streak: SymptomFreeStreak?) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            CardHeading("Symptom-free")
+            SectionHeading("Symptom-free")
             Spacer(Modifier.height(12.dp))
             if (streak == null) {
                 NotEnoughDataMessage(

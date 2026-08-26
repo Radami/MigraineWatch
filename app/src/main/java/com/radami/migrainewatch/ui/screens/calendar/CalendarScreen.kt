@@ -63,7 +63,7 @@ import com.radami.migrainewatch.data.model.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.label
-import com.radami.migrainewatch.ui.components.CardHeading
+import com.radami.migrainewatch.ui.components.SectionHeading
 import com.radami.migrainewatch.ui.components.DayMarker
 import com.radami.migrainewatch.ui.components.DayRisk
 import com.radami.migrainewatch.ui.components.HighRiskLegendSwatch
@@ -324,7 +324,7 @@ private fun StatsCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            CardHeading("Statistics")
+            SectionHeading("Statistics")
             Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier
