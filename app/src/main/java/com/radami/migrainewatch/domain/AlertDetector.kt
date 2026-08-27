@@ -5,6 +5,17 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
+/**
+ * One pressure event.
+ *
+ * @param start when the pressure last turned, and [end] when it finished turning — the real
+ *   extremes, so the shading on the chart covers the whole rise or drop however long it took.
+ * @param delta the largest swing inside any *24-hour* window of the event, which is not the
+ *   swing from [start] to [end]: an event can run longer than a day, and this one is the
+ *   figure the threshold was actually tested against. Reporting the start-to-end swing instead
+ *   meant showing a number that no 24-hour period ever reached, so the same event could be
+ *   labelled 11.1 hPa and then vanish when the threshold was raised to 10.
+ */
 data class AlertWindow(
     val start: Instant,
     val end: Instant,
@@ -67,17 +78,22 @@ object AlertDetector {
         // Step 3: pin each event's start/end to the actual pressure extremes within the merged
         // window so the displayed times reflect when pressure peaked and troughed, not the
         // sliding-window boundaries.
+        //
+        // The extremes set the times only. The swing between them is deliberately *not* used as
+        // the event's delta: the merged window can be far wider than a day — 50 hours, on data
+        // that produced this comment — so that figure answers a question nobody asked and no
+        // threshold tested. What carries through instead is `w.delta`, the largest qualifying
+        // 24-hour swing found in step 1, which is what the user's sensitivity is set against.
         val pinned = mergedRaw.map { w ->
             val window = readings.filter { it.dateTime.toEpochMilli() in w.startMillis..w.endMillis }
             val maxReading = window.maxByOrNull { it.pressureMsl }!!
             val minReading = window.minByOrNull { it.pressureMsl }!!
-            val delta = maxReading.pressureMsl - minReading.pressureMsl
             val (start, end, direction) = if (maxReading.dateTime <= minReading.dateTime) {
                 Triple(maxReading.dateTime, minReading.dateTime, PressureDirection.DROP)
             } else {
                 Triple(minReading.dateTime, maxReading.dateTime, PressureDirection.RISE)
             }
-            AlertWindow(start, end, delta, direction)
+            AlertWindow(start, end, w.delta, direction)
         }.sortedBy { it.start }
 
         // Step 4: pinning can land two windows on overlapping (or identical) extremes when the
@@ -99,6 +115,23 @@ object AlertDetector {
     }
 
     /**
+     * The span of days [alert] spends any time in, first to last. Callers that only need to ask
+     * whether one day is touched test it with `day in daysTouched(alert, zone)`.
+     */
+    fun daysTouched(alert: AlertWindow, zone: ZoneId): ClosedRange<LocalDate> {
+        val firstDay = alert.start.atZone(zone).toLocalDate()
+        val endDay = alert.end.atZone(zone).toLocalDate()
+
+        // An alert ending exactly at midnight spends no time in the day it lands on, so that
+        // day is not one to watch. Only a window spanning at least two days can end this way
+        // without disappearing entirely.
+        val endsAtMidnight = alert.end == endDay.atStartOfDay(zone).toInstant()
+        val lastDay = if (endsAtMidnight && endDay.isAfter(firstDay)) endDay.minusDays(1) else endDay
+
+        return firstDay..lastDay
+    }
+
+    /**
      * Every day an alert touches, in any direction. The calendar marks a day as high risk or
      * not, so which way the pressure moved — and how long each direction held the day — carries
      * no information here; a day touched by any qualifying event is a day to watch.
@@ -106,17 +139,9 @@ object AlertDetector {
     fun eventDays(alerts: List<AlertWindow>, zone: ZoneId): Set<LocalDate> {
         val days = mutableSetOf<LocalDate>()
         alerts.forEach { alert ->
-            val firstDay = alert.start.atZone(zone).toLocalDate()
-            val endDay = alert.end.atZone(zone).toLocalDate()
-
-            // An alert ending exactly at midnight spends no time in the day it lands on, so
-            // that day is not one to watch. Only a window spanning at least two days can end
-            // this way without disappearing entirely.
-            val endsAtMidnight = alert.end == endDay.atStartOfDay(zone).toInstant()
-            val lastDay = if (endsAtMidnight && endDay.isAfter(firstDay)) endDay.minusDays(1) else endDay
-
-            var day = firstDay
-            while (!day.isAfter(lastDay)) {
+            val span = daysTouched(alert, zone)
+            var day = span.start
+            while (!day.isAfter(span.endInclusive)) {
                 days.add(day)
                 day = day.plusDays(1)
             }

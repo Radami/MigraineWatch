@@ -9,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,8 +24,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingDown
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Warning
@@ -33,7 +33,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -43,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -54,27 +54,30 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
-import com.radami.migrainewatch.format.AppDateFormats
-import com.radami.migrainewatch.format.formatHpa
-import com.radami.migrainewatch.format.label
+import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.domain.DayOutlook
+import com.radami.migrainewatch.domain.OutlookRisk
 import com.radami.migrainewatch.domain.SymptomFreeStreak
-import com.radami.migrainewatch.domain.ChartStep
-import com.radami.migrainewatch.domain.ChartWindow
-import com.radami.migrainewatch.ui.components.PressureChart
-import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
+import com.radami.migrainewatch.format.AlertTimingDetail
+import com.radami.migrainewatch.format.AppDateFormats
+import com.radami.migrainewatch.format.formatAlertTiming
+import com.radami.migrainewatch.format.label
+import com.radami.migrainewatch.ui.components.DayEmphasis
+import com.radami.migrainewatch.ui.components.DayMarker
+import com.radami.migrainewatch.ui.components.DayRisk
+import com.radami.migrainewatch.ui.components.HighRiskLegendSwatch
+import com.radami.migrainewatch.ui.components.SectionHeading
+import com.radami.migrainewatch.ui.components.TodayLegendSwatch
 import com.radami.migrainewatch.ui.theme.color
-import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.roundToInt
 
 @Composable
 fun TodayScreen(
-    onViewAlerts: () -> Unit,
+    onViewPressure: () -> Unit,
     onChangeLocation: () -> Unit,
     viewModel: TodayViewModel = hiltViewModel()
 ) {
@@ -120,19 +123,20 @@ fun TodayScreen(
 
         item {
             AnimatedVisibility(
-                visible = state.alertWindows.isNotEmpty(),
+                visible = state.pendingAlerts.isNotEmpty(),
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
-                val alerts = state.alertWindows
-                if (alerts.isNotEmpty()) {
-                    AlertBanner(alerts = alerts, onClick = onViewAlerts)
+                val alerts = state.pendingAlerts
+                val phase = state.leadAlertPhase
+                if (alerts.isNotEmpty() && phase != null) {
+                    AlertBanner(alerts = alerts, phase = phase, onClick = onViewPressure)
                 }
             }
         }
 
         item {
-            PressureCard(state = state)
+            OutlookCard(state = state, onDayClick = onViewPressure)
         }
 
         item {
@@ -141,27 +145,44 @@ fun TodayScreen(
     }
 }
 
+/**
+ * @param alerts events under way or still ahead, earliest first, and never empty. The banner
+ *   heads the first — the one under way when there is one, otherwise the one arriving soonest
+ *   — and counts the rest, so a caller passing a finished event would have it announced as
+ *   something the user still has ahead.
+ * @param phase where that first event sits relative to now, which is the difference between
+ *   telling the user something is coming and telling them they are already in it. It comes
+ *   from the ViewModel because a composable has no clock of its own.
+ */
 @Composable
-private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
+private fun AlertBanner(alerts: List<AlertWindow>, phase: AlertPhase, onClick: () -> Unit) {
     val first = alerts.first()
-    val timeFormatter = AppDateFormats.SHORT_WEEKDAY_AND_TIME
     val zone = remember { ZoneId.systemDefault() }
-    val timeLabel = remember(first) { first.start.atZone(zone).format(timeFormatter) }
-    val eventSummary = "${formatHpa(first.delta)} hPa ${first.direction.label} around $timeLabel"
-    val message = if (alerts.size == 1) {
-        "Elevated risk · $eventSummary"
-    } else {
-        "Elevated risk · Multiple events\nNext: $eventSummary"
+
+    // The banner says which way the risk runs and when, and stops there. How big the swing
+    // is what the screen behind the chevron is for, and reading it off a two-line banner never
+    // told anyone anything they could act on. The wording is the notification's own, so the two
+    // cannot describe the same event differently.
+    val timing = remember(first, phase, zone) {
+        formatAlertTiming(first, phase, AlertTimingDetail.Brief, zone)
     }
+    val headline = if (alerts.size == 1) "Elevated risk" else "Elevated risk · Multiple events"
+    val message = "$headline\n$timing"
+
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = ALERT_BANNER_SHAPE,
         color = MaterialTheme.colorScheme.errorContainer,
+        // Clipped before it is made clickable: a modifier passed to Surface sits outside the
+        // clipping Surface does for its own shape, so an unclipped ripple would flash square
+        // corners over the rounded ones.
         modifier = Modifier
             .fillMaxWidth()
+            .clip(ALERT_BANNER_SHAPE)
+            .clickable(onClickLabel = "View pressure detail", onClick = onClick)
             .semantics { contentDescription = "Pressure alert banner" }
     ) {
         Row(
-            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -176,83 +197,199 @@ private fun AlertBanner(alerts: List<AlertWindow>, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = onClick) {
-                Icon(
-                    Icons.Default.ChevronRight,
-                    contentDescription = "View details",
-                    tint = MaterialTheme.colorScheme.onErrorContainer
-                )
-            }
+
+            // A plain icon now, not a button: the whole banner is the target, and a nested one
+            // would be a second thing to tap and a second thing to announce for the same trip.
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer
+            )
         }
     }
 }
 
+/** Shared by the banner's fill and the clip its ripple has to stay inside. */
+private val ALERT_BANNER_SHAPE = RoundedCornerShape(12.dp)
+
+private val OUTLOOK_MARKER_SIZE = 36.dp
+
+/**
+ * The ripple a tapped day shows. Rounded rather than square because the column is barely wider
+ * than the marker inside it, so a hard-cornered flash reads as a glitch rather than a press.
+ */
+private val OUTLOOK_DAY_SHAPE = RoundedCornerShape(8.dp)
+
+/**
+ * How far a day the forecast never reached is faded. It sits on top of the fading a quiet day
+ * already gets from [DayEmphasis.ByRisk], so it only has to open a gap below that — enough to
+ * read as "nothing known here" rather than "checked, and quiet".
+ */
+private const val UNKNOWN_DAY_ALPHA = 0.6f
+
+/** The weekday above a day worth looking at, and above one that isn't. */
+private const val WEEKDAY_ALPHA_AT_RISK = 0.9f
+private const val WEEKDAY_ALPHA = 0.45f
+
+/**
+ * The week ahead at a glance: what today looks like, then which of the days after it carry a
+ * pressure event. The days are drawn with the calendar's own [DayMarker], so a day marked to
+ * watch here has the silhouette it will have there.
+ */
 @Composable
-private fun PressureCard(state: TodayUiState) {
+private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Barometric pressure",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        "3 days back · 4 days ahead",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-                Text(
-                    state.currentPressure?.let { "${it.roundToInt()} hPa" } ?: "—",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            SectionHeading("${DayOutlook.DAYS}-day outlook")
             Spacer(Modifier.height(12.dp))
-            if (state.readings.isNotEmpty()) {
-                PressureChart(
-                    readings = state.readings,
-                    window = ChartWindow.around(Instant.now(), ChartStep.OneDay),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            } else if (state.isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "Loading pressure data…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "Unable to load — check your connection",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                }
+
+            // Nothing can be said about the week before the first load lands, and a week the
+            // forecast never reached is a failure to report rather than a row of empty days.
+            val today = state.outlook.firstOrNull()
+            if (today == null || state.outlook.all { it.risk == OutlookRisk.Unknown }) {
+                OutlookPlaceholder(isLoading = state.isLoading)
+                return@Column
             }
+
+            TodayHeadline(today = today, outlook = state.outlook)
+            Spacer(Modifier.height(16.dp))
+            OutlookStrip(outlook = state.outlook, onDayClick = onDayClick)
+            Spacer(Modifier.height(12.dp))
+            OutlookLegend()
         }
     }
+}
+
+@Composable
+private fun TodayHeadline(today: DayOutlook, outlook: List<DayOutlook>) {
+    val isElevated = today.risk == OutlookRisk.Elevated
+
+    Text(
+        todayLabel(today),
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+        // Today's own risk is the one thing on this card worth colouring: everything below is
+        // context for it.
+        color = if (isElevated) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+    )
+    Spacer(Modifier.height(2.dp))
+    Text(
+        weekAheadLabel(outlook),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    )
+}
+
+@Composable
+private fun OutlookStrip(outlook: List<DayOutlook>, onDayClick: () -> Unit) {
+    val weekdayFormatter = remember { AppDateFormats.WEEKDAY }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        outlook.forEachIndexed { index, day ->
+            OutlookDay(
+                day = day,
+                // Only the first column is today, and it is today by construction rather
+                // than by a date comparison that could disagree with the list it was built
+                // from. Left open across midnight with nothing emitting, the whole strip goes
+                // stale together — the ViewModel's LocalDate.now() dated these days — so the
+                // ring stays on the column the dates agree is today rather than drifting off
+                // its own strip. Wrong by a day, but not wrong about itself.
+                isToday = index == 0,
+                weekday = weekdayFormatter.format(day.date),
+                onClick = onDayClick
+            )
+        }
+    }
+}
+
+@Composable
+private fun OutlookDay(day: DayOutlook, isToday: Boolean, weekday: String, onClick: () -> Unit) {
+    // The column reads as one thing, so it is announced as one: left alone, the weekday, the
+    // day number and the swing are three separate stops that never mention the risk. The tap
+    // target is the whole column rather than the marker, so the weekday above it works too.
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(OUTLOOK_DAY_SHAPE)
+            .clickable(onClickLabel = "View pressure detail", onClick = onClick)
+            .padding(vertical = 4.dp)
+            .clearAndSetSemantics {
+                contentDescription = outlookDayDescription(day, isToday, weekday)
+            }
+    ) {
+        // The whole column leans one way or the other, label included: a bold number under a
+        // weekday of the same weight as every other would be a smaller signal than it should be.
+        val atRisk = day.risk == OutlookRisk.Elevated
+
+        Text(
+            weekday,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (atRisk) FontWeight.SemiBold else null,
+            color = MaterialTheme.colorScheme.onSurface.copy(
+                alpha = if (atRisk) WEEKDAY_ALPHA_AT_RISK else WEEKDAY_ALPHA
+            )
+        )
+        Spacer(Modifier.height(4.dp))
+        DayMarker(
+            day = day.date.dayOfMonth,
+            severityColor = null,
+            risk = if (atRisk) DayRisk.High else DayRisk.Normal,
+            isToday = isToday,
+            modifier = Modifier
+                .size(OUTLOOK_MARKER_SIZE)
+                .alpha(if (day.risk == OutlookRisk.Unknown) UNKNOWN_DAY_ALPHA else 1f),
+            // Only here: the calendar is a grid people read a specific day out of, so its
+            // numbers all carry the same weight.
+            emphasis = DayEmphasis.ByRisk
+        )
+    }
+}
+
+/**
+ * What the rings in the strip mean. Both swatches are drawn by the marker itself rather than
+ * redrawn here, so the legend cannot drift from the days: high risk in the calendar's own
+ * words and swatch, since the two screens mark a day to watch the same way.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun OutlookLegend() {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Today first, matching the strip: its first column is the one this entry explains.
+        LegendItem(swatch = { TodayLegendSwatch() }, label = "Today")
+        LegendItem(swatch = { HighRiskLegendSwatch() }, label = "High risk")
+    }
+}
+
+@Composable
+private fun LegendItem(swatch: @Composable () -> Unit, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        swatch()
+        Spacer(Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+private fun OutlookPlaceholder(isLoading: Boolean) {
+    Text(
+        if (isLoading) "Loading forecast…" else "Unable to load — check your connection",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+    )
 }
 
 private val STREAK_SEVERITY_DOT_SIZE = 10.dp
@@ -264,11 +401,7 @@ private fun SymptomFreeCard(streak: SymptomFreeStreak?) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                "Symptom-free",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            SectionHeading("Symptom-free")
             Spacer(Modifier.height(12.dp))
             if (streak == null) {
                 NotEnoughDataMessage(
@@ -408,6 +541,3 @@ private fun NotEnoughDataMessage(hint: String) {
 
 private const val NOT_ENOUGH_DATA = "Not enough data"
 
-private fun dayCount(days: Long): String = "$days ${dayUnit(days)}"
-
-private fun dayUnit(days: Long): String = if (days == 1L) "day" else "days"

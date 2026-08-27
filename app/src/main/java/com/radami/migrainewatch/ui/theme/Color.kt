@@ -29,11 +29,12 @@ val ChartAlert = Color(0xFFF44336)
 val ChartNowLineLight = Color(0xFF000000)
 val ChartNowLineDark = Color(0xFFFFFFFF)
 
-// The daily range band. Deliberately not the measured line's colour, which it used to borrow:
-// that terracotta sits a shade away from the orange of the second alert, so a band and a risk
-// window read as the same thing. Blue is the one hue the alert palette does not use.
-val ChartRangeBandLight = Color(0xFF5B8DC8)
-val ChartRangeBandDark = Color(0xFF8FB9E8)
+// The daily min/max lines. Deliberately not the measured line's colour, which they used to
+// borrow: that terracotta sits a shade away from the orange of the second alert, so the daily
+// range and a risk window read as the same thing. Blue is the one hue the alert palette does
+// not use.
+val ChartRangeLineLight = Color(0xFF5B8DC8)
+val ChartRangeLineDark = Color(0xFF8FB9E8)
 
 // Alert colours — fixed palette shared by the chart's risk shading and the alert rows
 // beside it, independent of dynamic (wallpaper-based) theming. One hue per alert, in a

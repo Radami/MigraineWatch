@@ -1,7 +1,6 @@
 package com.radami.migrainewatch.ui.screens.calendar
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -64,10 +63,11 @@ import com.radami.migrainewatch.data.model.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.label
+import com.radami.migrainewatch.ui.components.SectionHeading
 import com.radami.migrainewatch.ui.components.DayMarker
 import com.radami.migrainewatch.ui.components.DayRisk
-import com.radami.migrainewatch.ui.components.HIGH_RISK_BORDER_WIDTH
-import com.radami.migrainewatch.ui.components.HighRiskShape
+import com.radami.migrainewatch.ui.components.HighRiskLegendSwatch
+import com.radami.migrainewatch.ui.components.LEGEND_SWATCH_SIZE
 import com.radami.migrainewatch.ui.components.SeveritySwatch
 import com.radami.migrainewatch.ui.theme.DangerRed
 import com.radami.migrainewatch.ui.theme.color
@@ -236,7 +236,6 @@ private fun MonthCalendar(
     }
 }
 
-private val LEGEND_SWATCH_SIZE = 12.dp
 private val STATS_SWATCH_SIZE = 8.dp
 
 @Composable
@@ -286,11 +285,7 @@ private fun CalendarLegend() {
 @Composable
 private fun LegendHighRiskItem() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(LEGEND_SWATCH_SIZE)
-                .border(HIGH_RISK_BORDER_WIDTH, MaterialTheme.colorScheme.outline, HighRiskShape)
-        )
+        HighRiskLegendSwatch()
         Spacer(Modifier.width(4.dp))
         Text("High risk", style = MaterialTheme.typography.labelSmall)
     }
@@ -329,11 +324,7 @@ private fun StatsCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                "Statistics",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            SectionHeading("Statistics")
             Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier

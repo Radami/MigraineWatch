@@ -180,10 +180,10 @@ class UserJourneyTest {
         awaitDisplayed(hasContentDescription("Location"))
         awaitDisplayed(hasText("Zurich", substring = true))
 
-        // 5. Verify pressure data is present. Whether the card starts on screen depends on
+        // 5. Verify the forecast is present. Whether the card starts on screen depends on
         //    how tall the alert banner above it ends up, so scroll it into view first.
-        scrollToInList(hasText("Barometric pressure"))
-        composeTestRule.onNodeWithText("Barometric pressure").assertIsDisplayed()
+        scrollToInList(hasText("7-day outlook"))
+        composeTestRule.onNodeWithText("7-day outlook").assertIsDisplayed()
     }
 
     @Test
@@ -191,18 +191,23 @@ class UserJourneyTest {
         // 1. Force a storm scenario so the app starts with a 9 hPa drop in its data
         launchApp(MockDataInterceptor.Scenario.TWO_EVENTS)
 
-        // 2. Verify "Elevated risk" banner is displayed
+        // 2. Verify "Elevated risk" banner is displayed. The outlook headline below it says
+        //    "Elevated risk today" as well, so the text alone matches two nodes; the banner is
+        //    one merged node carrying both its description and its text, so ask for both.
         awaitDisplayed(hasContentDescription("Pressure alert banner"))
-        composeTestRule.onNodeWithText("Elevated risk", substring = true).assertIsDisplayed()
+        composeTestRule.onNode(
+            hasContentDescription("Pressure alert banner") and
+                hasText("Elevated risk", substring = true)
+        ).assertIsDisplayed()
 
-        // 3. Tapping through switches to the Pressure tab, which is where every current
-        //    event is listed and shaded on the chart
-        composeTestRule.onNodeWithContentDescription("View details").performClick()
+        // 3. Tapping the banner — anywhere on it — switches to the Pressure tab, which is
+        //    where every current event is listed and shaded on the chart
+        composeTestRule.onNodeWithContentDescription("Pressure alert banner").performClick()
 
         // 4. Verify the chart and the event that raised the banner
         awaitDisplayed(hasContentDescription("Time range 7 days"))
-        scrollToInList(hasText("hPa pressure drop", substring = true))
-        composeTestRule.onNodeWithText("hPa pressure drop", substring = true).assertIsDisplayed()
+        scrollToInList(hasText("Pressure drop (", substring = true))
+        composeTestRule.onNodeWithText("Pressure drop (", substring = true).assertIsDisplayed()
     }
 
     @Test
@@ -219,7 +224,8 @@ class UserJourneyTest {
         assertEquals(
             "one row per colour in the palette",
             ALERT_COLOR_COUNT,
-            countOf(hasText("hPa pressure", substring = true))
+            // Unique to an alert row: the card's own subtitle also mentions hPa.
+            countOf(hasText("hPa in 24h", substring = true))
         )
 
         // 4. The three kept are the three soonest, not the three last: the scenario runs
@@ -229,6 +235,27 @@ class UserJourneyTest {
 
         // 5. And the card says what it is holding back, so three never passes for all of them
         composeTestRule.onNodeWithText("1 more event not shown").assertIsDisplayed()
+    }
+
+    @Test
+    fun scenarioE_TheWeekPlanner() {
+        // 1. A week with events in it, so the strip has days worth tapping
+        launchApp(MockDataInterceptor.Scenario.TWO_EVENTS)
+
+        // 2. The outlook strip announces each column as one thing — the weekday, the number
+        //    and the risk are cleared and replaced by a single description, so this is what a
+        //    screen reader hears and what a tap has to land on. The comma keeps it clear of
+        //    the "Today" bottom-nav tab.
+        scrollToInList(hasText("7-day outlook"))
+        awaitDisplayed(hasContentDescription("Today,", substring = true))
+
+        // 3. Tapping a day goes to the Pressure tab, the same place the banner leads: the
+        //    strip names a day, and that is where the day's events are listed and shaded.
+        composeTestRule.onNodeWithContentDescription("Today,", substring = true).performClick()
+
+        // 4. Verify we arrived. A day column is barely wider than its marker, so this also
+        //    pins that the whole column is the target rather than the number inside it.
+        awaitDisplayed(hasContentDescription("Time range 7 days"))
     }
 
     @Test

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,7 +30,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -257,6 +257,7 @@ private fun Step2Triggers(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Step3Details(
     durationBucket: String?,
@@ -265,7 +266,7 @@ private fun Step3Details(
     notes: String,
     isSaving: Boolean,
     onDurationSelect: (String?) -> Unit,
-    onReliefChange: (Int) -> Unit,
+    onReliefChange: (Int?) -> Unit,
     onMedicationChange: (String) -> Unit,
     onNotesChange: (String) -> Unit,
     onSave: () -> Unit
@@ -276,14 +277,12 @@ private fun Step3Details(
         fontWeight = FontWeight.SemiBold
     )
     Text(
-        "Optional",
+        "All details are optional",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     )
-    Spacer(Modifier.height(4.dp))
-    Text("Duration", style = MaterialTheme.typography.labelLarge)
-    Spacer(Modifier.height(4.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+    LabelledChoice("Duration") {
         DURATION_OPTIONS.forEach { dur ->
             FilterChip(
                 selected = durationBucket == dur,
@@ -292,20 +291,20 @@ private fun Step3Details(
             )
         }
     }
-    Spacer(Modifier.height(4.dp))
-    Text(
-        "Relief: ${reliefPercent ?: 0}%",
-        style = MaterialTheme.typography.labelLarge
-    )
-    Slider(
-        value = (reliefPercent ?: 0).toFloat(),
-        onValueChange = { onReliefChange(it.toInt()) },
-        valueRange = 0f..100f,
-        steps = 19,
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = "Relief percentage slider" }
-    )
+
+    LabelledChoice("Relief") {
+        RELIEF_OPTIONS.forEach { percent ->
+            FilterChip(
+                selected = reliefPercent == percent,
+                // Tapping the selected chip clears the field, the way the duration chips do.
+                onClick = { onReliefChange(if (reliefPercent == percent) null else percent) },
+                label = { Text("$percent%") },
+                // "25%" on its own says nothing about what is 25% of what.
+                modifier = Modifier.semantics { contentDescription = "Relief $percent%" }
+            )
+        }
+    }
+
     OutlinedTextField(
         value = medication,
         onValueChange = onMedicationChange,
@@ -328,5 +327,29 @@ private fun Step3Details(
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(if (isSaving) "Saving…" else "Save")
+    }
+}
+
+/** How close a field label sits to the chips it labels. */
+private val LABEL_TO_CHOICES_SPACING = 4.dp
+
+/**
+ * A field label with its choices directly beneath it.
+ *
+ * The step's children are emitted straight into a Column that spaces them 16.dp apart, which
+ * is right between one field and the next and far too much between a label and the thing it
+ * labels. Grouping the pair into a single child makes that spacing apply once, around the
+ * group, leaving the label free to sit close to its chips.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LabelledChoice(label: String, chips: @Composable FlowRowScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(LABEL_TO_CHOICES_SPACING)) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            content = chips
+        )
     }
 }

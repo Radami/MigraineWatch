@@ -43,9 +43,11 @@ import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.ChartWindow
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.PressureDirection
+import com.radami.migrainewatch.format.formatAlertHeadline
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.format.label
+import com.radami.migrainewatch.ui.components.SectionHeading
 import com.radami.migrainewatch.ui.components.PressureChart
 import com.radami.migrainewatch.ui.theme.alertColorPalette
 import java.time.Instant
@@ -144,11 +146,7 @@ private fun PressureHistoryCard(
                 verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Pressure",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    SectionHeading("Pressure")
                     Text(
                         // What the chart shows for each chip: 8 points from −3 to +4 steps
                         // around now, at 3 h / 6 h / 24 h per step.
@@ -208,11 +206,7 @@ private fun AlertsCard(state: PressureUiState, window: ChartWindow) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                "Alerts",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            SectionHeading("Alerts")
             Text(
                 "Pressure events above ${formatThreshold(state.alertThresholdHpa)} hPa, " +
                     "shaded on the chart above",
@@ -300,7 +294,7 @@ private fun AlertRow(alert: AlertWindow, color: Color, visibility: ChartVisibili
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                "${formatHpa(alert.delta)} hPa $directionLabel",
+                formatAlertHeadline(alert.delta, alert.direction),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)

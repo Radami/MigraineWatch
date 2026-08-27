@@ -23,9 +23,21 @@ class PressureAlertUseCase @Inject constructor(
 ) {
     companion object {
         /**
-         * How recently an event must have finished to still count as current. An event that
-         * ended within the last day is what the Today screen marks and what the calendar
-         * colours, so it stays in the result; anything older is history.
+         * How recently an event must have finished to still count as current.
+         *
+         * A finished event is kept because the screens that show one are looking backwards as
+         * well as forwards. The Pressure screen's widest range draws three days of history
+         * against four of forecast, and an event that ended this morning is exactly what the
+         * history half is there to explain; dropping it at the moment it ends would leave that
+         * half shaded only while something happened to be under way. The Today outlook marks
+         * whole days, and a day an event passed through stays a day to watch until it is over.
+         *
+         * A day is the bound because both of those are day-shaped claims. Anything older is
+         * history, and belongs to the calendar rather than to today.
+         *
+         * What this does *not* license is a warning: [alertsIn] returns finished events, so a
+         * caller announcing something to the user filters them out — see the Today banner and
+         * [AlertNotificationDecider.decide].
          */
         const val RELEVANCE_HOURS = 24L
 
@@ -43,7 +55,25 @@ class PressureAlertUseCase @Inject constructor(
 
         /** The forecast horizon Open-Meteo gives us. */
         const val FORECAST_DAYS = 7L
+
+        /**
+         * The cadence Open-Meteo publishes at. A reading stands for the hour it opens rather
+         * than for an instant, which is what separates the last reading from the last moment
+         * the readings describe — see [coverageEnd].
+         */
+        const val READING_INTERVAL_HOURS = 1L
     }
+
+    /**
+     * The instant [readings] stop describing, or null when there are none.
+     *
+     * Deliberately not the last reading's timestamp. An hourly series for [FORECAST_DAYS] ends
+     * at 23:00 on its final day, so a caller that treated that timestamp as the horizon would
+     * find the last day of its own seven-day forecast short of data and refuse to call it
+     * clear. The hour that reading opens is covered too.
+     */
+    fun coverageEnd(readings: List<PressureReading>): Instant? =
+        readings.maxOfOrNull { it.dateTime }?.plus(READING_INTERVAL_HOURS, ChronoUnit.HOURS)
 
     /**
      * Alerts within [readings], which the caller has already collected. Callers that hold a
