@@ -99,8 +99,11 @@ they do.
 
 Report: `app/build/reports/tests/testSandboxUnitTest/index.html`
 
-Covers the alert detection logic, `TodayViewModel`, `PressureRepository`, and three
-end-to-end user journeys that drive the real Compose UI under Robolectric.
+Covers the alert detection logic, the domain types behind the Today and Pressure screens
+(`ChartWindow`, `DayOutlook`, `SymptomFreeStreak`), the `Today`, `Pressure` and `LogEntry`
+ViewModels and the strings the Today screen builds, the repositories and the mock
+interceptor, and five end-to-end user journeys that drive the real Compose UI under
+Robolectric.
 
 Useful variants:
 
@@ -128,8 +131,9 @@ with `ANDROID_SERIAL=emulator-5556`; without it the task installs on every attac
 
 Report: `app/build/reports/androidTests/connected/sandbox/index.html`
 
-Covers the Room DAO against a real in-memory database, and navigation into the Pressure
-screen — from the alert banner, from the notification's intent and from the bottom bar.
+Covers the Room DAO and the schema migrations against a real in-memory database, and
+navigation into the Pressure screen — from the alert banner, from the notification's intent
+and from the bottom bar.
 
 ### Everything
 
@@ -187,8 +191,8 @@ quietly reach nothing.
 Both sit in `defaultConfig` in `app/build.gradle.kts`:
 
 ```kotlin
-versionCode = 2
-versionName = "1.1"
+versionCode = 3
+versionName = "1.2"
 ```
 
 They are not two spellings of the same thing:
@@ -208,7 +212,7 @@ including one that only fixes the upload before it.
 `versionName` is a label. Nothing enforces it and nothing compares it; two uploads may share
 one. Change it when the difference is worth telling users about.
 
-So a re-upload that fixes a broken release is `versionCode = 2` with `versionName` left alone,
+So a re-upload that fixes a broken release is `versionCode = 4` with `versionName` left alone,
 while a real release moves both.
 
 ### The changelog
@@ -222,11 +226,18 @@ Everything in progress goes under `## [Unreleased]`. Entries above that section'
 heading are for users and are what the store text is written from; refactors, tests and build
 changes go under `Internal` and never leave the repository. If a change has no user-visible
 effect it belongs under `Internal`; if it has one, say what a user would notice rather than what
-the code now does.
+the code now does. Keep each entry to one sentence — the file is read by someone deciding
+whether a version matters to them, and the reasoning behind a change belongs in the code and
+the commit that made it.
 
 At release time the `## [Unreleased]` heading becomes the version being cut —
-`## [1.2] — 2026-09-01 · versionCode 3` — a fresh empty `## [Unreleased]` opens above it, and
+`## [1.3] — 2026-09-01 · versionCode 4` — a fresh empty `## [Unreleased]` opens above it, and
 the link definitions at the bottom of the file get the new tag.
+
+The cut also **drops the `### Internal` section** and puts the version's Play "What's new" text
+in its place, in a fenced block so its length is countable. Internal notes are for the work in
+progress; once it has shipped, what is worth keeping beside the version is what users were
+told about it.
 
 ### Signing
 
@@ -295,8 +306,10 @@ the two disagree about what shipped.
 ### Release notes
 
 Play's "What's new" box takes 500 characters per language, so it is a **trim** of the version's
-changelog section rather than a copy of it: keep the user-facing entries, drop everything under
-`Internal`, lead with the change people will actually notice, and drop fixes nobody reported.
+changelog section rather than a copy of it: lead with the change people will actually notice,
+and drop fixes nobody reported. Write it into the version's section as the `### Play "What's
+new"` block, which is both where the next release finds an example and the record of what the
+listing said.
 
 ### Store assets
 
@@ -313,12 +326,15 @@ Both need `numpy` and `Pillow`. The screenshots alongside them are captured from
 ## Architecture
 
 ```
-ui/          Compose screens (today, pressure, calendar, settings, alert, onboarding)
-             and navigation, one ViewModel per screen
-domain/      AlertDetector — finds qualifying pressure events in a series of readings
-data/        Room database, DataStore preferences, Retrofit APIs, repositories
-workers/     PressureFetchWorker — hourly background refresh
-di/          Hilt modules
+ui/             Compose screens (today, pressure, calendar, settings, onboarding)
+                and navigation, one ViewModel per screen
+domain/         AlertDetector — finds qualifying pressure events in a series of readings,
+                and the value types the screens read them through
+format/         How dates, pressure events and severities are spelled for the user
+data/           Room database, DataStore preferences, Retrofit APIs, repositories
+notifications/  Alert notifications and the permission they need
+workers/        PressureFetchWorker — hourly background refresh
+di/             Hilt modules
 ```
 
 Built with Jetpack Compose, Hilt, Room, DataStore, WorkManager, Retrofit + kotlinx
