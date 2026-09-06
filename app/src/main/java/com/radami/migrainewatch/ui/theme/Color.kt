@@ -20,10 +20,15 @@ val SeverityMigraine = Color(0xFFF44336)
 // reads as just another severity swatch.
 val DangerRed = Color(0xFF8E1B1B)
 
-// The wordmark's second half on the Settings screen. Named for the chart line it used to
-// match; the chart has since moved to ChartSeries*, and this stayed behind as branding. Used
-// in both themes — there is no dark variant, because the wordmark is the only thing wearing it.
-val ChartMeasuredLight = Color(0xFFB05C3B)
+// The app's own colour: the terracotta of the Play Store icon, worn by the second half of the
+// wordmark on the Settings screen and by the Today headline when the day is one to watch.
+//
+// The dark variant exists for the headline, not the wordmark. #B05C3B on a dark surface comes
+// out around 3.6:1 — enough for large bold text and no more — while the headline is the one
+// line on the card that has to carry. The wordmark stays on the light value in both themes:
+// it is a lockup rather than something to be read at a glance.
+val BrandTerracottaLight = Color(0xFFB05C3B)
+val BrandTerracottaDark = Color(0xFFE48D6C)
 
 // Chart colours
 val ChartNowLineLight = Color(0xFF000000)

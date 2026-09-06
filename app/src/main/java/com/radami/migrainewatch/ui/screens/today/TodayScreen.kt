@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -80,6 +81,8 @@ import com.radami.migrainewatch.ui.components.HighRiskLegendSwatch
 import com.radami.migrainewatch.ui.components.SectionHeading
 import com.radami.migrainewatch.ui.components.SettlingText
 import com.radami.migrainewatch.ui.components.TodayLegendSwatch
+import com.radami.migrainewatch.ui.theme.BrandTerracottaDark
+import com.radami.migrainewatch.ui.theme.BrandTerracottaLight
 import com.radami.migrainewatch.ui.theme.color
 import java.time.Instant
 import java.time.LocalDate
@@ -311,14 +314,14 @@ private fun TodayHeadline(today: DayOutlook, outlook: List<DayOutlook>) {
     val isElevated = today.risk == OutlookRisk.Elevated
 
     // Today's own risk is the one thing on this card worth colouring: everything below is
-    // context for it. The colour crosses over on its own rather than through the text
-    // transition, so a day that turns risky without changing wording still shows it.
+    // context for it. The app's own terracotta rather than the theme's error colour — a day
+    // worth watching is not an error, and the wordmark and the store icon already say this is
+    // what the app's voice looks like. Read at a glance, so it takes the shade its theme can
+    // carry. The colour crosses over on its own rather than through the text transition, so a
+    // day that turns risky without changing wording still shows it.
+    val riskColor = if (isSystemInDarkTheme()) BrandTerracottaDark else BrandTerracottaLight
     val headlineColor by animateColorAsState(
-        targetValue = if (isElevated) {
-            MaterialTheme.colorScheme.error
-        } else {
-            MaterialTheme.colorScheme.onSurface
-        },
+        targetValue = if (isElevated) riskColor else MaterialTheme.colorScheme.onSurface,
         animationSpec = tween(Motion.EMPHASIS_MILLIS),
         label = "headlineColor"
     )
