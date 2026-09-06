@@ -4,6 +4,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -72,6 +82,8 @@ import com.radami.migrainewatch.ui.components.SeveritySwatch
 import com.radami.migrainewatch.ui.components.SettlingText
 import com.radami.migrainewatch.ui.theme.DangerRed
 import com.radami.migrainewatch.ui.theme.color
+import androidx.compose.ui.unit.IntOffset
+import com.radami.migrainewatch.ui.theme.Motion
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -177,11 +189,17 @@ private fun MonthCalendar(
             ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
             }
-            Text(
-                month.format(monthYearFormatter),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            AnimatedContent(
+                targetState = month,
+                transitionSpec = { monthSlide { it } },
+                label = "monthLabel"
+            ) { shown ->
+                Text(
+                    shown.format(monthYearFormatter),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
             IconButton(
                 onClick = onNextMonth,
                 modifier = Modifier.semantics { contentDescription = "Next month" }
@@ -203,13 +221,29 @@ private fun MonthCalendar(
         }
         Spacer(Modifier.height(4.dp))
 
-        val firstDay = month.atDay(1)
-        // 0=Sun, 1=Mon, ..., 6=Sat
-        val startOffset = firstDay.dayOfWeek.value % 7
-        val daysInMonth = month.lengthOfMonth()
-        val totalCells = startOffset + daysInMonth
-        val rows = (totalCells + 6) / 7
+        // The whole grid moves as one panel. Its height changes with the month — a month
+        // needing six week-rows instead of five moves everything below the calendar by a row —
+        // so the size travels with it rather than stepping when the new month lands.
+        AnimatedContent(
+            targetState = MonthGrid(month, entries, highRiskDays),
+            transitionSpec = { monthSlide { it.month } },
+            label = "monthGrid"
+        ) { grid ->
+            MonthGridRows(grid = grid, today = today, onDayTap = onDayTap)
+        }
+    }
+}
 
+@Composable
+private fun MonthGridRows(grid: MonthGrid, today: LocalDate, onDayTap: (LocalDate) -> Unit) {
+    val firstDay = grid.month.atDay(1)
+    // 0=Sun, 1=Mon, ..., 6=Sat
+    val startOffset = firstDay.dayOfWeek.value % 7
+    val daysInMonth = grid.month.lengthOfMonth()
+    val totalCells = startOffset + daysInMonth
+    val rows = (totalCells + 6) / 7
+
+    Column {
         repeat(rows) { row ->
             Row(modifier = Modifier.fillMaxWidth()) {
                 repeat(7) { col ->
@@ -218,14 +252,12 @@ private fun MonthCalendar(
                     if (dayNum < 1 || dayNum > daysInMonth) {
                         Box(modifier = Modifier.weight(1f))
                     } else {
-                        val date = month.atDay(dayNum)
-                        val entry = entries[date]
-                        val isToday = date == today
+                        val date = grid.month.atDay(dayNum)
                         DayCell(
                             day = dayNum,
-                            entry = entry,
-                            isToday = isToday,
-                            risk = if (date in highRiskDays) DayRisk.High else DayRisk.Normal,
+                            entry = grid.entries[date],
+                            isToday = date == today,
+                            risk = if (date in grid.highRiskDays) DayRisk.High else DayRisk.Normal,
                             onClick = { onDayTap(date) },
                             modifier = Modifier.weight(1f)
                         )
@@ -299,6 +331,58 @@ private fun LegendItem(color: Color, label: String) {
         Spacer(Modifier.width(4.dp))
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
+}
+
+/**
+ * One month as the grid draws it.
+ *
+ * The month travels with its own entries rather than reading them from the screen's state,
+ * because a slide renders both months at once and the state only ever holds the incoming one:
+ * the outgoing August would otherwise be drawn with September's logged days, losing its marks
+ * as it left.
+ */
+private data class MonthGrid(
+    val month: YearMonth,
+    val entries: Map<LocalDate, SymptomEntry>,
+    val highRiskDays: Set<LocalDate>
+)
+
+/**
+ * The movement a month change makes: the arriving month comes from the side it lies on, and
+ * the leaving one goes the other way, so the gesture says which way through the year you went.
+ *
+ * A change that leaves the month alone — logging a day, a refresh landing — is not a movement
+ * through anything and gets no animation, or the calendar would slide sideways every time a
+ * day was marked.
+ */
+private fun <S> AnimatedContentTransitionScope<S>.monthSlide(
+    monthOf: (S) -> YearMonth
+): ContentTransform {
+    val from = monthOf(initialState)
+    val to = monthOf(targetState)
+    if (from == to) return EnterTransition.None togetherWith ExitTransition.None
+
+    val towards = if (to > from) {
+        AnimatedContentTransitionScope.SlideDirection.Left
+    } else {
+        AnimatedContentTransitionScope.SlideDirection.Right
+    }
+    val spec = tween<IntOffset>(Motion.PANEL_SLIDE_MILLIS)
+
+    // Both months travel for the whole slide, but the one leaving is faded out before the one
+    // arriving fades in — the same order a settling line of text uses. Cross-fading them over
+    // each other instead leaves two grids at half strength in the middle of the card, and two
+    // sets of dates overlapping is unreadable in a way two overlapping words are not.
+    return (
+        slideIntoContainer(towards, spec) + fadeIn(
+            tween(Motion.CONTENT_ENTER_MILLIS, delayMillis = Motion.CONTENT_EXIT_MILLIS)
+        )
+        ).togetherWith(
+            slideOutOfContainer(towards, spec) + fadeOut(tween(Motion.CONTENT_EXIT_MILLIS))
+        )
+        // Clipped, unlike a settling line of text: a month on its way out must not paint
+        // beyond the card it is leaving.
+        .using(SizeTransform(clip = true))
 }
 
 private enum class StatsPeriod(val label: String) {

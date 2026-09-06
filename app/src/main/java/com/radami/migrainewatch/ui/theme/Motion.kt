@@ -26,6 +26,13 @@ object Motion {
     const val EMPHASIS_MILLIS = 250
 
     /**
+     * A whole panel giving way to the next one — a month leaving as the one either side of it
+     * arrives. Longer than a value settling in place, because the eye is following something
+     * across the width of the screen rather than watching a figure change where it stands.
+     */
+    const val PANEL_SLIDE_MILLIS = 300
+
+    /**
      * How far arriving text slides, as a fraction of its own height. Small on purpose: enough
      * to give the fade a direction, not enough to read as the line moving somewhere.
      */
