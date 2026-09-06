@@ -72,6 +72,44 @@ class ChartWindowTest {
     }
 
     @Test
+    fun `an instant read back from an x round-trips`() {
+        val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
+
+        listOf(0f, 3f, 4.5f, 7f).forEach { x ->
+            assertEquals(x, window.xOf(window.instantAt(x)), 0.0001f)
+        }
+    }
+
+    @Test
+    fun `an x on a point is that point's own instant`() {
+        val window = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
+
+        ChartWindow.POINT_INDICES.forEach { i ->
+            assertEquals(window.epochSecondAt(i), window.instantAt(i.toFloat()).epochSecond)
+        }
+    }
+
+    @Test
+    fun `an x beyond the outer points still names an instant`() {
+        val window = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
+        val step = ChartStep.OneDay.seconds
+
+        // The daily plot reaches half a step past each outer point, and the chart has to be
+        // able to ask what is out there; clamping would hide the overhang rather than draw it.
+        val firstIndex = ChartWindow.POINT_INDICES.first
+        val lastIndex = ChartWindow.POINT_INDICES.last
+
+        assertEquals(
+            window.epochSecondAt(firstIndex) - step / 2,
+            window.instantAt(firstIndex - 0.5f).epochSecond
+        )
+        assertEquals(
+            window.epochSecondAt(lastIndex) + step / 2,
+            window.instantAt(lastIndex + 0.5f).epochSecond
+        )
+    }
+
+    @Test
     fun `x runs past the last point for an event beyond the window`() {
         val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
         val beyond = Instant.ofEpochSecond(window.anchorEpochSecond + 24 * HOUR)

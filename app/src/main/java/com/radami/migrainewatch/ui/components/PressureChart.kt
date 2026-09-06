@@ -134,7 +134,7 @@ private val RISK_SWATCH_WIDTH = 14.dp
  * whichever is drawn lets the overlays treat a line as the band whose edges coincide, the
  * same equivalence [SeriesEdges] rests on.
  */
-private data class RangeEntry(val index: Int, val minY: Float, val maxY: Float)
+internal data class RangeEntry(val index: Int, val minY: Float, val maxY: Float)
 
 /**
  * The two edges the chart plots, in chart x-order.
@@ -144,7 +144,7 @@ private data class RangeEntry(val index: Int, val minY: Float, val maxY: Float)
  * keeping the shape of the model the same across renderings is what makes switching range a
  * movement rather than a swap.
  */
-private data class SeriesEdges(val lower: List<FloatEntry>, val upper: List<FloatEntry>)
+internal data class SeriesEdges(val lower: List<FloatEntry>, val upper: List<FloatEntry>)
 
 /**
  * A point of the chart as it is on screen: its x index, and its two edges in pixels.
@@ -163,7 +163,7 @@ private data class AlertBand(val startX: Float, val endX: Float, val color: Colo
  * stretch of data drops the chart point instead of silently reusing a reading from a
  * different time.
  */
-private fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
+internal fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
     val after = readings.firstOrNull { it.dateTime.epochSecond >= epoch } ?: return null
     if (after.dateTime.epochSecond == epoch) return after.pressureMsl
     val before = readings.lastOrNull { it.dateTime.epochSecond <= epoch } ?: return null
@@ -171,6 +171,70 @@ private fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
     val t1 = after.dateTime.epochSecond
     val fraction = (epoch - t0).toFloat() / (t1 - t0)
     return before.pressureMsl + fraction * (after.pressureMsl - before.pressureMsl)
+}
+
+/**
+ * The lowest and highest pressure within each of the window's steps.
+ *
+ * A step's readings are the ones within half a step either side of the instant it is sampled
+ * at, so the range is centred on the point its label names rather than trailing behind it. A
+ * step holding fewer than two readings is left out: one reading is a value, not a range.
+ *
+ * Empty for a [ChartRendering.Line], which has no use for it.
+ */
+internal fun stepRanges(
+    readings: List<PressureReading>,
+    window: ChartWindow,
+    rendering: ChartRendering,
+): List<RangeEntry> {
+    if (rendering != ChartRendering.MinMaxBand) return emptyList()
+
+    val half = window.step.seconds / 2
+    return ChartWindow.POINT_INDICES.mapNotNull { i ->
+        val anchorEpoch = window.epochSecondAt(i)
+        val inStep = readings.filter { abs(it.dateTime.epochSecond - anchorEpoch) <= half }
+        if (inStep.size < 2) return@mapNotNull null
+        RangeEntry(i, inStep.minOf { it.pressureMsl }, inStep.maxOf { it.pressureMsl })
+    }
+}
+
+/**
+ * What the chart can actually draw, which is not always what the caller asked for.
+ *
+ * A band needs at least two steps with a range to be a band at all; a series too sparse for
+ * that would leave the plot empty, so it falls back to the line. Resolved before the marks are
+ * built, so the marks, the line colour and the legend all agree on which of the two is on
+ * screen.
+ */
+internal fun renderingFor(
+    requested: ChartRendering,
+    stepRanges: List<RangeEntry>,
+): ChartRendering = if (stepRanges.size >= 2) requested else ChartRendering.Line
+
+/**
+ * The two edges to plot, for whichever rendering [rendering] settled on.
+ *
+ * A line is the band whose edges coincide, so it is built as a pair too rather than as one
+ * series: switching range then moves the edges apart or together instead of swapping one
+ * drawing for another, which is the whole reason the transition animates.
+ */
+internal fun seriesEdges(
+    readings: List<PressureReading>,
+    window: ChartWindow,
+    rendering: ChartRendering,
+    stepRanges: List<RangeEntry>,
+): SeriesEdges = when (rendering) {
+    ChartRendering.Line -> {
+        val sampled = ChartWindow.POINT_INDICES.mapNotNull { i ->
+            pressureAt(readings, window.epochSecondAt(i))?.let { FloatEntry(i.toFloat(), it) }
+        }
+        SeriesEdges(lower = sampled, upper = sampled)
+    }
+
+    ChartRendering.MinMaxBand -> SeriesEdges(
+        lower = stepRanges.map { FloatEntry(it.index.toFloat(), it.minY) },
+        upper = stepRanges.map { FloatEntry(it.index.toFloat(), it.maxY) }
+    )
 }
 
 /**
@@ -186,7 +250,7 @@ private fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
  * move at all: its edges are one step's extremes, which hold across the whole of that step's
  * cell, so following the curve out would draw a range no step actually had.
  */
-private fun edgeOffsetSampler(
+internal fun edgeOffsetSampler(
     readings: List<PressureReading>,
     window: ChartWindow,
     rendering: ChartRendering,
@@ -547,49 +611,19 @@ fun PressureChart(
     // Two separate questions that used to have one answer. The step still decides how labels
     // are written and how the axis lays out; only the marks depend on the rendering.
     val isDaily = window.step == ChartStep.OneDay
-    val drawsBand = rendering == ChartRendering.MinMaxBand
     val stepSeconds = window.step.seconds
     val nowEpoch = Instant.now().epochSecond
 
-    // Each point's extremes over the half-step either side of it, so the band is centred on
-    // the instant its label names. Remembered unconditionally rather than inside the branch
-    // that needs it: switching rendering would otherwise change the shape of the composition.
-    val rangeEntries = remember(readings, window, drawsBand) {
-        if (!drawsBand) return@remember emptyList()
-
-        val half = stepSeconds / 2
-        ChartWindow.POINT_INDICES.mapNotNull { i ->
-            val anchorEpoch = window.epochSecondAt(i)
-            val inWindow = readings.filter { abs(it.dateTime.epochSecond - anchorEpoch) <= half }
-            if (inWindow.size < 2) null
-            else RangeEntry(i, inWindow.minOf { it.pressureMsl }, inWindow.maxOf { it.pressureMsl })
-        }
+    // Remembered unconditionally rather than inside the branch that needs it: switching
+    // rendering would otherwise change the shape of the composition.
+    val rangeEntries = remember(readings, window, rendering) {
+        stepRanges(readings, window, rendering)
     }
 
-    // What the chart can actually draw, which is not always what the caller asked for: a band
-    // needs at least two steps holding readings, and a series too sparse for that would leave
-    // the plot empty. Resolved before the marks are built, so everything below agrees on which
-    // of the two is on screen.
-    val drawn = if (rangeEntries.size >= 2) rendering else ChartRendering.Line
+    val drawn = renderingFor(rendering, rangeEntries)
 
     val edges = remember(readings, window, drawn, rangeEntries) {
-        when (drawn) {
-            // A line is the band whose edges coincide. Built as a pair rather than as one
-            // series so that switching range moves the edges apart or together instead of
-            // swapping one drawing for another — which is the whole reason the transition
-            // between ranges animates.
-            ChartRendering.Line -> {
-                val sampled = ChartWindow.POINT_INDICES.mapNotNull { i ->
-                    pressureAt(readings, window.epochSecondAt(i))?.let { FloatEntry(i.toFloat(), it) }
-                }
-                SeriesEdges(lower = sampled, upper = sampled)
-            }
-
-            ChartRendering.MinMaxBand -> SeriesEdges(
-                lower = rangeEntries.map { FloatEntry(it.index.toFloat(), it.minY) },
-                upper = rangeEntries.map { FloatEntry(it.index.toFloat(), it.maxY) }
-            )
-        }
+        seriesEdges(readings, window, drawn, rangeEntries)
     }
 
     val edgeOffsetAt = remember(readings, window, drawn) {
