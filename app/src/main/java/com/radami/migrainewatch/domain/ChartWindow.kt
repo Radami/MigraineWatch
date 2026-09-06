@@ -100,6 +100,14 @@ data class ChartWindow(
     fun xOf(instant: Instant): Float =
         ANCHOR_INDEX + (instant.epochSecond - anchorEpochSecond).toFloat() / step.seconds
 
+    /**
+     * The instant chart x-value [x] falls on: the inverse of [xOf], defined between points as
+     * well as on them. The chart needs it for the strip of plot that reaches past its last
+     * point, which is a position on screen before it is an instant in time.
+     */
+    fun instantAt(x: Float): Instant =
+        Instant.ofEpochSecond(anchorEpochSecond + ((x - ANCHOR_INDEX) * step.seconds).toLong())
+
     /** Left edge of the plot area. */
     val firstVisible: Instant =
         Instant.ofEpochSecond(epochSecondAt(POINT_INDICES.first) - edgeMarginSeconds)
