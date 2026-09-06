@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -44,6 +46,7 @@ import com.radami.migrainewatch.ui.theme.ChartNowLineLight
 import com.radami.migrainewatch.ui.theme.ChartSeriesDark
 import com.radami.migrainewatch.ui.theme.ChartSeriesLight
 import com.radami.migrainewatch.ui.theme.alertColorPalette
+import com.patrykandpatrick.vico.core.Animation
 import com.patrykandpatrick.vico.compose.axis.axisLabelComponent
 import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
@@ -71,8 +74,22 @@ private const val ALERT_BAND_ALPHA = 0.15f
 private const val RANGE_BAND_ALPHA = 0.2f
 private const val NOW_LINE_ALPHA = 0.5f
 
-/** Stroke width of the daily min and max lines, in dp. */
+/** Stroke width of the min and max lines, in dp. */
 private const val RANGE_LINE_WIDTH_DP = 2f
+
+/**
+ * How the fill keeps step with the edges when the range changes.
+ *
+ * The edges are model series, so Vico tweens them over [Animation.DIFF_DURATION]. The fill
+ * cannot follow: a decoration only ever draws the snapshot it was built with, and
+ * [ChartDrawContext] does not expose the model being interpolated. Left alone it would sit at
+ * its final shape while the edges were still travelling, which reads as a detached blob. So it
+ * drops out as the range changes and returns over the tail of the tween, reaching full
+ * strength as the edges settle — and because it fades while the model is still animating, the
+ * chart is being redrawn anyway.
+ */
+private const val FILL_FADE_DELAY_MILLIS = Animation.DIFF_DURATION / 2
+private const val FILL_FADE_MILLIS = Animation.DIFF_DURATION - FILL_FADE_DELAY_MILLIS
 
 /** Whether a traced run opens a new path contour or continues the one in progress. */
 private enum class RunStart { MoveTo, LineTo }
@@ -108,6 +125,16 @@ private val RISK_SWATCH_WIDTH = 14.dp
 
 /** The lowest and highest pressure within the step the chart draws at x = [index]. */
 private data class RangeEntry(val index: Int, val minY: Float, val maxY: Float)
+
+/**
+ * The two edges the chart plots, in chart x-order.
+ *
+ * Both renderings produce a pair, because a pair is what lets one turn into the other: a line
+ * is the degenerate band whose edges coincide. Vico tweens a model into the next one, so
+ * keeping the shape of the model the same across renderings is what makes switching range a
+ * movement rather than a swap.
+ */
+private data class SeriesEdges(val lower: List<FloatEntry>, val upper: List<FloatEntry>)
 
 /** One alert's risk window, in chart x-values, in the colour of the row describing it. */
 private data class AlertBand(val startX: Float, val endX: Float, val color: Color)
@@ -210,7 +237,12 @@ private class ChartOverlayDecoration(
     }
 
     override fun onDrawBehindChart(context: ChartDrawContext, bounds: RectF) {
+        ensurePaintDensity(context.density)
         drawAlertBands(context, bounds)
+
+        // Under the edges Vico draws, and over the risk shading: the wash is the area those
+        // edges enclose, so it has to sit between the two.
+        drawRangeBand(context, bounds)
     }
 
     private fun drawAlertBands(context: ChartDrawContext, bounds: RectF) {
@@ -239,12 +271,9 @@ private class ChartOverlayDecoration(
                 continue
             }
 
+            // Only the fill: the edges themselves are model series, drawn by Vico on top of
+            // this, which is what lets them tween when the range changes.
             drawBand(context, bounds, path, run)
-
-            // The two extremes are stroked on top of their own fill, so the range keeps a
-            // crisp edge where the wash overlaps a risk window's shading.
-            strokeExtreme(context, bounds, path, run) { it.maxY }
-            strokeExtreme(context, bounds, path, run) { it.minY }
         }
     }
 
@@ -265,18 +294,6 @@ private class ChartOverlayDecoration(
         traceRun(context, bounds, path, run.asReversed(), RunStart.LineTo) { it.minY }
         path.close()
         context.canvas.drawPath(path, bandPaint)
-    }
-
-    private fun strokeExtreme(
-        context: ChartDrawContext,
-        bounds: RectF,
-        path: Path,
-        run: List<RangeEntry>,
-        valueOf: (RangeEntry) -> Float,
-    ) {
-        path.reset()
-        traceRun(context, bounds, path, run, RunStart.MoveTo, valueOf)
-        context.canvas.drawPath(path, rangePaint)
     }
 
     private fun traceRun(
@@ -317,10 +334,6 @@ private class ChartOverlayDecoration(
     override fun onDrawAboveChart(context: ChartDrawContext, bounds: RectF) {
         ensurePaintDensity(context.density)
 
-        // Where a band is drawn it *is* the data, so it goes above the gridlines and the risk
-        // shading; only the "now" marker sits on top of it.
-        drawRangeBand(context, bounds)
-
         val x = context.dataX(nowX, bounds)
         context.canvas.drawLine(x, bounds.top, x, bounds.bottom, nowPaint)
     }
@@ -355,19 +368,6 @@ fun PressureChart(
     val stepSeconds = window.step.seconds
     val nowEpoch = Instant.now().epochSecond
 
-    // History and forecast are two line series so they can be styled apart, but both sample
-    // the whole series: they share the anchor point, so the two lines connect there.
-    val historicalEntries = remember(readings, window) {
-        window.historyIndices.mapNotNull { i ->
-            pressureAt(readings, window.epochSecondAt(i))?.let { FloatEntry(i.toFloat(), it) }
-        }
-    }
-    val forecastEntries = remember(readings, window) {
-        window.forecastIndices.mapNotNull { i ->
-            pressureAt(readings, window.epochSecondAt(i))?.let { FloatEntry(i.toFloat(), it) }
-        }
-    }
-
     // Each point's extremes over the half-step either side of it, so the band is centred on
     // the instant its label names. Remembered unconditionally rather than inside the branch
     // that needs it: switching rendering would otherwise change the shape of the composition.
@@ -383,9 +383,49 @@ fun PressureChart(
         }
     }
 
+    // What the chart can actually draw, which is not always what the caller asked for: a band
+    // needs at least two steps holding readings, and a series too sparse for that would leave
+    // the plot empty. Resolved before the marks are built, so everything below agrees on which
+    // of the two is on screen.
+    val drawn = if (rangeEntries.size >= 2) rendering else ChartRendering.Line
+
+    val edges = remember(readings, window, drawn, rangeEntries) {
+        when (drawn) {
+            // A line is the band whose edges coincide. Built as a pair rather than as one
+            // series so that switching range moves the edges apart or together instead of
+            // swapping one drawing for another — which is the whole reason the transition
+            // between ranges animates.
+            ChartRendering.Line -> {
+                val sampled = ChartWindow.POINT_INDICES.mapNotNull { i ->
+                    pressureAt(readings, window.epochSecondAt(i))?.let { FloatEntry(i.toFloat(), it) }
+                }
+                SeriesEdges(lower = sampled, upper = sampled)
+            }
+
+            ChartRendering.MinMaxBand -> SeriesEdges(
+                lower = rangeEntries.map { FloatEntry(it.index.toFloat(), it.minY) },
+                upper = rangeEntries.map { FloatEntry(it.index.toFloat(), it.maxY) }
+            )
+        }
+    }
+
+    // Both edges go through the model, so Vico tweens them between ranges the way it already
+    // tweened the sampled line. The wash between them is still drawn by the decoration, which
+    // cannot see a model mid-tween — see ChartOverlayDecoration.
     val modelProducer = remember { ChartEntryModelProducer() }
-    LaunchedEffect(historicalEntries, forecastEntries) {
-        modelProducer.setEntries(listOf(historicalEntries, forecastEntries))
+    LaunchedEffect(edges) {
+        modelProducer.setEntries(listOf(edges.lower, edges.upper))
+    }
+
+    // See FILL_FADE_DELAY_MILLIS: the fill cannot be tweened, so it stands aside while the
+    // edges travel and returns as they arrive.
+    val fillAlpha = remember { Animatable(1f) }
+    LaunchedEffect(edges) {
+        fillAlpha.snapTo(0f)
+        fillAlpha.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(FILL_FADE_MILLIS, delayMillis = FILL_FADE_DELAY_MILLIS)
+        )
     }
 
     val isDark = isSystemInDarkTheme()
@@ -410,14 +450,9 @@ fun PressureChart(
         }
     }
 
-    val dataMin = if (rangeEntries.isNotEmpty())
-        rangeEntries.minOf { it.minY }
-    else
-        (historicalEntries + forecastEntries).minOfOrNull { it.y } ?: return
-    val dataMax = if (rangeEntries.isNotEmpty())
-        rangeEntries.maxOf { it.maxY }
-    else
-        (historicalEntries + forecastEntries).maxOfOrNull { it.y } ?: return
+    // Straight off the edges, which already are the extremes whichever way they were built.
+    val dataMin = edges.lower.minOfOrNull { it.y } ?: return
+    val dataMax = edges.upper.maxOfOrNull { it.y } ?: return
     val yPadding = maxOf((dataMax - dataMin) * 0.2f, 2f)
     val yMin = dataMin - yPadding
     val yMax = dataMax + yPadding
@@ -461,13 +496,10 @@ fun PressureChart(
     // anchor the chart snapped to.
     val nowX = window.xOf(Instant.ofEpochSecond(nowEpoch))
 
-    // What the chart can actually draw, which is not always what the caller asked for: a band
-    // needs at least two steps holding readings, and a series too sparse for that would leave
-    // the plot empty. Resolved once, so the marks, the axis colour and the legend can never
-    // disagree about which of the two is on screen.
-    val drawn = if (rangeEntries.size >= 2) rendering else ChartRendering.Line
-
-    val decoration = remember(alertBands, drawn, rangeEntries, yMin, yMax, seriesColor, nowX, nowLineColor) {
+    val decoration = remember(
+        alertBands, drawn, rangeEntries, yMin, yMax, seriesColor, nowX, nowLineColor,
+        fillAlpha.value
+    ) {
         ChartOverlayDecoration(
             alertBands = alertBands,
             rendering = drawn,
@@ -475,7 +507,7 @@ fun PressureChart(
             yMin = yMin,
             yMax = yMax,
             seriesColorArgb = seriesColor.toArgb(),
-            rangeBandColorArgb = seriesColor.copy(alpha = RANGE_BAND_ALPHA).toArgb(),
+            rangeBandColorArgb = seriesColor.copy(alpha = RANGE_BAND_ALPHA * fillAlpha.value).toArgb(),
             nowX = nowX,
             nowLineColorArgb = nowLineColor.copy(alpha = NOW_LINE_ALPHA).toArgb(),
         )
@@ -487,18 +519,15 @@ fun PressureChart(
                 .fillMaxWidth()
                 .height(200.dp)
         ) {
-            // The band is drawn by the decoration, so the series Vico plots is made invisible
-            // rather than removed: it still carries the values the axes are scaled from.
-            val lineColor = when (drawn) {
-                ChartRendering.MinMaxBand -> android.graphics.Color.TRANSPARENT
-                ChartRendering.Line -> seriesColor.toArgb()
-            }
+            // Both edges are drawn by Vico, which is what lets them tween between ranges. A
+            // Line rendering draws the same edge twice, exactly on top of itself.
+            val lineSpec = LineChart.LineSpec(
+                lineColor = seriesColor.toArgb(),
+                lineThicknessDp = RANGE_LINE_WIDTH_DP
+            )
             Chart(
                 chart = lineChart(
-                    lines = listOf(
-                        LineChart.LineSpec(lineColor = lineColor),
-                        LineChart.LineSpec(lineColor = lineColor)
-                    ),
+                    lines = listOf(lineSpec, lineSpec),
                     decorations = listOf(decoration),
                     axisValuesOverrider = AxisValuesOverrider.fixed(
                         minY = yMin,
