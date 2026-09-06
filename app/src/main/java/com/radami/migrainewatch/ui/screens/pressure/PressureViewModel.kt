@@ -8,6 +8,7 @@ import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.ChartStep
+import com.radami.migrainewatch.ui.components.ChartRendering
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -23,11 +24,23 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
-/** The chip above the chart, and the resolution each one asks the chart to draw at. */
-enum class TimeRange(val label: String, val step: ChartStep) {
-    Hours24("24 hrs", ChartStep.ThreeHours),
-    Hours48("48 hrs", ChartStep.SixHours),
-    Days7("7 days", ChartStep.OneDay)
+/**
+ * The chip above the chart: the resolution each one asks for, and what it asks to be drawn.
+ *
+ * A band says how far pressure moved inside a step, so it is worth drawing only where a step
+ * is long enough to have moved: over a day it opens into something readable, over three hours
+ * it collapses onto the line it is drawn around and reads as a thicker line. So the hourly
+ * chips take the line and the daily chip takes the band — a per-chip choice rather than a rule
+ * the chart infers, which is what lets the two be compared by changing one value here.
+ */
+enum class TimeRange(
+    val label: String,
+    val step: ChartStep,
+    val rendering: ChartRendering
+) {
+    Hours24("24 hrs", ChartStep.ThreeHours, ChartRendering.Line),
+    Hours48("48 hrs", ChartStep.SixHours, ChartRendering.Line),
+    Days7("7 days", ChartStep.OneDay, ChartRendering.MinMaxBand)
 }
 
 data class PressureUiState(
