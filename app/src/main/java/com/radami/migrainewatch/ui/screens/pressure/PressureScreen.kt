@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.PressureDirection
@@ -148,12 +149,13 @@ private fun PressureHistoryCard(
                 Column(modifier = Modifier.weight(1f)) {
                     SectionHeading("Pressure")
                     Text(
-                        // What the chart shows for each chip: 8 points from −3 to +4 steps
-                        // around now, at 3 h / 6 h / 24 h per step.
-                        when (state.selectedRange) {
-                            TimeRange.Hours24 -> "9 hrs back · 12 hrs ahead"
-                            TimeRange.Hours48 -> "18 hrs back · 24 hrs ahead"
-                            TimeRange.Days7 -> "3 days back · 4 days ahead"
+                        // What the chart shows: 8 points from −3 to +4 steps around now. Read
+                        // off the step rather than the chip, so two chips sharing a step cannot
+                        // end up describing different spans of it.
+                        when (state.selectedRange.step) {
+                            ChartStep.ThreeHours -> "9 hrs back · 12 hrs ahead"
+                            ChartStep.SixHours -> "18 hrs back · 24 hrs ahead"
+                            ChartStep.OneDay -> "3 days back · 4 days ahead"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
@@ -191,6 +193,7 @@ private fun PressureHistoryCard(
                 PressureChart(
                     readings = state.readings,
                     window = window,
+                    rendering = state.selectedRange.rendering,
                     alerts = state.alertWindows,
                     modifier = Modifier.fillMaxWidth()
                 )

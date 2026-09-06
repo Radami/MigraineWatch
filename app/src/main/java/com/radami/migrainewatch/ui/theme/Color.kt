@@ -20,21 +20,22 @@ val SeverityMigraine = Color(0xFFF44336)
 // reads as just another severity swatch.
 val DangerRed = Color(0xFF8E1B1B)
 
-// Chart colours
+// The wordmark's second half on the Settings screen. Named for the chart line it used to
+// match; the chart has since moved to ChartSeries*, and this stayed behind as branding. Used
+// in both themes — there is no dark variant, because the wordmark is the only thing wearing it.
 val ChartMeasuredLight = Color(0xFFB05C3B)
-val ChartMeasuredDark = Color(0xFFE48D6C)
-val ChartForecastLight = Color(0xFF757575)
-val ChartForecastDark = Color(0xFFBDBDBD)
-val ChartAlert = Color(0xFFF44336)
+
+// Chart colours
 val ChartNowLineLight = Color(0xFF000000)
 val ChartNowLineDark = Color(0xFFFFFFFF)
 
-// The daily min/max lines. Deliberately not the measured line's colour, which they used to
-// borrow: that terracotta sits a shade away from the orange of the second alert, so the daily
-// range and a risk window read as the same thing. Blue is the one hue the alert palette does
-// not use.
-val ChartRangeLineLight = Color(0xFF5B8DC8)
-val ChartRangeLineDark = Color(0xFF8FB9E8)
+// The chart's data, however it is drawn — the sampled line at the hourly steps, the min/max
+// lines at the daily one. Deliberately not the terracotta the line used to be: that sits a
+// shade away from the orange of the second alert, so the data and a risk window read as the
+// same thing. Blue is the one hue the alert palette does not use, and one colour across both
+// renderings means switching range changes the shape of the data without recolouring it.
+val ChartSeriesLight = Color(0xFF5B8DC8)
+val ChartSeriesDark = Color(0xFF8FB9E8)
 
 // Alert colours — fixed palette shared by the chart's risk shading and the alert rows
 // beside it, independent of dynamic (wallpaper-based) theming. One hue per alert, in a
