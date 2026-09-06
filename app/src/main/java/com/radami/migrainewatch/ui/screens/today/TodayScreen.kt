@@ -289,11 +289,7 @@ private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
                 // Re-checked rather than trusted: during a transition this lambda runs for the
                 // outgoing branch too, and by then the week it described may be gone.
                 if (!forecastArrived || today == null) {
-                    OutlookPlaceholder(
-                        isLoading = state.isLoading,
-                        gap = state.outlookGap,
-                        lastUpdated = state.lastUpdated
-                    )
+                    OutlookPlaceholder(gap = state.outlookGap, lastUpdated = state.lastUpdated)
                     return@AnimatedContent
                 }
 
@@ -455,26 +451,31 @@ private fun LegendItem(swatch: @Composable () -> Unit, label: String) {
 /**
  * What the card says when it has no week to draw.
  *
- * Three different situations, and only one of them is about the connection. A forecast that
- * arrived and has since fallen behind gets dated rather than diagnosed: the app has not
- * checked the network, and saying so would be guessing at a cause in the one case where it is
- * most often wrong.
+ * Each [OutlookGap] gets its own line, because only one of them is about the connection. A
+ * forecast that arrived and has since fallen behind gets dated rather than diagnosed, and a
+ * fetch that is still out is not reported at all — the app only names the network where it has
+ * actually tried it and been turned away.
  */
 @Composable
-private fun OutlookPlaceholder(isLoading: Boolean, gap: OutlookGap?, lastUpdated: Instant?) {
+private fun OutlookPlaceholder(gap: OutlookGap?, lastUpdated: Instant?) {
     val timeFormatter = remember {
         AppDateFormats.FULL_DATE_TIME.withZone(ZoneId.systemDefault())
     }
 
-    val message = when {
-        isLoading -> LOADING_FORECAST
-        gap == OutlookGap.ForecastBehind && lastUpdated != null ->
-            "Forecast is out of date — last updated ${timeFormatter.format(lastUpdated)}"
+    val message = when (gap) {
+        OutlookGap.ForecastBehind -> lastUpdated
+            ?.let { "Forecast is out of date — last updated ${timeFormatter.format(it)}" }
+            // Readings with no fetch time behind them is not a state the ViewModel produces,
+            // so this stands in for one arriving later rather than describing anything today.
+            ?: "Forecast is out of date"
 
-        // Readings with no fetch time behind them is not a state the ViewModel produces, so
-        // this only stands in for one arriving later rather than describing anything today.
-        gap == OutlookGap.ForecastBehind -> "Forecast is out of date"
-        else -> NO_FORECAST_YET
+        OutlookGap.FetchFailed -> COULD_NOT_REACH_FORECAST
+        OutlookGap.NoLocation -> NO_LOCATION_SET
+        OutlookGap.NoReadings -> NO_FORECAST_FOR_LOCATION
+
+        // Nothing has come back yet, here or before the first state was computed. Both are
+        // waiting rather than failing, and neither is worth a diagnosis.
+        OutlookGap.Loading, null -> LOADING_FORECAST
     }
 
     Text(
@@ -486,8 +487,14 @@ private fun OutlookPlaceholder(isLoading: Boolean, gap: OutlookGap?, lastUpdated
 
 private const val LOADING_FORECAST = "Loading forecast…"
 
-/** Said only when nothing has ever arrived, which is the one case the connection explains. */
-private const val NO_FORECAST_YET = "No forecast yet — check your connection"
+/** Said only once a fetch has actually failed, which is the one case the connection explains. */
+private const val COULD_NOT_REACH_FORECAST = "Couldn't reach the forecast — check your connection"
+
+/** The onboarding gap: the app has somewhere to put a forecast but nowhere to fetch one for. */
+private const val NO_LOCATION_SET = "Set a location to see the forecast"
+
+/** The fetch worked and brought nothing back, which is about the place rather than the app. */
+private const val NO_FORECAST_FOR_LOCATION = "No forecast available for this location"
 
 /** Text that is present but not the point. */
 private const val MUTED_ALPHA = 0.5f

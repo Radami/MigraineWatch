@@ -6,6 +6,7 @@ import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
+import com.radami.migrainewatch.data.repository.RefreshState
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.ui.components.ChartRendering
@@ -52,6 +53,12 @@ data class PressureUiState(
     val selectedRange: TimeRange = TimeRange.Days7,
     val locationName: String = "",
     val lastUpdated: Instant? = null,
+    /**
+     * How the fetching is going. The chart cannot explain an empty plot on its own — an empty
+     * table looks the same whether a fetch is out, failed, or came back with nothing — so the
+     * card is told, the same way the Today screen's outlook is.
+     */
+    val refreshState: RefreshState = RefreshState.InFlight,
     val isLoading: Boolean = true
 )
 
@@ -76,7 +83,9 @@ class PressureViewModel @Inject constructor(
     val uiState: StateFlow<PressureUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch(Dispatchers.IO) {
+        // No dispatcher of its own: both calls do their own work elsewhere — the staleness
+        // check in Room's executor, the fetch in the repository's scope.
+        viewModelScope.launch {
             if (pressureRepository.isForecastStale()) {
                 pressureRepository.refresh()
             }
@@ -103,9 +112,10 @@ class PressureViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 pressureRepository.getReadingsInRange(from, to),
-                userPreferences.settings
-            ) { readings, settings -> Pair(readings, settings) }
-                .collectLatest { (readings, settings) ->
+                userPreferences.settings,
+                pressureRepository.refreshState
+            ) { readings, settings, refreshState -> Triple(readings, settings, refreshState) }
+                .collectLatest { (readings, settings, refreshState) ->
                     // Re-evaluated per emission so the current reading and the relevance of an
                     // event don't go stale while the screen stays open.
                     val now = Instant.now()
@@ -130,6 +140,7 @@ class PressureViewModel @Inject constructor(
                             alertThresholdHpa = settings.alertThresholdHpa,
                             locationName = settings.location.name,
                             lastUpdated = readings.maxOfOrNull { it.fetchedDateTime },
+                            refreshState = refreshState,
                             isLoading = false
                         )
                     }

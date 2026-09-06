@@ -73,12 +73,18 @@ class TodayRefreshTransitionTest {
         const val REFRESHES_ACROSS_WINDOW = 40
 
         /**
-         * The openings of both messages the outlook card falls back to when it has no week to
+         * The openings of every message the outlook card falls back to when it has no week to
          * draw. Matched as substrings because one of them carries a timestamp, and asserted
-         * together because a flash of either is the same defect: an error over data that is
-         * arriving. Which one appears depends on whether any readings survived the moment.
+         * together because a flash of any of them is the same defect: a card giving up over
+         * data that is arriving. Which one would appear depends on what survived the moment —
+         * readings but no usable day, or nothing at all and whatever the fetch was doing.
          */
-        val PLACEHOLDER_OPENINGS = listOf("Forecast is out of date", "No forecast yet")
+        val PLACEHOLDER_OPENINGS = listOf(
+            "Forecast is out of date",
+            "Couldn't reach the forecast",
+            "No forecast available",
+            "Loading forecast"
+        )
 
         /** The headline before the refresh, and after it. */
         const val ELEVATED_HEADLINE = "Elevated risk today"

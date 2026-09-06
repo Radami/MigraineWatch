@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.radami.migrainewatch.data.repository.RefreshState
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
@@ -208,17 +209,48 @@ private fun PressureHistoryCard(
 
             Spacer(Modifier.height(8.dp))
 
-            if (state.readings.isNotEmpty()) {
-                PressureChart(
-                    readings = state.readings,
-                    window = window,
-                    rendering = state.selectedRange.rendering,
-                    alerts = state.alertWindows,
-                    modifier = Modifier.fillMaxWidth()
-                )
+            PressureChart(
+                readings = state.readings,
+                window = window,
+                rendering = state.selectedRange.rendering,
+                alerts = state.alertWindows,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                EmptyChartMessage(state)
             }
         }
     }
+}
+
+/**
+ * What stands in for the chart when the readings do not reach the range selected above it.
+ *
+ * The card used to draw nothing at all here — chips over blank space, which reads as a chart
+ * that failed to render rather than as data that is missing. Which of these it is cannot be
+ * told from the readings alone once they are empty, so the fetch is asked, exactly as the
+ * Today screen's outlook asks it.
+ */
+@Composable
+private fun EmptyChartMessage(state: PressureUiState) {
+    val message = when {
+        // Something arrived; it just does not cover what this chip asks for. Nothing to do with
+        // the network, and the other chips may well have data — so the range is what is named.
+        state.readings.isNotEmpty() -> "No readings in the last ${state.selectedRange.label}"
+
+        else -> when (state.refreshState) {
+            RefreshState.InFlight -> "Loading pressure readings…"
+            RefreshState.Failed -> "Couldn't reach the forecast — check your connection"
+            RefreshState.NoLocation -> "Set a location to see pressure"
+            RefreshState.Updated -> "No pressure readings available for this location"
+        }
+    }
+
+    Text(
+        message,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = MUTED_ALPHA),
+        modifier = Modifier.padding(vertical = 24.dp)
+    )
 }
 
 @Composable

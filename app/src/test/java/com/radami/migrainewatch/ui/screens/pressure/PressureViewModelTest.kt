@@ -4,6 +4,7 @@ import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.AppSettings
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
+import com.radami.migrainewatch.data.repository.RefreshState
 import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
 import com.radami.migrainewatch.ui.components.ChartRendering
@@ -13,6 +14,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -45,10 +47,21 @@ class PressureViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
+    /**
+     * How the fetching went, as the card sees it. Mutable so a test can put the repository in a
+     * state and read what the empty chart says about it; [RefreshState.Updated] by default,
+     * because every test that is not about the empty chart wants a fetch that has been and gone.
+     */
+    private val refreshState = MutableStateFlow(RefreshState.Updated)
+
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = THRESHOLD_HPA))
+
+        // Combined into the screen's state, so a mock that never emits would leave the whole
+        // flow silent and every wait for a loaded state hanging.
+        every { pressureRepository.refreshState } returns refreshState
     }
 
     @After
@@ -171,6 +184,18 @@ class PressureViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(TimeRange.Hours24, state.selectedRange)
         assertEquals(1013f, state.currentPressure)
+    }
+
+    /**
+     * The card explains an empty chart rather than drawing nothing, and to do that it has to be
+     * told how the fetch went — an empty table looks the same whichever way it went.
+     */
+    @Test
+    fun `how the fetch went reaches the screen`() = runTest {
+        readingsReturn(emptyList())
+        refreshState.value = RefreshState.Failed
+
+        assertEquals(RefreshState.Failed, viewModel().loadedState().refreshState)
     }
 
     /**
