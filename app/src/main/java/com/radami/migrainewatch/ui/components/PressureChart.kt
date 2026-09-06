@@ -78,18 +78,22 @@ private const val NOW_LINE_ALPHA = 0.5f
 private const val RANGE_LINE_WIDTH_DP = 2f
 
 /**
- * How the fill keeps step with the edges when the range changes.
+ * How everything the decoration draws keeps step with the edges when the range changes.
  *
- * The edges are model series, so Vico tweens them over [Animation.DIFF_DURATION]. The fill
- * cannot follow: a decoration only ever draws the snapshot it was built with, and
- * [ChartDrawContext] does not expose the model being interpolated. Left alone it would sit at
- * its final shape while the edges were still travelling, which reads as a detached blob. So it
- * drops out as the range changes and returns over the tail of the tween, reaching full
- * strength as the edges settle — and because it fades while the model is still animating, the
- * chart is being redrawn anyway.
+ * The edges are model series, so Vico tweens them over [Animation.DIFF_DURATION]. Nothing
+ * drawn by the decoration can follow: it only ever draws the snapshot it was built with, and
+ * [ChartDrawContext] does not expose the model being interpolated. Left alone the wash sits at
+ * its final shape while the edges are still travelling — a detached blob — and the risk
+ * shading jumps to its new width and position in one frame under a chart that is still moving.
+ *
+ * So both stand aside instead of lying: they drop out as the range changes and return over the
+ * tail of the tween, reaching full strength as the edges settle. One driver rather than two,
+ * because two overlays fading out of step with each other would be its own kind of wrong. The
+ * fade deliberately overlaps the tween — the model still animating is what keeps the chart
+ * being redrawn, and a fade starting after it ended might never render.
  */
-private const val FILL_FADE_DELAY_MILLIS = Animation.DIFF_DURATION / 2
-private const val FILL_FADE_MILLIS = Animation.DIFF_DURATION - FILL_FADE_DELAY_MILLIS
+private const val OVERLAY_FADE_DELAY_MILLIS = Animation.DIFF_DURATION / 2
+private const val OVERLAY_FADE_MILLIS = Animation.DIFF_DURATION - OVERLAY_FADE_DELAY_MILLIS
 
 /** Whether a traced run opens a new path contour or continues the one in progress. */
 private enum class RunStart { MoveTo, LineTo }
@@ -166,8 +170,12 @@ private class ChartOverlayDecoration(
     private val rangeEntries: List<RangeEntry>,
     private val yMin: Float,
     private val yMax: Float,
-    private val seriesColorArgb: Int,
-    private val rangeBandColorArgb: Int,
+    private val seriesColor: Color,
+    /**
+     * How far in the overlays are. Applied here rather than by the caller so that the wash,
+     * the lone-step stroke and the risk shading cannot drift apart: one value, one place.
+     */
+    private val overlayAlpha: Float,
     private val nowX: Float,
     private val nowLineColorArgb: Int,
 ) : Decoration {
@@ -192,18 +200,18 @@ private class ChartOverlayDecoration(
     }
 
     private val alertColorsArgb: List<Int> =
-        alertBands.map { it.color.copy(alpha = ALERT_BAND_ALPHA).toArgb() }
+        alertBands.map { it.color.copy(alpha = ALERT_BAND_ALPHA * overlayAlpha).toArgb() }
 
     private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = rangeBandColorArgb
+        color = seriesColor.copy(alpha = RANGE_BAND_ALPHA * overlayAlpha).toArgb()
     }
 
     private val rangePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
-        color = seriesColorArgb
+        color = seriesColor.copy(alpha = overlayAlpha).toArgb()
     }
 
     // The very connector Vico's own line spec uses, so the min/max lines curve exactly like
@@ -417,16 +425,6 @@ fun PressureChart(
         modelProducer.setEntries(listOf(edges.lower, edges.upper))
     }
 
-    // See FILL_FADE_DELAY_MILLIS: the fill cannot be tweened, so it stands aside while the
-    // edges travel and returns as they arrive.
-    val fillAlpha = remember { Animatable(1f) }
-    LaunchedEffect(edges) {
-        fillAlpha.snapTo(0f)
-        fillAlpha.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(FILL_FADE_MILLIS, delayMillis = FILL_FADE_DELAY_MILLIS)
-        )
-    }
 
     val isDark = isSystemInDarkTheme()
     // One colour for the data whichever way it is drawn, so changing range changes the shape
@@ -448,6 +446,22 @@ fun PressureChart(
                 color = palette[index]
             )
         }
+    }
+
+    // See OVERLAY_FADE_DELAY_MILLIS. Keyed on the risk shading as well as the edges: a change
+    // of alert sensitivity rewrites the windows without touching a single reading, and that
+    // redraw needs standing aside for just as much as a change of range does.
+    // Rebuilt at zero whenever what the overlays draw changes, rather than reset by an effect.
+    // Effects run after the frame they belong to is drawn, so resetting in one paints the new
+    // overlays once at full strength over edges that have not started travelling yet, and only
+    // then takes them away: the band flashes in, vanishes and fades in again. Recreating the
+    // Animatable happens during composition, so the very first frame is already at zero.
+    val overlayAlpha = remember(edges, alertBands) { Animatable(0f) }
+    LaunchedEffect(overlayAlpha) {
+        overlayAlpha.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(OVERLAY_FADE_MILLIS, delayMillis = OVERLAY_FADE_DELAY_MILLIS)
+        )
     }
 
     // Straight off the edges, which already are the extremes whichever way they were built.
@@ -498,7 +512,7 @@ fun PressureChart(
 
     val decoration = remember(
         alertBands, drawn, rangeEntries, yMin, yMax, seriesColor, nowX, nowLineColor,
-        fillAlpha.value
+        overlayAlpha.value
     ) {
         ChartOverlayDecoration(
             alertBands = alertBands,
@@ -506,8 +520,8 @@ fun PressureChart(
             rangeEntries = rangeEntries,
             yMin = yMin,
             yMax = yMax,
-            seriesColorArgb = seriesColor.toArgb(),
-            rangeBandColorArgb = seriesColor.copy(alpha = RANGE_BAND_ALPHA * fillAlpha.value).toArgb(),
+            seriesColor = seriesColor,
+            overlayAlpha = overlayAlpha.value,
             nowX = nowX,
             nowLineColorArgb = nowLineColor.copy(alpha = NOW_LINE_ALPHA).toArgb(),
         )
