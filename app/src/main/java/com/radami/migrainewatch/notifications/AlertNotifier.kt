@@ -14,9 +14,11 @@ import com.radami.migrainewatch.MainActivity
 import com.radami.migrainewatch.R
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
+import androidx.compose.ui.graphics.toArgb
 import com.radami.migrainewatch.format.formatAlertHeadline
 import com.radami.migrainewatch.format.AlertTimingDetail
 import com.radami.migrainewatch.format.formatAlertTiming
+import com.radami.migrainewatch.ui.theme.BrandTerracottaLight
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -60,7 +62,10 @@ class AlertNotifier @Inject constructor(
         ensureChannel()
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setSmallIcon(R.drawable.ic_stat_pressure)
+            // Tints the mark in the shade. The status bar always draws a small icon white,
+            // so this is the one place the notification can carry the app's own colour.
+            .setColor(BrandTerracottaLight.toArgb())
             .setContentTitle(formatAlertHeadline(alert.delta, alert.direction))
             .setContentText(formatAlertTiming(alert, phase, AlertTimingDetail.WithEnd))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
