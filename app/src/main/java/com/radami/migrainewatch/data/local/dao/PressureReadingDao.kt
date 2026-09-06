@@ -81,9 +81,6 @@ interface PressureReadingDao {
     @Query("SELECT * FROM pressure_readings WHERE dateTime < :now ORDER BY dateTime DESC LIMIT 1")
     suspend fun getLatestHistorical(now: Instant): PressureReading?
 
-    @Query("SELECT * FROM pressure_readings WHERE dateTime >= :from AND dateTime < :to ORDER BY dateTime ASC")
-    suspend fun getForecastReadings(from: Instant, to: Instant): List<PressureReading>
-
     @Query("SELECT fetchedDateTime FROM pressure_readings WHERE dateTime >= :now ORDER BY dateTime ASC LIMIT 1")
     suspend fun getLatestForecastFetchTime(now: Instant): Instant?
 

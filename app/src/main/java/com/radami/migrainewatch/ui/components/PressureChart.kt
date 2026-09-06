@@ -39,12 +39,10 @@ import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
 import com.radami.migrainewatch.format.AppDateFormats
-import com.radami.migrainewatch.ui.theme.ChartMeasuredDark
-import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
 import com.radami.migrainewatch.ui.theme.ChartNowLineDark
 import com.radami.migrainewatch.ui.theme.ChartNowLineLight
-import com.radami.migrainewatch.ui.theme.ChartRangeLineDark
-import com.radami.migrainewatch.ui.theme.ChartRangeLineLight
+import com.radami.migrainewatch.ui.theme.ChartSeriesDark
+import com.radami.migrainewatch.ui.theme.ChartSeriesLight
 import com.radami.migrainewatch.ui.theme.alertColorPalette
 import com.patrykandpatrick.vico.compose.axis.axisLabelComponent
 import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
@@ -79,12 +77,36 @@ private const val RANGE_LINE_WIDTH_DP = 2f
 /** Whether a traced run opens a new path contour or continues the one in progress. */
 private enum class RunStart { MoveTo, LineTo }
 
+/**
+ * How the chart draws the readings each of its points stands for.
+ *
+ * Separate from [ChartStep] because the two are independent: a step decides how much time a
+ * point covers, this decides what is drawn for it. They were one thing while only the daily
+ * step drew a band, which is what made a band at any other step impossible to ask for.
+ *
+ * A caller picks one per range, and the chart falls back to [Line] regardless when a step
+ * holds too little data to have a range at all — see `drawn` in [PressureChart], the single
+ * value the marks, the line colour and the legend all key off.
+ */
+enum class ChartRendering {
+
+    /** A single line through the pressure sampled at each point. */
+    Line,
+
+    /**
+     * The lowest and highest pressure within each point's step, as two lines with a wash
+     * between them. Says how far pressure moved inside a step rather than where it happened
+     * to be at the instant the step was sampled.
+     */
+    MinMaxBand
+}
+
 private val SWATCH_WIDTH = 24.dp
 
 /** Risk gets one swatch per window in view, so they are narrowed to leave the legend on one line. */
 private val RISK_SWATCH_WIDTH = 14.dp
 
-/** The lowest and highest pressure seen on the day the chart draws at x = [index]. */
+/** The lowest and highest pressure within the step the chart draws at x = [index]. */
 private data class RangeEntry(val index: Int, val minY: Float, val maxY: Float)
 
 /** One alert's risk window, in chart x-values, in the colour of the row describing it. */
@@ -113,11 +135,11 @@ private fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
  */
 private class ChartOverlayDecoration(
     private val alertBands: List<AlertBand>,
-    private val showRangeLines: Boolean,
+    private val rendering: ChartRendering,
     private val rangeEntries: List<RangeEntry>,
     private val yMin: Float,
     private val yMax: Float,
-    private val rangeLineColorArgb: Int,
+    private val seriesColorArgb: Int,
     private val rangeBandColorArgb: Int,
     private val nowX: Float,
     private val nowLineColorArgb: Int,
@@ -154,11 +176,11 @@ private class ChartOverlayDecoration(
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
-        color = rangeLineColorArgb
+        color = seriesColorArgb
     }
 
-    // The very connector Vico's own line spec uses, so the daily min/max lines curve exactly
-    // like the pressure line the hourly ranges draw.
+    // The very connector Vico's own line spec uses, so the min/max lines curve exactly like
+    // the pressure line a Line rendering draws.
     private val pointConnector = DefaultPointConnector()
 
     private val nowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -205,15 +227,15 @@ private class ChartOverlayDecoration(
         }
     }
 
-    private fun drawDailyRange(context: ChartDrawContext, bounds: RectF) {
-        if (!showRangeLines || rangeRuns.isEmpty()) return
+    private fun drawRangeBand(context: ChartDrawContext, bounds: RectF) {
+        if (rendering != ChartRendering.MinMaxBand || rangeRuns.isEmpty()) return
 
         val path = Path()
         for (run in rangeRuns) {
             // A run of one has no neighbour to trace towards, so there is no area to fill:
-            // the day is drawn as the vertical it spans instead of vanishing.
+            // the step is drawn as the vertical it spans instead of vanishing.
             if (run.size == 1) {
-                drawSingleDay(context, bounds, run.first())
+                drawIsolatedStep(context, bounds, run.first())
                 continue
             }
 
@@ -281,7 +303,7 @@ private class ChartOverlayDecoration(
         }
     }
 
-    private fun drawSingleDay(context: ChartDrawContext, bounds: RectF, entry: RangeEntry) {
+    private fun drawIsolatedStep(context: ChartDrawContext, bounds: RectF, entry: RangeEntry) {
         val x = context.dataX(entry.index.toFloat(), bounds)
         context.canvas.drawLine(
             x,
@@ -295,9 +317,9 @@ private class ChartOverlayDecoration(
     override fun onDrawAboveChart(context: ChartDrawContext, bounds: RectF) {
         ensurePaintDensity(context.density)
 
-        // The daily range is the data at this step, so it goes above the gridlines and the
-        // risk shading; only the "now" marker sits on top of it.
-        drawDailyRange(context, bounds)
+        // Where a band is drawn it *is* the data, so it goes above the gridlines and the risk
+        // shading; only the "now" marker sits on top of it.
+        drawRangeBand(context, bounds)
 
         val x = context.dataX(nowX, bounds)
         context.canvas.drawLine(x, bounds.top, x, bounds.bottom, nowPaint)
@@ -309,6 +331,8 @@ private class ChartOverlayDecoration(
  *   eight instants [window] names out of these rather than plotting them one for one, so it is
  *   given the whole series and not the slice one range happens to need.
  * @param window which slice of time the chart draws, and at what resolution.
+ * @param rendering what to draw for each of its points — a sampled line, or the band each
+ *   step's readings span. Independent of the step: any step can be drawn either way.
  * @param alerts risk windows to shade, in the order the caller lists them. Those
  *   [ChartWindow.covers] returns false for are left to the caller to account for — the chart
  *   cannot show them at this range — and only as many as the palette has colours are shaded,
@@ -319,11 +343,15 @@ fun PressureChart(
     readings: List<PressureReading>,
     window: ChartWindow,
     modifier: Modifier = Modifier,
+    rendering: ChartRendering = ChartRendering.Line,
     alerts: List<AlertWindow> = emptyList()
 ) {
     if (readings.isEmpty()) return
 
+    // Two separate questions that used to have one answer. The step still decides how labels
+    // are written and how the axis lays out; only the marks depend on the rendering.
     val isDaily = window.step == ChartStep.OneDay
+    val drawsBand = rendering == ChartRendering.MinMaxBand
     val stepSeconds = window.step.seconds
     val nowEpoch = Instant.now().epochSecond
 
@@ -340,17 +368,20 @@ fun PressureChart(
         }
     }
 
-    val rangeEntries = if (isDaily) {
-        remember(readings, window) {
-            val half = stepSeconds / 2
-            ChartWindow.POINT_INDICES.mapNotNull { i ->
-                val anchorEpoch = window.epochSecondAt(i)
-                val inWindow = readings.filter { abs(it.dateTime.epochSecond - anchorEpoch) <= half }
-                if (inWindow.size < 2) null
-                else RangeEntry(i, inWindow.minOf { it.pressureMsl }, inWindow.maxOf { it.pressureMsl })
-            }
+    // Each point's extremes over the half-step either side of it, so the band is centred on
+    // the instant its label names. Remembered unconditionally rather than inside the branch
+    // that needs it: switching rendering would otherwise change the shape of the composition.
+    val rangeEntries = remember(readings, window, drawsBand) {
+        if (!drawsBand) return@remember emptyList()
+
+        val half = stepSeconds / 2
+        ChartWindow.POINT_INDICES.mapNotNull { i ->
+            val anchorEpoch = window.epochSecondAt(i)
+            val inWindow = readings.filter { abs(it.dateTime.epochSecond - anchorEpoch) <= half }
+            if (inWindow.size < 2) null
+            else RangeEntry(i, inWindow.minOf { it.pressureMsl }, inWindow.maxOf { it.pressureMsl })
         }
-    } else emptyList()
+    }
 
     val modelProducer = remember { ChartEntryModelProducer() }
     LaunchedEffect(historicalEntries, forecastEntries) {
@@ -358,8 +389,9 @@ fun PressureChart(
     }
 
     val isDark = isSystemInDarkTheme()
-    val measuredColor = if (isDark) ChartMeasuredDark else ChartMeasuredLight
-    val rangeLineColor = if (isDark) ChartRangeLineDark else ChartRangeLineLight
+    // One colour for the data whichever way it is drawn, so changing range changes the shape
+    // on screen and nothing else.
+    val seriesColor = if (isDark) ChartSeriesDark else ChartSeriesLight
     val nowLineColor = if (isDark) ChartNowLineDark else ChartNowLineLight
 
     // Alerts keep the colour of their position in the list, so a band and the row that
@@ -429,16 +461,21 @@ fun PressureChart(
     // anchor the chart snapped to.
     val nowX = window.xOf(Instant.ofEpochSecond(nowEpoch))
 
-    val showRangeLines = rangeEntries.size >= 2
-    val decoration = remember(alertBands, showRangeLines, rangeEntries, yMin, yMax, rangeLineColor, nowX, nowLineColor) {
+    // What the chart can actually draw, which is not always what the caller asked for: a band
+    // needs at least two steps holding readings, and a series too sparse for that would leave
+    // the plot empty. Resolved once, so the marks, the axis colour and the legend can never
+    // disagree about which of the two is on screen.
+    val drawn = if (rangeEntries.size >= 2) rendering else ChartRendering.Line
+
+    val decoration = remember(alertBands, drawn, rangeEntries, yMin, yMax, seriesColor, nowX, nowLineColor) {
         ChartOverlayDecoration(
             alertBands = alertBands,
-            showRangeLines = showRangeLines,
+            rendering = drawn,
             rangeEntries = rangeEntries,
             yMin = yMin,
             yMax = yMax,
-            rangeLineColorArgb = rangeLineColor.toArgb(),
-            rangeBandColorArgb = rangeLineColor.copy(alpha = RANGE_BAND_ALPHA).toArgb(),
+            seriesColorArgb = seriesColor.toArgb(),
+            rangeBandColorArgb = seriesColor.copy(alpha = RANGE_BAND_ALPHA).toArgb(),
             nowX = nowX,
             nowLineColorArgb = nowLineColor.copy(alpha = NOW_LINE_ALPHA).toArgb(),
         )
@@ -450,7 +487,12 @@ fun PressureChart(
                 .fillMaxWidth()
                 .height(200.dp)
         ) {
-            val lineColor = if (showRangeLines) android.graphics.Color.TRANSPARENT else measuredColor.toArgb()
+            // The band is drawn by the decoration, so the series Vico plots is made invisible
+            // rather than removed: it still carries the values the axes are scaled from.
+            val lineColor = when (drawn) {
+                ChartRendering.MinMaxBand -> android.graphics.Color.TRANSPARENT
+                ChartRendering.Line -> seriesColor.toArgb()
+            }
             Chart(
                 chart = lineChart(
                     lines = listOf(
@@ -493,22 +535,31 @@ fun PressureChart(
 
         Spacer(Modifier.height(8.dp))
         ChartLegend(
-            lineColor = measuredColor,
+            seriesColor = seriesColor,
             nowLineColor = nowLineColor,
-            showRangeLines = showRangeLines,
-            rangeLineColor = rangeLineColor,
+            rendering = drawn,
+            rangeLabel = rangeLegendLabel(window.step),
             alertColors = alertBands.map { it.color }
         )
     }
 }
 
+/**
+ * What the band entry is called, which has to name the step: "daily min/max" over three-hourly
+ * data would describe a spread the chart is not showing.
+ */
+private fun rangeLegendLabel(step: ChartStep): String = when (step) {
+    ChartStep.OneDay -> "daily min/max"
+    else -> "${step.hours}-hourly min/max"
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChartLegend(
-    lineColor: Color,
+    seriesColor: Color,
     nowLineColor: Color,
-    showRangeLines: Boolean,
-    rangeLineColor: Color,
+    rendering: ChartRendering,
+    rangeLabel: String,
     alertColors: List<Color>,
 ) {
     // Wraps rather than clips: the risk entry appears and disappears with the data, and at a
@@ -525,14 +576,13 @@ private fun ChartLegend(
             LegendLine(color = nowLineColor.copy(alpha = NOW_LINE_ALPHA), dashed = true)
         }
 
-        // The pressure line is only drawn when the daily min/max lines aren't
-        // (24 h / 48 h ranges).
-        if (showRangeLines) {
-            LegendEntry(label = "daily min/max") {
-                LegendRangeSwatch(color = rangeLineColor)
-            }
-        } else {
-            LegendEntry(label = "pressure") { LegendLine(color = lineColor) }
+        // The two are alternatives: a band replaces the sampled line rather than joining it.
+        when (rendering) {
+            ChartRendering.MinMaxBand ->
+                LegendEntry(label = rangeLabel) { LegendRangeSwatch(color = seriesColor) }
+
+            ChartRendering.Line ->
+                LegendEntry(label = "pressure") { LegendLine(color = seriesColor) }
         }
 
         if (alertColors.isNotEmpty()) {
@@ -575,7 +625,7 @@ private fun LegendLine(color: Color, dashed: Boolean = false) {
     }
 }
 
-/** The daily range as the chart draws it: a wash between two lines. */
+/** A step's range as the chart draws it: a wash between two lines. */
 @Composable
 private fun LegendRangeSwatch(color: Color) {
     Canvas(modifier = Modifier.size(width = SWATCH_WIDTH, height = 10.dp)) {

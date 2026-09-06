@@ -4,7 +4,9 @@ import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.AppSettings
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
+import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
+import com.radami.migrainewatch.ui.components.ChartRendering
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.PressureDirection
 import io.mockk.every
@@ -169,5 +171,26 @@ class PressureViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(TimeRange.Hours24, state.selectedRange)
         assertEquals(1013f, state.currentPressure)
+    }
+
+    /**
+     * A band is drawn exactly where a step is long enough to have a range worth showing. Over
+     * a day pressure moves several hPa and the band opens up; over three or six hours it
+     * collapses onto the line it surrounds and only reads as a thicker line.
+     *
+     * Pinned because the chips are the only place that says so — the chart draws whatever it
+     * is handed — and because the two are one value apart, which is what makes it easy to
+     * change a chip's rendering without meaning to.
+     */
+    @Test
+    fun `only the daily step draws a band`() {
+        TimeRange.entries.forEach { range ->
+            val expected = if (range.step == ChartStep.OneDay) {
+                ChartRendering.MinMaxBand
+            } else {
+                ChartRendering.Line
+            }
+            assertEquals("$range draws the wrong marks", expected, range.rendering)
+        }
     }
 }
