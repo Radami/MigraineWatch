@@ -55,7 +55,7 @@ import com.radami.migrainewatch.BuildConfig
 import com.radami.migrainewatch.R
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.notifications.NotificationPermissionState
-import com.radami.migrainewatch.ui.theme.ChartMeasuredLight
+import com.radami.migrainewatch.ui.theme.BrandTerracottaLight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,7 +111,7 @@ private fun SettingsList(viewModel: SettingsViewModel) {
                         withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.onSurface)) {
                             append("Migraine")
                         }
-                        withStyle(style = SpanStyle(color = ChartMeasuredLight)) {
+                        withStyle(style = SpanStyle(color = BrandTerracottaLight)) {
                             append("Watch")
                         }
                     },

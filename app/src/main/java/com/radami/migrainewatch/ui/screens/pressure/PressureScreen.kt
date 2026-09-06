@@ -1,5 +1,15 @@
 package com.radami.migrainewatch.ui.screens.pressure
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -30,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import com.radami.migrainewatch.ui.theme.Motion
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,7 +50,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.radami.migrainewatch.data.repository.RefreshState
 import com.radami.migrainewatch.domain.AlertWindow
+import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.PressureDirection
@@ -56,6 +69,14 @@ import kotlin.math.roundToInt
 
 /** Whether the chart's selected range reaches the event a row describes. */
 private enum class ChartVisibility { InView, OutOfView }
+
+/**
+ * Everything the Alerts card lists, as one value.
+ *
+ * Held together so the card crosses over once when the events change rather than animating the
+ * rows and the count of the ones it is holding back on separate schedules.
+ */
+private data class AlertListing(val rows: List<AlertWindow>, val hidden: Int)
 
 /** Text that is present but not the point: an empty card, or a row the chart cannot show. */
 private const val MUTED_ALPHA = 0.5f
@@ -148,12 +169,13 @@ private fun PressureHistoryCard(
                 Column(modifier = Modifier.weight(1f)) {
                     SectionHeading("Pressure")
                     Text(
-                        // What the chart shows for each chip: 8 points from −3 to +4 steps
-                        // around now, at 3 h / 6 h / 24 h per step.
-                        when (state.selectedRange) {
-                            TimeRange.Hours24 -> "9 hrs back · 12 hrs ahead"
-                            TimeRange.Hours48 -> "18 hrs back · 24 hrs ahead"
-                            TimeRange.Days7 -> "3 days back · 4 days ahead"
+                        // What the chart shows: 8 points from −3 to +4 steps around now. Read
+                        // off the step rather than the chip, so two chips sharing a step cannot
+                        // end up describing different spans of it.
+                        when (state.selectedRange.step) {
+                            ChartStep.ThreeHours -> "9 hrs back · 12 hrs ahead"
+                            ChartStep.SixHours -> "18 hrs back · 24 hrs ahead"
+                            ChartStep.OneDay -> "3 days back · 4 days ahead"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
@@ -187,16 +209,48 @@ private fun PressureHistoryCard(
 
             Spacer(Modifier.height(8.dp))
 
-            if (state.readings.isNotEmpty()) {
-                PressureChart(
-                    readings = state.readings,
-                    window = window,
-                    alerts = state.alertWindows,
-                    modifier = Modifier.fillMaxWidth()
-                )
+            PressureChart(
+                readings = state.readings,
+                window = window,
+                rendering = state.selectedRange.rendering,
+                alerts = state.alertWindows,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                EmptyChartMessage(state)
             }
         }
     }
+}
+
+/**
+ * What stands in for the chart when the readings do not reach the range selected above it.
+ *
+ * The card used to draw nothing at all here — chips over blank space, which reads as a chart
+ * that failed to render rather than as data that is missing. Which of these it is cannot be
+ * told from the readings alone once they are empty, so the fetch is asked, exactly as the
+ * Today screen's outlook asks it.
+ */
+@Composable
+private fun EmptyChartMessage(state: PressureUiState) {
+    val message = when {
+        // Something arrived; it just does not cover what this chip asks for. Nothing to do with
+        // the network, and the other chips may well have data — so the range is what is named.
+        state.readings.isNotEmpty() -> "No readings in the last ${state.selectedRange.label}"
+
+        else -> when (state.refreshState) {
+            RefreshState.InFlight -> "Loading pressure readings…"
+            RefreshState.Failed -> "Couldn't reach the forecast — check your connection"
+            RefreshState.NoLocation -> "Set a location to see pressure"
+            RefreshState.Updated -> "No pressure readings available for this location"
+        }
+    }
+
+    Text(
+        message,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = MUTED_ALPHA),
+        modifier = Modifier.padding(vertical = 24.dp)
+    )
 }
 
 @Composable
@@ -215,53 +269,71 @@ private fun AlertsCard(state: PressureUiState, window: ChartWindow) {
             )
             Spacer(Modifier.height(12.dp))
 
-            if (state.alertWindows.isEmpty()) {
-                Text(
-                    // Both bounds, because the card holds neither only-past nor only-future
-                    // events: detection reaches forward to the end of the forecast and back
-                    // far enough to keep an event that has just finished.
-                    "No pressure events above " +
-                        "${formatThreshold(state.alertThresholdHpa)} hPa " +
-                        "in the last ${PressureAlertUseCase.RELEVANCE_HOURS} hours " +
-                        "or the next ${PressureAlertUseCase.FORECAST_DAYS} days",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = MUTED_ALPHA)
-                )
-                return@Column
-            }
-
             // Colours follow the alert's position in the list, which is how the chart colours
             // its bands too, so a row and its shading can be told apart from the pair below it.
             // The palette bounds the list for that reason: a fourth row would have to reuse a
             // colour, and two events wearing one colour is worse than a fourth row unlisted.
             val palette = alertColorPalette()
             val shown = state.alertWindows.take(palette.size)
+            val listing = AlertListing(
+                rows = shown,
+                // A truncated list must not read as the whole picture: a stretch of weather
+                // with five events in it would otherwise look like one with three.
+                hidden = state.alertWindows.size - shown.size
+            )
 
-            Column {
-                shown.forEachIndexed { index, alert ->
-                    if (index > 0) {
-                        HorizontalDivider(Modifier.padding(vertical = 10.dp))
-                    }
-                    AlertRow(
-                        alert = alert,
-                        color = palette[index],
-                        visibility = if (window.covers(alert)) ChartVisibility.InView
-                        else ChartVisibility.OutOfView
+            // Keyed on what is listed, not on the range. Switching range changes how a row is
+            // drawn rather than which rows exist, and animating that here would cross-fade
+            // three unchanged rows over themselves; it belongs inside the row instead.
+            AnimatedContent(
+                targetState = listing,
+                transitionSpec = {
+                    fadeIn(
+                        tween(Motion.CONTENT_ENTER_MILLIS, delayMillis = Motion.CONTENT_EXIT_MILLIS)
+                    ).togetherWith(
+                        fadeOut(tween(Motion.CONTENT_EXIT_MILLIS))
+                    ).using(SizeTransform(clip = false))
+                },
+                label = "alertListing"
+            ) { target ->
+                if (target.rows.isEmpty()) {
+                    Text(
+                        // Both bounds, because the card holds neither only-past nor only-future
+                        // events: detection reaches forward to the end of the forecast and back
+                        // far enough to keep an event that has just finished.
+                        "No pressure events above " +
+                            "${formatThreshold(state.alertThresholdHpa)} hPa " +
+                            "in the last ${PressureAlertUseCase.RELEVANCE_HOURS} hours " +
+                            "or the next ${PressureAlertUseCase.FORECAST_DAYS} days",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = MUTED_ALPHA)
                     )
+                    return@AnimatedContent
                 }
-            }
 
-            // A truncated list must not read as the whole picture: a stretch of weather with
-            // five events in it would otherwise look like one with three.
-            val hidden = state.alertWindows.size - shown.size
-            if (hidden > 0) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    if (hidden == 1) "1 more event not shown"
-                    else "$hidden more events not shown",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = MUTED_ALPHA)
-                )
+                Column {
+                    target.rows.forEachIndexed { index, alert ->
+                        if (index > 0) {
+                            HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                        }
+                        AlertRow(
+                            alert = alert,
+                            color = palette[index],
+                            visibility = if (window.covers(alert)) ChartVisibility.InView
+                            else ChartVisibility.OutOfView
+                        )
+                    }
+
+                    if (target.hidden > 0) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            if (target.hidden == 1) "1 more event not shown"
+                            else "${target.hidden} more events not shown",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = MUTED_ALPHA)
+                        )
+                    }
+                }
             }
         }
     }
@@ -278,11 +350,17 @@ private fun AlertRow(alert: AlertWindow, color: Color, visibility: ChartVisibili
     val directionLabel = alert.direction.label
 
     // An event beyond the selected range is faded and says so: a row with no band on the
-    // chart above would otherwise read as shading that failed to draw.
-    val contentAlpha = when (visibility) {
-        ChartVisibility.InView -> 1f
-        ChartVisibility.OutOfView -> MUTED_ALPHA
-    }
+    // chart above would otherwise read as shading that failed to draw. Animated because this
+    // is what a change of range does to a row — the row itself stays — so it settles alongside
+    // the chart rather than switching under it.
+    val contentAlpha by animateFloatAsState(
+        targetValue = when (visibility) {
+            ChartVisibility.InView -> 1f
+            ChartVisibility.OutOfView -> MUTED_ALPHA
+        },
+        animationSpec = tween(Motion.EMPHASIS_MILLIS),
+        label = "alertRowAlpha"
+    )
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
@@ -307,7 +385,13 @@ private fun AlertRow(alert: AlertWindow, color: Color, visibility: ChartVisibili
             )
             // A line of its own, short and left-aligned: at the end of the row or of the
             // times it would run under the log-symptoms button floating over this corner.
-            if (visibility == ChartVisibility.OutOfView) {
+            // Expands rather than appearing, so the row grows into the extra line instead of
+            // shunting everything below it down a step.
+            AnimatedVisibility(
+                visible = visibility == ChartVisibility.OutOfView,
+                enter = fadeIn(tween(Motion.EMPHASIS_MILLIS)) + expandVertically(),
+                exit = fadeOut(tween(Motion.CONTENT_EXIT_MILLIS)) + shrinkVertically()
+            ) {
                 Text(
                     "not in view",
                     style = MaterialTheme.typography.bodySmall,

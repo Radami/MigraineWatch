@@ -4,6 +4,7 @@ import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.AppSettings
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
+import com.radami.migrainewatch.data.repository.RefreshState
 import com.radami.migrainewatch.data.repository.SymptomRepository
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.DayOutlook
@@ -14,6 +15,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -23,6 +25,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -50,12 +53,23 @@ class TodayViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
+    /**
+     * How the fetching went, as the screen sees it. Mutable so a test can put the repository in
+     * a state and read what the card makes of it; [RefreshState.Updated] by default, because
+     * every test that is not about the gap wants a fetch that has been and gone.
+     */
+    private val refreshState = MutableStateFlow(RefreshState.Updated)
+
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         
         every { userPreferences.settings } returns flowOf(AppSettings())
         every { symptomRepository.getAllEntries() } returns flowOf(emptyList())
+
+        // Combined into the screen's state, so a mock that never emits would leave the whole
+        // flow silent and every wait for a loaded state hanging.
+        every { pressureRepository.refreshState } returns refreshState
     }
 
     @After
@@ -190,29 +204,129 @@ class TodayViewModelTest {
     }
 
     @Test
-    fun `readings that stop before today leave every day unknown`() = runTest {
+    fun `readings that stop before today are a forecast fallen behind`() = runTest {
         val now = Instant.now()
-        // A stale cache: history only, nothing covering today or after. The card has a
-        // placeholder for exactly this, and it can only reach it if no day is called clear.
+        // A stale cache: history only, nothing covering today or after. Something did arrive
+        // once, so the card dates what it has rather than blaming a connection it never tested.
         val readings = (1..12).map { hoursAgo ->
             PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS), 1013f, 1013f, now)
         }
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
 
-        val outlook = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
-            .loadedState().outlook
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
 
-        assertEquals(DayOutlook.DAYS, outlook.count { it.risk == OutlookRisk.Unknown })
+        assertEquals(DayOutlook.DAYS, state.outlook.count { it.risk == OutlookRisk.Unknown })
+        assertEquals(OutlookGap.ForecastBehind, state.outlookGap)
+
+        // The card names the moment it last heard anything, so that has to be there.
+        assertNotNull(state.lastUpdated)
     }
 
     @Test
-    fun `no readings at all leave every day unknown`() = runTest {
+    fun `no readings behind a fetch that worked is a location with no forecast`() = runTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
+        refreshState.value = RefreshState.Updated
 
-        val outlook = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
-            .loadedState().outlook
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
 
-        assertEquals(DayOutlook.DAYS, outlook.count { it.risk == OutlookRisk.Unknown })
+        assertEquals(DayOutlook.DAYS, state.outlook.count { it.risk == OutlookRisk.Unknown })
+        assertEquals(OutlookGap.NoReadings, state.outlookGap)
+
+        // Nothing arrived, so there is no moment to date the gap from.
+        assertNull(state.lastUpdated)
+    }
+
+    /**
+     * The distinction the card exists to make. An empty table is the same table whether the
+     * fetch failed, is still out, or came back with nothing, so the reason has to come from the
+     * repository — and only one of the three is worth telling the reader to check their
+     * connection over.
+     */
+    @Test
+    fun `no readings behind a failed fetch is a failed fetch`() = runTest {
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
+        refreshState.value = RefreshState.Failed
+
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
+
+        assertEquals(OutlookGap.FetchFailed, state.outlookGap)
+    }
+
+    /**
+     * The case the old card got wrong: Room answers an empty table straight away, long before
+     * the fetch that will fill it has been anywhere, and reporting that as a failure blames the
+     * connection for a request still in the air.
+     */
+    @Test
+    fun `no readings while a fetch is still out is not a failure`() = runTest {
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
+        refreshState.value = RefreshState.InFlight
+
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
+
+        assertEquals(OutlookGap.Loading, state.outlookGap)
+    }
+
+    /** Nothing to fetch for is not a fetch that went wrong. */
+    @Test
+    fun `no readings and no location is reported as the missing location`() = runTest {
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
+        refreshState.value = RefreshState.NoLocation
+
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
+
+        assertEquals(OutlookGap.NoLocation, state.outlookGap)
+    }
+
+    /**
+     * A forecast that arrived and fell behind is dated, not diagnosed, however the last fetch
+     * went: the readings on hand are evidence enough, and they say more than the fetch does.
+     */
+    @Test
+    fun `readings that fell behind are dated even when the last fetch failed`() = runTest {
+        val now = Instant.now()
+        val readings = (1..12).map { hoursAgo ->
+            PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS), 1013f, 1013f, now)
+        }
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
+        refreshState.value = RefreshState.Failed
+
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
+
+        assertEquals(OutlookGap.ForecastBehind, state.outlookGap)
+        assertNotNull(state.lastUpdated)
+    }
+
+    /**
+     * The boundary the two gaps sit either side of. A forecast that covers today and stops
+     * short of the week is the ordinary state of a forecast, not a failure: the strip draws it
+     * with its tail faded and the label says how far it got, so reporting a gap here would
+     * replace a working card with an error.
+     */
+    @Test
+    fun `a forecast covering only today is not a gap`() = runTest {
+        val now = Instant.now()
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now()
+
+        // Through to the last hour of today, and no further.
+        val readings = (0 until HOURS_PER_DAY).map { hour ->
+            PressureReading(today.atTime(hour, 0).atZone(zone).toInstant(), 1013f, 1013f, now)
+        }
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
+
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
+
+        assertNull(state.outlookGap)
+        assertEquals(OutlookRisk.Clear, state.outlook.first().risk)
+        assertEquals(OutlookRisk.Unknown, state.outlook.last().risk)
     }
 
     /**
@@ -240,10 +354,12 @@ class TodayViewModelTest {
 
         val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
 
-        val outlook = viewModel.loadedState().outlook
+        val state = viewModel.loadedState()
+        val outlook = state.outlook
 
         assertEquals(today.plusDays(DayOutlook.DAYS - 1L), outlook.last().date)
         assertEquals(OutlookRisk.Clear, outlook.last().risk)
         assertTrue(outlook.none { it.risk == OutlookRisk.Unknown })
+        assertNull(state.outlookGap)
     }
 }

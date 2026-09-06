@@ -6,8 +6,10 @@ import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
+import com.radami.migrainewatch.data.repository.RefreshState
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.ChartStep
+import com.radami.migrainewatch.ui.components.ChartRendering
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -23,11 +25,23 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
-/** The chip above the chart, and the resolution each one asks the chart to draw at. */
-enum class TimeRange(val label: String, val step: ChartStep) {
-    Hours24("24 hrs", ChartStep.ThreeHours),
-    Hours48("48 hrs", ChartStep.SixHours),
-    Days7("7 days", ChartStep.OneDay)
+/**
+ * The chip above the chart: the resolution each one asks for, and what it asks to be drawn.
+ *
+ * A band says how far pressure moved inside a step, so it is worth drawing only where a step
+ * is long enough to have moved: over a day it opens into something readable, over three hours
+ * it collapses onto the line it is drawn around and reads as a thicker line. So the hourly
+ * chips take the line and the daily chip takes the band — a per-chip choice rather than a rule
+ * the chart infers, which is what lets the two be compared by changing one value here.
+ */
+enum class TimeRange(
+    val label: String,
+    val step: ChartStep,
+    val rendering: ChartRendering
+) {
+    Hours24("24 hrs", ChartStep.ThreeHours, ChartRendering.Line),
+    Hours48("48 hrs", ChartStep.SixHours, ChartRendering.Line),
+    Days7("7 days", ChartStep.OneDay, ChartRendering.MinMaxBand)
 }
 
 data class PressureUiState(
@@ -39,6 +53,12 @@ data class PressureUiState(
     val selectedRange: TimeRange = TimeRange.Days7,
     val locationName: String = "",
     val lastUpdated: Instant? = null,
+    /**
+     * How the fetching is going. The chart cannot explain an empty plot on its own — an empty
+     * table looks the same whether a fetch is out, failed, or came back with nothing — so the
+     * card is told, the same way the Today screen's outlook is.
+     */
+    val refreshState: RefreshState = RefreshState.InFlight,
     val isLoading: Boolean = true
 )
 
@@ -63,7 +83,9 @@ class PressureViewModel @Inject constructor(
     val uiState: StateFlow<PressureUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch(Dispatchers.IO) {
+        // No dispatcher of its own: both calls do their own work elsewhere — the staleness
+        // check in Room's executor, the fetch in the repository's scope.
+        viewModelScope.launch {
             if (pressureRepository.isForecastStale()) {
                 pressureRepository.refresh()
             }
@@ -90,9 +112,10 @@ class PressureViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 pressureRepository.getReadingsInRange(from, to),
-                userPreferences.settings
-            ) { readings, settings -> Pair(readings, settings) }
-                .collectLatest { (readings, settings) ->
+                userPreferences.settings,
+                pressureRepository.refreshState
+            ) { readings, settings, refreshState -> Triple(readings, settings, refreshState) }
+                .collectLatest { (readings, settings, refreshState) ->
                     // Re-evaluated per emission so the current reading and the relevance of an
                     // event don't go stale while the screen stays open.
                     val now = Instant.now()
@@ -117,6 +140,7 @@ class PressureViewModel @Inject constructor(
                             alertThresholdHpa = settings.alertThresholdHpa,
                             locationName = settings.location.name,
                             lastUpdated = readings.maxOfOrNull { it.fetchedDateTime },
+                            refreshState = refreshState,
                             isLoading = false
                         )
                     }

@@ -1,19 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The master artwork: the app's mark on the adaptive icon's 108dp canvas.
+  The themed-icon layer, on the adaptive icon's own 108dp canvas so it lines up with the
+  colour layers exactly.
 
-  This is the one place the logo is described. The launcher draws it directly, and
-  play-assets/make_icon.py reads this file to render the store listing's 512px icon, so the
-  home screen and the listing cannot drift apart. It replaces a 432px PNG that existed at one
-  density only and had to be upscaled for the store.
+  Only the alpha of this drawable is used: the launcher paints it in whatever colour the
+  wallpaper theme calls for. Pointing that at the colour foreground, as this used to, silhouettes
+  the cream dot along with the stroke and leaves a bump at the trough where the dot is wider
+  than the stroke. The mark is drawn as its own stroke here instead, which also makes it a
+  vector rather than a single-density raster.
 
-  Geometry is measured from that PNG rather than redrawn. The centreline was recovered from
-  the stroke's own cross-sections, which also gave its width, and the two halves are exact
-  mirrors about x=54 because the PNG's are. Rendered back at 432px the result agrees with the
-  PNG on 99.5% of its pixels; what remains is the antialiased rim.
-
-  The mark spans the full 72dp the launcher guarantees visible. Anything moved outward from
-  here risks a circular mask clipping the ends of the stroke.
+  The stroke is the same one ic_launcher_foreground.xml draws; keep the two in step.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -24,11 +20,7 @@
         android:name="mark"
         android:pathData="M24.01,73.69C24.03,72.36 24.04,71.02 24.09,69.69C24.12,69.02 24.17,68.36 24.21,67.69C24.24,66.94 24.26,66.19 24.31,65.45C24.65,60.88 25.3,56.32 26.47,51.89C27.41,48.36 28.75,44.6 30.62,41.46C31,40.82 31.39,40.18 31.84,39.57C33.53,37.27 35.81,35.06 38.73,34.52C39.82,34.32 40.88,34.42 41.89,34.91C44.14,35.99 45.7,38.93 46.76,41.08C47.9,43.4 48.84,45.82 49.8,48.21C50.96,51.06 51.89,53.35 54,55.67C56.11,53.35 57.04,51.06 58.2,48.21C59.16,45.82 60.1,43.4 61.24,41.08C62.3,38.93 63.86,35.99 66.11,34.91C67.12,34.42 68.18,34.32 69.27,34.52C72.19,35.06 74.47,37.27 76.16,39.57C76.61,40.18 77,40.82 77.38,41.46C79.25,44.6 80.59,48.36 81.53,51.89C82.7,56.32 83.35,60.88 83.69,65.45C83.74,66.19 83.76,66.94 83.79,67.69C83.83,68.36 83.88,69.02 83.91,69.69C83.96,71.02 83.97,72.36 83.99,73.69"
         android:strokeWidth="6.58"
-        android:strokeColor="#B05C3B"
+        android:strokeColor="#FFFFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
-    <path
-        android:name="dot"
-        android:pathData="M54,51C56.168,51 57.925,52.757 57.925,54.925C57.925,57.093 56.168,58.85 54,58.85C51.832,58.85 50.075,57.093 50.075,54.925C50.075,52.757 51.832,51 54,51Z"
-        android:fillColor="#FAF6F0" />
 </vector>
