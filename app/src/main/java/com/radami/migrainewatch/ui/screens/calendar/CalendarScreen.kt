@@ -120,8 +120,7 @@ fun CalendarScreen(
                         today = today,
                         onPrevMonth = viewModel::previousMonth,
                         onNextMonth = viewModel::nextMonth,
-                        onDayTap = { date ->
-                            val entry = state.entriesInMonth[date]
+                        onDayTap = { date, entry ->
                             when {
                                 entry != null -> viewModel.showDayDetail(entry)
                                 // Symptoms can't be logged ahead of time.
@@ -172,7 +171,7 @@ private fun MonthCalendar(
     today: LocalDate,
     onPrevMonth: () -> Unit,
     onNextMonth: () -> Unit,
-    onDayTap: (LocalDate) -> Unit
+    onDayTap: (LocalDate, SymptomEntry?) -> Unit
 ) {
     val monthYearFormatter = AppDateFormats.MONTH_AND_YEAR
     val dayHeaders = listOf("S", "M", "T", "W", "T", "F", "S")
@@ -235,7 +234,11 @@ private fun MonthCalendar(
 }
 
 @Composable
-private fun MonthGridRows(grid: MonthGrid, today: LocalDate, onDayTap: (LocalDate) -> Unit) {
+private fun MonthGridRows(
+    grid: MonthGrid,
+    today: LocalDate,
+    onDayTap: (LocalDate, SymptomEntry?) -> Unit
+) {
     val firstDay = grid.month.atDay(1)
     // 0=Sun, 1=Mon, ..., 6=Sat
     val startOffset = firstDay.dayOfWeek.value % 7
@@ -258,7 +261,7 @@ private fun MonthGridRows(grid: MonthGrid, today: LocalDate, onDayTap: (LocalDat
                             entry = grid.entries[date],
                             isToday = date == today,
                             risk = if (date in grid.highRiskDays) DayRisk.High else DayRisk.Normal,
-                            onClick = { onDayTap(date) },
+                            onClick = { onDayTap(date, grid.entries[date]) },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -340,6 +343,11 @@ private fun LegendItem(color: Color, label: String) {
  * because a slide renders both months at once and the state only ever holds the incoming one:
  * the outgoing August would otherwise be drawn with September's logged days, losing its marks
  * as it left.
+ *
+ * A tap is answered from here too, for the same reason and not only to keep the drawing
+ * honest: a day tapped on the outgoing grid, looked up in the state, would come back with no
+ * entry and be offered for logging — a day that is already logged, and whose mark the reader
+ * can see under their finger. Hence the entry travelling with the tap in [MonthGridRows].
  */
 private data class MonthGrid(
     val month: YearMonth,

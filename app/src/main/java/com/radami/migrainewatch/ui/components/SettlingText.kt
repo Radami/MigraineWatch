@@ -34,9 +34,9 @@ fun SettlingText(
     text: String,
     style: TextStyle,
     color: Color,
+    label: String,
     modifier: Modifier = Modifier,
-    fontWeight: FontWeight? = null,
-    label: String
+    fontWeight: FontWeight? = null
 ) {
     AnimatedContent(
         targetState = text,

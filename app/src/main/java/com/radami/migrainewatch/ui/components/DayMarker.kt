@@ -3,7 +3,6 @@ package com.radami.migrainewatch.ui.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateIntAsState
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,7 +14,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,9 +64,9 @@ enum class DayRisk { Normal, High }
 enum class RiskTransition {
 
     /**
-     * The marker takes its new silhouette in one frame. What the calendar grid wants: it
-     * scrolls, and a recycled composition slot would otherwise morph from whichever day it
-     * used to hold into the one it now shows.
+     * The marker takes its new silhouette on the frame it changes, having animated nothing.
+     * What the calendar grid wants: it scrolls, and a recycled composition slot would otherwise
+     * morph from whichever day it used to hold into the one it now shows.
      */
     Immediate,
 
@@ -123,14 +121,22 @@ fun DayMarker(
 ) {
     // Every property that risk moves is animated off the same switch, so a day that turns
     // risky changes shape, ring and weight as one movement rather than three.
-    val isAnimated = transition == RiskTransition.Animated
-    val shapeSpec = if (isAnimated) tween<Int>(Motion.SHAPE_MORPH_MILLIS) else snap()
+    //
+    // An Immediate marker reads its targets straight rather than animating them on `snap()`.
+    // A snapped animation is still an animation: it holds state per property per marker — four
+    // of them across forty-two calendar cells — and it still arrives on the frame after the
+    // change, which is the single stale frame Immediate exists to prevent.
+    val targetCornerPercent =
+        if (risk == DayRisk.High) HIGH_RISK_CORNER_PERCENT else SEVERITY_CORNER_PERCENT
+    val cornerPercent = when (transition) {
+        RiskTransition.Animated -> animateIntAsState(
+            targetValue = targetCornerPercent,
+            animationSpec = tween(Motion.SHAPE_MORPH_MILLIS),
+            label = "markerCorner"
+        ).value
 
-    val cornerPercent by animateIntAsState(
-        targetValue = if (risk == DayRisk.High) HIGH_RISK_CORNER_PERCENT else SEVERITY_CORNER_PERCENT,
-        animationSpec = shapeSpec,
-        label = "markerCorner"
-    )
+        RiskTransition.Immediate -> targetCornerPercent
+    }
     val markerShape = RoundedCornerShape(percent = cornerPercent)
 
     // A circle is always outlined, filled or not: the ring is what makes the silhouette read
@@ -148,16 +154,24 @@ fun DayMarker(
         risk == DayRisk.High -> MaterialTheme.colorScheme.outline
         else -> Color.Transparent
     }
-    val borderWidth by animateDpAsState(
-        targetValue = targetBorderWidth,
-        animationSpec = if (isAnimated) tween(Motion.EMPHASIS_MILLIS) else snap(),
-        label = "markerBorderWidth"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = targetBorderColor,
-        animationSpec = if (isAnimated) tween(Motion.EMPHASIS_MILLIS) else snap(),
-        label = "markerBorderColor"
-    )
+    val borderWidth = when (transition) {
+        RiskTransition.Animated -> animateDpAsState(
+            targetValue = targetBorderWidth,
+            animationSpec = tween(Motion.EMPHASIS_MILLIS),
+            label = "markerBorderWidth"
+        ).value
+
+        RiskTransition.Immediate -> targetBorderWidth
+    }
+    val borderColor = when (transition) {
+        RiskTransition.Animated -> animateColorAsState(
+            targetValue = targetBorderColor,
+            animationSpec = tween(Motion.EMPHASIS_MILLIS),
+            label = "markerBorderColor"
+        ).value
+
+        RiskTransition.Immediate -> targetBorderColor
+    }
 
     Box(
         // Clip and fill first so the click ripple follows the marker's shape.
@@ -188,11 +202,15 @@ fun DayMarker(
         }
         // Weight cannot be interpolated, so bold still arrives in one frame. The colour
         // carries the change instead, which is the half of it the eye actually follows.
-        val textColor by animateColorAsState(
-            targetValue = targetTextColor,
-            animationSpec = if (isAnimated) tween(Motion.EMPHASIS_MILLIS) else snap(),
-            label = "markerTextColor"
-        )
+        val textColor = when (transition) {
+            RiskTransition.Animated -> animateColorAsState(
+                targetValue = targetTextColor,
+                animationSpec = tween(Motion.EMPHASIS_MILLIS),
+                label = "markerTextColor"
+            ).value
+
+            RiskTransition.Immediate -> targetTextColor
+        }
 
         Text(
             day.toString(),

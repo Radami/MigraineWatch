@@ -317,8 +317,16 @@ private class ChartOverlayDecoration(
     private val edgeOffsetAt: (Float, Int) -> Float?,
     private val positions: DrawnPositions,
     private val seriesColor: Color,
-    /** How far in the risk shading is. Nothing else fades; see [RISK_FADE_DELAY_MILLIS]. */
-    private val riskAlpha: Float,
+    /**
+     * How far in the risk shading is, read at each draw rather than fixed when the decoration
+     * is built. Nothing else fades; see [RISK_FADE_DELAY_MILLIS].
+     *
+     * A value here would make the fade a property of the decoration, and the decoration would
+     * have to be rebuilt — five paints, a connector and a fresh `setDecorations` — for every
+     * frame of it. As a read it costs nothing, and it lands in the draw phase: the fade runs
+     * over the model's own tween, which is redrawing the chart every frame regardless.
+     */
+    private val riskAlpha: () -> Float,
     private val nowX: Float,
     private val nowLineColorArgb: Int,
 ) : Decoration {
@@ -326,9 +334,6 @@ private class ChartOverlayDecoration(
     private val alertPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
-
-    private val alertColorsArgb: List<Int> =
-        alertBands.map { it.color.copy(alpha = ALERT_BAND_ALPHA * riskAlpha).toArgb() }
 
     private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -444,15 +449,18 @@ private class ChartOverlayDecoration(
     }
 
     private fun drawAlertBands(context: ChartDrawContext, bounds: RectF) {
-        alertBands.forEachIndexed { index, band ->
+        val alpha = riskAlpha()
+        alertBands.forEach { band ->
             // An event can begin before the window or run past its end. Clipping to the plot
             // area shows the part that is in view; the rest is accounted for by the list
             // beside the chart, which marks what the current range cannot reach.
             val left = maxOf(context.dataX(band.startX, bounds), bounds.left)
             val right = minOf(context.dataX(band.endX, bounds), bounds.right)
-            if (right <= left) return@forEachIndexed
+            if (right <= left) return@forEach
 
-            alertPaint.color = alertColorsArgb[index]
+            // Recomputed per band per frame rather than held: three colours is nothing beside
+            // rebuilding the decoration, which is what caching them across a fade would cost.
+            alertPaint.color = band.color.copy(alpha = ALERT_BAND_ALPHA * alpha).toArgb()
             context.canvas.drawRect(left, bounds.top, right, bounds.bottom, alertPaint)
         }
     }
@@ -597,6 +605,10 @@ private class ChartOverlayDecoration(
  *   [ChartWindow.covers] returns false for are left to the caller to account for — the chart
  *   cannot show them at this range — and only as many as the palette has colours are shaded,
  *   so no two bands on one chart can be the same colour.
+ * @param emptyContent what to put in the chart's place when there is nothing to plot. Required,
+ *   and a slot rather than a message: the chart is the only thing that knows whether the
+ *   readings reach the window it was given, and the screen around it is the only thing that
+ *   knows why they might not — so each says the half it can.
  */
 @Composable
 fun PressureChart(
@@ -604,15 +616,13 @@ fun PressureChart(
     window: ChartWindow,
     modifier: Modifier = Modifier,
     rendering: ChartRendering = ChartRendering.Line,
-    alerts: List<AlertWindow> = emptyList()
+    alerts: List<AlertWindow> = emptyList(),
+    emptyContent: @Composable () -> Unit
 ) {
-    if (readings.isEmpty()) return
-
     // Two separate questions that used to have one answer. The step still decides how labels
     // are written and how the axis lays out; only the marks depend on the rendering.
     val isDaily = window.step == ChartStep.OneDay
     val stepSeconds = window.step.seconds
-    val nowEpoch = Instant.now().epochSecond
 
     // Remembered unconditionally rather than inside the branch that needs it: switching
     // rendering would otherwise change the shape of the composition.
@@ -626,6 +636,18 @@ fun PressureChart(
         seriesEdges(readings, window, drawn, rangeEntries)
     }
 
+    // Nothing to plot: not one of the eight instants this window names falls inside the
+    // readings. An empty table does it, and so does a cache that stopped a day ago with the
+    // 24-hour chip selected — the chart cannot reach back that far, though the data is there.
+    //
+    // The one place this is decided. Drawing every part of the chart from these edges means a
+    // series that cannot fill them cannot half-fill them either, and the axes, the overlays and
+    // the legend used to vanish together and leave the card blank without saying anything.
+    if (edges.lower.isEmpty()) {
+        emptyContent()
+        return
+    }
+
     val edgeOffsetAt = remember(readings, window, drawn) {
         edgeOffsetSampler(readings, window, drawn)
     }
@@ -637,7 +659,6 @@ fun PressureChart(
     LaunchedEffect(edges) {
         modelProducer.setEntries(listOf(edges.lower, edges.upper))
     }
-
 
     val isDark = isSystemInDarkTheme()
     // One colour for the data whichever way it is drawn, so changing range changes the shape
@@ -679,8 +700,10 @@ fun PressureChart(
     }
 
     // Straight off the edges, which already are the extremes whichever way they were built.
-    val dataMin = edges.lower.minOfOrNull { it.y } ?: return
-    val dataMax = edges.upper.maxOfOrNull { it.y } ?: return
+    // Neither can be empty here: both renderings build the pair from one source, so the guard
+    // above covers them together.
+    val dataMin = edges.lower.minOf { it.y }
+    val dataMax = edges.upper.maxOf { it.y }
     val yPadding = maxOf((dataMax - dataMin) * 0.2f, 2f)
     val yMin = dataMin - yPadding
     val yMax = dataMax + yPadding
@@ -721,16 +744,18 @@ fun PressureChart(
     }
 
     // Dashed "now" line: the actual current time, which sits a fraction of a step past the
-    // anchor the chart snapped to.
-    val nowX = window.xOf(Instant.ofEpochSecond(nowEpoch))
+    // anchor the chart snapped to. Read once per window rather than at every recomposition —
+    // the window is itself built around a reading of the clock, so this moves when that does,
+    // and an unremembered `now` would make the decoration below impossible to remember at all.
+    val nowX = remember(window) { window.xOf(Instant.now()) }
 
     // Written by the chart every frame and read by the decoration that draws alongside it, so
     // it outlives both: the decoration is rebuilt whenever any of its inputs change.
     val positions = remember { DrawnPositions() }
 
+    // Deliberately not keyed on the fade: see ChartOverlayDecoration.riskAlpha.
     val decoration = remember(
-        alertBands, drawn, edgeOffsetAt, positions, seriesColor, nowX, nowLineColor,
-        riskAlpha.value
+        alertBands, drawn, edgeOffsetAt, positions, seriesColor, nowX, nowLineColor
     ) {
         ChartOverlayDecoration(
             alertBands = alertBands,
@@ -738,7 +763,7 @@ fun PressureChart(
             edgeOffsetAt = edgeOffsetAt,
             positions = positions,
             seriesColor = seriesColor,
-            riskAlpha = riskAlpha.value,
+            riskAlpha = riskAlpha::value,
             nowX = nowX,
             nowLineColorArgb = nowLineColor.copy(alpha = NOW_LINE_ALPHA).toArgb(),
         )
@@ -809,8 +834,13 @@ fun PressureChart(
 /**
  * What the band entry is called, which has to name the step: "daily min/max" over three-hourly
  * data would describe a spread the chart is not showing.
+ *
+ * Only the daily chip asks for a band today, so only the first branch is reached by any screen.
+ * The others are what makes the rendering a per-chip choice rather than a rule — see
+ * [com.radami.migrainewatch.ui.screens.pressure.TimeRange] — and they are covered by tests so
+ * that changing one chip's rendering does not also need this rewriting.
  */
-private fun rangeLegendLabel(step: ChartStep): String = when (step) {
+internal fun rangeLegendLabel(step: ChartStep): String = when (step) {
     ChartStep.OneDay -> "daily min/max"
     else -> "${step.hours}-hourly min/max"
 }

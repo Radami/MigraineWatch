@@ -10,6 +10,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.radami.migrainewatch.data.repository.PressureRepository
+import com.radami.migrainewatch.data.repository.RefreshState
 import com.radami.migrainewatch.domain.AlertNotificationScheduler
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -25,7 +26,11 @@ class PressureFetchWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         return try {
-            pressureRepository.refresh()
+            // A failed fetch is exactly what retrying is for, and it has to be asked for by
+            // name: the repository reports a failure rather than throwing it, so a fetch that
+            // never reached the network would otherwise be reported here as a successful run
+            // and wait a full interval for its next chance.
+            if (pressureRepository.refresh() == RefreshState.Failed) return Result.retry()
 
             // A new forecast can add, move or remove events, so the pending warnings are
             // rebuilt from it every time.
