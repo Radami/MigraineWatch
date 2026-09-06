@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -190,29 +191,63 @@ class TodayViewModelTest {
     }
 
     @Test
-    fun `readings that stop before today leave every day unknown`() = runTest {
+    fun `readings that stop before today are a forecast fallen behind`() = runTest {
         val now = Instant.now()
-        // A stale cache: history only, nothing covering today or after. The card has a
-        // placeholder for exactly this, and it can only reach it if no day is called clear.
+        // A stale cache: history only, nothing covering today or after. Something did arrive
+        // once, so the card dates what it has rather than blaming a connection it never tested.
         val readings = (1..12).map { hoursAgo ->
             PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS), 1013f, 1013f, now)
         }
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
 
-        val outlook = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
-            .loadedState().outlook
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
 
-        assertEquals(DayOutlook.DAYS, outlook.count { it.risk == OutlookRisk.Unknown })
+        assertEquals(DayOutlook.DAYS, state.outlook.count { it.risk == OutlookRisk.Unknown })
+        assertEquals(OutlookGap.ForecastBehind, state.outlookGap)
+
+        // The card names the moment it last heard anything, so that has to be there.
+        assertNotNull(state.lastUpdated)
     }
 
     @Test
-    fun `no readings at all leave every day unknown`() = runTest {
+    fun `no readings at all are nothing having arrived`() = runTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
 
-        val outlook = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
-            .loadedState().outlook
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
 
-        assertEquals(DayOutlook.DAYS, outlook.count { it.risk == OutlookRisk.Unknown })
+        assertEquals(DayOutlook.DAYS, state.outlook.count { it.risk == OutlookRisk.Unknown })
+        assertEquals(OutlookGap.NoReadings, state.outlookGap)
+
+        // Nothing arrived, so there is no moment to date the gap from.
+        assertNull(state.lastUpdated)
+    }
+
+    /**
+     * The boundary the two gaps sit either side of. A forecast that covers today and stops
+     * short of the week is the ordinary state of a forecast, not a failure: the strip draws it
+     * with its tail faded and the label says how far it got, so reporting a gap here would
+     * replace a working card with an error.
+     */
+    @Test
+    fun `a forecast covering only today is not a gap`() = runTest {
+        val now = Instant.now()
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now()
+
+        // Through to the last hour of today, and no further.
+        val readings = (0 until HOURS_PER_DAY).map { hour ->
+            PressureReading(today.atTime(hour, 0).atZone(zone).toInstant(), 1013f, 1013f, now)
+        }
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
+
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
+
+        assertNull(state.outlookGap)
+        assertEquals(OutlookRisk.Clear, state.outlook.first().risk)
+        assertEquals(OutlookRisk.Unknown, state.outlook.last().risk)
     }
 
     /**
@@ -240,10 +275,12 @@ class TodayViewModelTest {
 
         val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
 
-        val outlook = viewModel.loadedState().outlook
+        val state = viewModel.loadedState()
+        val outlook = state.outlook
 
         assertEquals(today.plusDays(DayOutlook.DAYS - 1L), outlook.last().date)
         assertEquals(OutlookRisk.Clear, outlook.last().risk)
         assertTrue(outlook.none { it.risk == OutlookRisk.Unknown })
+        assertNull(state.outlookGap)
     }
 }

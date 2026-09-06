@@ -9,6 +9,7 @@ import com.radami.migrainewatch.data.repository.SymptomRepository
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.DayOutlook
+import com.radami.migrainewatch.domain.OutlookRisk
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.SymptomFreeStreak
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,6 +26,22 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
+
+/**
+ * Why the outlook has nothing to say about the week.
+ *
+ * Two states the card used to report identically, and only one of them is about the network.
+ * A forecast that arrived and has since fallen behind is the ordinary case — a couple of days
+ * offline does it — and blaming the connection for it states a cause nothing here has checked.
+ */
+enum class OutlookGap {
+
+    /** No readings at all in the window, so nothing has successfully arrived to fall behind. */
+    NoReadings,
+
+    /** Readings arrived, but none of them reach far enough to say anything about any day. */
+    ForecastBehind
+}
 
 data class TodayUiState(
     /** Today first, then the days ahead. Empty until the first load finishes. */
@@ -47,6 +64,13 @@ data class TodayUiState(
     val symptomFreeStreak: SymptomFreeStreak? = null,
     val locationName: String = "",
     val lastUpdated: Instant? = null,
+    /**
+     * Why [outlook] has nothing to show, or null when it has. Non-null exactly when every day
+     * came back [com.radami.migrainewatch.domain.OutlookRisk.Unknown] — a forecast that covers
+     * today but stops short of the week is not a gap, and the strip shows it with its tail
+     * faded rather than reporting a failure.
+     */
+    val outlookGap: OutlookGap? = null,
     val isLoading: Boolean = true
 )
 
@@ -116,6 +140,16 @@ class TodayViewModel @Inject constructor(
                 // way when there is one — it is the event the user is actually in.
                 val pending = alerts.filter { it.end.isAfter(now) }
 
+                // Readings but no usable day means what arrived stops short of today's end;
+                // no readings at all means nothing arrived. Only the second implicates the
+                // connection, and lastUpdated is non-null exactly in the first, so the card
+                // can date what it has.
+                val gap = when {
+                    readings.isEmpty() -> OutlookGap.NoReadings
+                    outlook.all { it.risk == OutlookRisk.Unknown } -> OutlookGap.ForecastBehind
+                    else -> null
+                }
+
                 _uiState.value = TodayUiState(
                     outlook = outlook,
                     pendingAlerts = pending,
@@ -124,6 +158,7 @@ class TodayViewModel @Inject constructor(
                     symptomFreeStreak = streak,
                     locationName = settings.location.name,
                     lastUpdated = readings.maxOfOrNull { it.fetchedDateTime },
+                    outlookGap = gap,
                     isLoading = false
                 )
             }

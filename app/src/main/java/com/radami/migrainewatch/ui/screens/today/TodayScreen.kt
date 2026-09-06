@@ -1,8 +1,15 @@
 package com.radami.migrainewatch.ui.screens.today
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,12 +51,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.radami.migrainewatch.ui.components.RiskTransition
+import com.radami.migrainewatch.ui.theme.Motion
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.SpanStyle
@@ -71,6 +82,7 @@ import com.radami.migrainewatch.ui.components.HighRiskLegendSwatch
 import com.radami.migrainewatch.ui.components.SectionHeading
 import com.radami.migrainewatch.ui.components.TodayLegendSwatch
 import com.radami.migrainewatch.ui.theme.color
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -113,10 +125,11 @@ fun TodayScreen(
                             .semantics { contentDescription = "Location" }
                     )
                 }
-                Text(
-                    "Updated ${state.lastUpdated?.let { timeFormatter.format(it) } ?: "—"}",
+                SettlingText(
+                    text = "Updated ${state.lastUpdated?.let { timeFormatter.format(it) } ?: "—"}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA),
+                    label = "updatedAt"
                 )
             }
         }
@@ -142,6 +155,42 @@ fun TodayScreen(
         item {
             SymptomFreeCard(streak = state.symptomFreeStreak)
         }
+    }
+}
+
+/**
+ * A line of text that crosses over to its new value instead of switching to it.
+ *
+ * Every caller is a line a forecast refresh can rewrite while the reader is looking at it —
+ * the timestamp, the headline, the banner's wording. The outgoing value leaves before the
+ * incoming one arrives, so the two are never legible at once, and the size change is left
+ * unclipped so a line that reflows does not clip itself mid-transition.
+ */
+@Composable
+private fun SettlingText(
+    text: String,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier,
+    fontWeight: FontWeight? = null,
+    label: String
+) {
+    AnimatedContent(
+        targetState = text,
+        transitionSpec = {
+            val enter = fadeIn(
+                tween(Motion.CONTENT_ENTER_MILLIS, delayMillis = Motion.CONTENT_EXIT_MILLIS)
+            ) + slideInVertically(
+                tween(Motion.CONTENT_ENTER_MILLIS, delayMillis = Motion.CONTENT_EXIT_MILLIS)
+            ) { height -> height / Motion.CONTENT_SLIDE_FRACTION }
+
+            enter togetherWith fadeOut(tween(Motion.CONTENT_EXIT_MILLIS)) using
+                SizeTransform(clip = false)
+        },
+        modifier = modifier,
+        label = label
+    ) { value ->
+        Text(value, style = style, color = color, fontWeight = fontWeight)
     }
 }
 
@@ -191,11 +240,12 @@ private fun AlertBanner(alerts: List<AlertWindow>, phase: AlertPhase, onClick: (
                 tint = MaterialTheme.colorScheme.onErrorContainer
             )
             Spacer(Modifier.width(12.dp))
-            Text(
-                message,
-                color = MaterialTheme.colorScheme.onErrorContainer,
+            SettlingText(
+                text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f)
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.weight(1f),
+                label = "alertMessage"
             )
 
             // A plain icon now, not a button: the whole banner is the target, and a nested one
@@ -211,6 +261,9 @@ private fun AlertBanner(alerts: List<AlertWindow>, phase: AlertPhase, onClick: (
 
 /** Shared by the banner's fill and the clip its ripple has to stay inside. */
 private val ALERT_BANNER_SHAPE = RoundedCornerShape(12.dp)
+
+/** Text that is present but not the point: timestamps, subtitles, date ranges. */
+private const val SECONDARY_TEXT_ALPHA = 0.6f
 
 private val OUTLOOK_MARKER_SIZE = 36.dp
 
@@ -231,6 +284,9 @@ private const val UNKNOWN_DAY_ALPHA = 0.6f
 private const val WEEKDAY_ALPHA_AT_RISK = 0.9f
 private const val WEEKDAY_ALPHA = 0.45f
 
+/** A day the forecast reached, drawn at its own full strength. */
+private const val FULL_ALPHA = 1f
+
 /**
  * The week ahead at a glance: what today looks like, then which of the days after it carry a
  * pressure event. The days are drawn with the calendar's own [DayMarker], so a day marked to
@@ -247,18 +303,42 @@ private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
             Spacer(Modifier.height(12.dp))
 
             // Nothing can be said about the week before the first load lands, and a week the
-            // forecast never reached is a failure to report rather than a row of empty days.
+            // forecast never reached is reported rather than drawn as a row of empty days.
+            // Which of those it is comes from the ViewModel — see TodayUiState.outlookGap.
             val today = state.outlook.firstOrNull()
-            if (today == null || state.outlook.all { it.risk == OutlookRisk.Unknown }) {
-                OutlookPlaceholder(isLoading = state.isLoading)
-                return@Column
-            }
+            val hasForecast = today != null && state.outlookGap == null
 
-            TodayHeadline(today = today, outlook = state.outlook)
-            Spacer(Modifier.height(16.dp))
-            OutlookStrip(outlook = state.outlook, onDayClick = onDayClick)
-            Spacer(Modifier.height(12.dp))
-            OutlookLegend()
+            // Switched on whether there is a week to show rather than on the week itself: the
+            // days inside animate individually, and a card-wide crossfade on every changed
+            // value would run over the top of them.
+            AnimatedContent(
+                targetState = hasForecast,
+                transitionSpec = {
+                    fadeIn(tween(Motion.CONTENT_ENTER_MILLIS, delayMillis = Motion.CONTENT_EXIT_MILLIS))
+                        .togetherWith(fadeOut(tween(Motion.CONTENT_EXIT_MILLIS)))
+                        .using(SizeTransform(clip = false))
+                },
+                label = "outlookBody"
+            ) { forecastArrived ->
+                // Re-checked rather than trusted: during a transition this lambda runs for the
+                // outgoing branch too, and by then the week it described may be gone.
+                if (!forecastArrived || today == null) {
+                    OutlookPlaceholder(
+                        isLoading = state.isLoading,
+                        gap = state.outlookGap,
+                        lastUpdated = state.lastUpdated
+                    )
+                    return@AnimatedContent
+                }
+
+                Column {
+                    TodayHeadline(today = today, outlook = state.outlook)
+                    Spacer(Modifier.height(16.dp))
+                    OutlookStrip(outlook = state.outlook, onDayClick = onDayClick)
+                    Spacer(Modifier.height(12.dp))
+                    OutlookLegend()
+                }
+            }
         }
     }
 }
@@ -267,23 +347,32 @@ private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
 private fun TodayHeadline(today: DayOutlook, outlook: List<DayOutlook>) {
     val isElevated = today.risk == OutlookRisk.Elevated
 
-    Text(
-        todayLabel(today),
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.Bold,
-        // Today's own risk is the one thing on this card worth colouring: everything below is
-        // context for it.
-        color = if (isElevated) {
+    // Today's own risk is the one thing on this card worth colouring: everything below is
+    // context for it. The colour crosses over on its own rather than through the text
+    // transition, so a day that turns risky without changing wording still shows it.
+    val headlineColor by animateColorAsState(
+        targetValue = if (isElevated) {
             MaterialTheme.colorScheme.error
         } else {
             MaterialTheme.colorScheme.onSurface
-        }
+        },
+        animationSpec = tween(Motion.EMPHASIS_MILLIS),
+        label = "headlineColor"
+    )
+
+    SettlingText(
+        text = todayLabel(today),
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+        color = headlineColor,
+        label = "todayHeadline"
     )
     Spacer(Modifier.height(2.dp))
-    Text(
-        weekAheadLabel(outlook),
+    SettlingText(
+        text = weekAheadLabel(outlook),
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA),
+        label = "weekAhead"
     )
 }
 
@@ -331,13 +420,24 @@ private fun OutlookDay(day: DayOutlook, isToday: Boolean, weekday: String, onCli
         // weekday of the same weight as every other would be a smaller signal than it should be.
         val atRisk = day.risk == OutlookRisk.Elevated
 
+        // Both opacities travel with the marker's own morph, so a day arriving at a new risk
+        // moves as one piece: the weekday leans in as the number's ring rounds into place.
+        val weekdayAlpha by animateFloatAsState(
+            targetValue = if (atRisk) WEEKDAY_ALPHA_AT_RISK else WEEKDAY_ALPHA,
+            animationSpec = tween(Motion.EMPHASIS_MILLIS),
+            label = "weekdayAlpha"
+        )
+        val markerAlpha by animateFloatAsState(
+            targetValue = if (day.risk == OutlookRisk.Unknown) UNKNOWN_DAY_ALPHA else FULL_ALPHA,
+            animationSpec = tween(Motion.EMPHASIS_MILLIS),
+            label = "markerAlpha"
+        )
+
         Text(
             weekday,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = if (atRisk) FontWeight.SemiBold else null,
-            color = MaterialTheme.colorScheme.onSurface.copy(
-                alpha = if (atRisk) WEEKDAY_ALPHA_AT_RISK else WEEKDAY_ALPHA
-            )
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = weekdayAlpha)
         )
         Spacer(Modifier.height(4.dp))
         DayMarker(
@@ -347,7 +447,10 @@ private fun OutlookDay(day: DayOutlook, isToday: Boolean, weekday: String, onCli
             isToday = isToday,
             modifier = Modifier
                 .size(OUTLOOK_MARKER_SIZE)
-                .alpha(if (day.risk == OutlookRisk.Unknown) UNKNOWN_DAY_ALPHA else 1f),
+                .alpha(markerAlpha),
+            // The strip is rewritten under the reader when a forecast lands, so its days
+            // travel between silhouettes. The calendar's do not — see RiskTransition.
+            transition = RiskTransition.Animated,
             // Only here: the calendar is a grid people read a specific day out of, so its
             // numbers all carry the same weight.
             emphasis = DayEmphasis.ByRisk
@@ -383,14 +486,45 @@ private fun LegendItem(swatch: @Composable () -> Unit, label: String) {
     }
 }
 
+/**
+ * What the card says when it has no week to draw.
+ *
+ * Three different situations, and only one of them is about the connection. A forecast that
+ * arrived and has since fallen behind gets dated rather than diagnosed: the app has not
+ * checked the network, and saying so would be guessing at a cause in the one case where it is
+ * most often wrong.
+ */
 @Composable
-private fun OutlookPlaceholder(isLoading: Boolean) {
+private fun OutlookPlaceholder(isLoading: Boolean, gap: OutlookGap?, lastUpdated: Instant?) {
+    val timeFormatter = remember {
+        AppDateFormats.FULL_DATE_TIME.withZone(ZoneId.systemDefault())
+    }
+
+    val message = when {
+        isLoading -> LOADING_FORECAST
+        gap == OutlookGap.ForecastBehind && lastUpdated != null ->
+            "Forecast is out of date — last updated ${timeFormatter.format(lastUpdated)}"
+
+        // Readings with no fetch time behind them is not a state the ViewModel produces, so
+        // this only stands in for one arriving later rather than describing anything today.
+        gap == OutlookGap.ForecastBehind -> "Forecast is out of date"
+        else -> NO_FORECAST_YET
+    }
+
     Text(
-        if (isLoading) "Loading forecast…" else "Unable to load — check your connection",
+        message,
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = MUTED_ALPHA)
     )
 }
+
+private const val LOADING_FORECAST = "Loading forecast…"
+
+/** Said only when nothing has ever arrived, which is the one case the connection explains. */
+private const val NO_FORECAST_YET = "No forecast yet — check your connection"
+
+/** Text that is present but not the point. */
+private const val MUTED_ALPHA = 0.5f
 
 private val STREAK_SEVERITY_DOT_SIZE = 10.dp
 
@@ -465,7 +599,7 @@ private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
             Text(
                 lastEventLabel,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
             )
         }
     }
@@ -507,7 +641,7 @@ private fun LongestStreak(longest: SymptomFreeStreak.Run?, currentYear: Int) {
     Text(
         rangeLabel,
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
     )
 }
 
@@ -535,7 +669,7 @@ private fun NotEnoughDataMessage(hint: String) {
     Text(
         hint,
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
     )
 }
 
