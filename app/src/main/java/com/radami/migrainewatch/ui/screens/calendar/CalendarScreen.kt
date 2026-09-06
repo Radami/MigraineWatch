@@ -69,6 +69,7 @@ import com.radami.migrainewatch.ui.components.DayRisk
 import com.radami.migrainewatch.ui.components.HighRiskLegendSwatch
 import com.radami.migrainewatch.ui.components.LEGEND_SWATCH_SIZE
 import com.radami.migrainewatch.ui.components.SeveritySwatch
+import com.radami.migrainewatch.ui.components.SettlingText
 import com.radami.migrainewatch.ui.theme.DangerRed
 import com.radami.migrainewatch.ui.theme.color
 import java.time.LocalDate
@@ -352,10 +353,15 @@ private fun StatsCard(
             ) {
                 Severity.entries.forEach { severity ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            (counts[severity] ?: 0).toString(),
+                        // Only the figure means something different when the period changes —
+                        // the swatch and the name below it stand for the same severity in every
+                        // period, so re-fading them would animate three labels saying nothing.
+                        SettlingText(
+                            text = (counts[severity] ?: 0).toString(),
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            label = "stat-${severity.name}"
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             SeveritySwatch(color = severity.color, size = STATS_SWATCH_SIZE)

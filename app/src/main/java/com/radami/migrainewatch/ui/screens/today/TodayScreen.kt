@@ -8,7 +8,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -55,7 +54,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,6 +78,7 @@ import com.radami.migrainewatch.ui.components.DayMarker
 import com.radami.migrainewatch.ui.components.DayRisk
 import com.radami.migrainewatch.ui.components.HighRiskLegendSwatch
 import com.radami.migrainewatch.ui.components.SectionHeading
+import com.radami.migrainewatch.ui.components.SettlingText
 import com.radami.migrainewatch.ui.components.TodayLegendSwatch
 import com.radami.migrainewatch.ui.theme.color
 import java.time.Instant
@@ -155,42 +154,6 @@ fun TodayScreen(
         item {
             SymptomFreeCard(streak = state.symptomFreeStreak)
         }
-    }
-}
-
-/**
- * A line of text that crosses over to its new value instead of switching to it.
- *
- * Every caller is a line a forecast refresh can rewrite while the reader is looking at it —
- * the timestamp, the headline, the banner's wording. The outgoing value leaves before the
- * incoming one arrives, so the two are never legible at once, and the size change is left
- * unclipped so a line that reflows does not clip itself mid-transition.
- */
-@Composable
-private fun SettlingText(
-    text: String,
-    style: TextStyle,
-    color: Color,
-    modifier: Modifier = Modifier,
-    fontWeight: FontWeight? = null,
-    label: String
-) {
-    AnimatedContent(
-        targetState = text,
-        transitionSpec = {
-            val enter = fadeIn(
-                tween(Motion.CONTENT_ENTER_MILLIS, delayMillis = Motion.CONTENT_EXIT_MILLIS)
-            ) + slideInVertically(
-                tween(Motion.CONTENT_ENTER_MILLIS, delayMillis = Motion.CONTENT_EXIT_MILLIS)
-            ) { height -> height / Motion.CONTENT_SLIDE_FRACTION }
-
-            enter togetherWith fadeOut(tween(Motion.CONTENT_EXIT_MILLIS)) using
-                SizeTransform(clip = false)
-        },
-        modifier = modifier,
-        label = label
-    ) { value ->
-        Text(value, style = style, color = color, fontWeight = fontWeight)
     }
 }
 
