@@ -6,6 +6,7 @@ import com.radami.migrainewatch.domain.ChartWindow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 import java.time.ZoneId
@@ -258,6 +259,50 @@ class PressureChartTest {
         val offsetAt = edgeOffsetSampler(readings, window, ChartRendering.Line)
 
         assertNull(offsetAt(lastIndex + 0.5f, lastIndex))
+    }
+
+    /**
+     * The chart draws nothing at all from an empty pair, so this is also the question "is there
+     * anything to draw" — the single decision the card's empty message hangs off.
+     */
+    @Test
+    fun `a window the readings do not reach has no edges to plot`() {
+        val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
+
+        // A cache that stopped a day ago, with the narrowest chip selected: the data exists,
+        // but not within the nine hours back this window reaches.
+        val readings = (1..24).map { hoursAgo ->
+            reading(Instant.ofEpochSecond(NOW.epochSecond - (24 + hoursAgo) * HOUR), 1013f)
+        }.reversed()
+
+        val edges = seriesEdges(readings, window, ChartRendering.Line, emptyList())
+
+        assertTrue(edges.lower.isEmpty())
+        assertTrue(edges.upper.isEmpty())
+    }
+
+    @Test
+    fun `no readings at all leaves nothing to plot either`() {
+        val window = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
+        val ranges = stepRanges(emptyList(), window, ChartRendering.MinMaxBand)
+
+        assertTrue(seriesEdges(emptyList(), window, renderingFor(ChartRendering.MinMaxBand, ranges), ranges)
+            .lower.isEmpty())
+    }
+
+    // --- rangeLegendLabel -------------------------------------------------------------------
+
+    /**
+     * The label has to name the step it describes, not the one chip that happens to ask for a
+     * band today: "daily min/max" over six-hourly data would claim a spread the chart is not
+     * showing. Pinned because moving a chip to [ChartRendering.MinMaxBand] is a one-value change
+     * that should not also need this rewriting — see TimeRange.
+     */
+    @Test
+    fun `the band legend names the step it is drawn at`() {
+        assertEquals("daily min/max", rangeLegendLabel(ChartStep.OneDay))
+        assertEquals("6-hourly min/max", rangeLegendLabel(ChartStep.SixHours))
+        assertEquals("3-hourly min/max", rangeLegendLabel(ChartStep.ThreeHours))
     }
 
     @Test

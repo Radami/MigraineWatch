@@ -2,9 +2,13 @@ package com.radami.migrainewatch.ui.screens.today
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.radami.migrainewatch.data.model.PressureReading
+import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
+import com.radami.migrainewatch.data.preferences.AppSettings
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
+import com.radami.migrainewatch.data.repository.RefreshState
 import com.radami.migrainewatch.data.repository.SymptomRepository
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
@@ -30,18 +34,40 @@ import javax.inject.Inject
 /**
  * Why the outlook has nothing to say about the week.
  *
- * Two states the card used to report identically, and only one of them is about the network.
- * A forecast that arrived and has since fallen behind is the ordinary case — a couple of days
+ * States the card used to report identically, and only one of them is about the network. An
+ * empty table looks the same whichever it is, so all but the first of these come from asking
+ * the repository how the fetching went rather than from reading the shape of the data: a
+ * forecast that arrived and has since fallen behind is the ordinary case — a couple of days
  * offline does it — and blaming the connection for it states a cause nothing here has checked.
+ *
+ * Distinct from [TodayUiState.isLoading], which is about this screen rather than the data: it
+ * says the ViewModel has not computed a state yet, where [Loading] says a fetch is out.
  */
 enum class OutlookGap {
 
-    /** No readings at all in the window, so nothing has successfully arrived to fall behind. */
-    NoReadings,
+    /** A fetch is under way and nothing has arrived yet. The first load, ordinarily. */
+    Loading,
 
     /** Readings arrived, but none of them reach far enough to say anything about any day. */
-    ForecastBehind
+    ForecastBehind,
+
+    /** Nothing has arrived, and the fetch that would have brought it failed. */
+    FetchFailed,
+
+    /** Nothing has arrived, and nothing was fetched for: no location is set yet. */
+    NoLocation,
+
+    /** Nothing has arrived, though the fetch that should have brought it reported success. */
+    NoReadings
 }
+
+/** Everything the screen is built from, as one emission. */
+private data class TodayInputs(
+    val readings: List<PressureReading>,
+    val entries: List<SymptomEntry>,
+    val settings: AppSettings,
+    val refreshState: RefreshState
+)
 
 data class TodayUiState(
     /** Today first, then the days ahead. Empty until the first load finishes. */
@@ -69,8 +95,16 @@ data class TodayUiState(
      * came back [com.radami.migrainewatch.domain.OutlookRisk.Unknown] — a forecast that covers
      * today but stops short of the week is not a gap, and the strip shows it with its tail
      * faded rather than reporting a failure.
+     *
+     * Starts at [OutlookGap.Loading] rather than null: before the first emission there is no
+     * week to draw either, and a card defaulting to "no gap" over an empty outlook would spend
+     * that moment claiming a forecast it does not have.
      */
-    val outlookGap: OutlookGap? = null,
+    val outlookGap: OutlookGap? = OutlookGap.Loading,
+    /**
+     * Whether the first state has been computed. Not the same question as [outlookGap]: this
+     * one is about the screen, and turns over on the first emission whatever it contains.
+     */
     val isLoading: Boolean = true
 )
 
@@ -86,7 +120,9 @@ class TodayViewModel @Inject constructor(
     val uiState: StateFlow<TodayUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch(Dispatchers.IO) {
+        // No dispatcher of its own: the fetch runs in the repository's scope, and the result
+        // reaches this screen through refreshState rather than from here.
+        viewModelScope.launch {
             pressureRepository.refresh()
         }
         observeData()
@@ -103,10 +139,13 @@ class TodayViewModel @Inject constructor(
             combine(
                 pressureRepository.getReadingsInRange(from, to),
                 symptomRepository.getAllEntries(),
-                userPreferences.settings
-            ) { readings, entries, settings ->
-                Triple(readings, entries, settings)
-            }.collectLatest { (readings, entries, settings) ->
+                userPreferences.settings,
+                // The fetch a reader is waiting on is often not one this screen asked for: the
+                // hourly worker and a change of location both drive refreshes underneath it.
+                pressureRepository.refreshState
+            ) { readings, entries, settings, refreshState ->
+                TodayInputs(readings, entries, settings, refreshState)
+            }.collectLatest { (readings, entries, settings, refreshState) ->
                 // Re-evaluate "now" on every emission so the relevance of an event doesn't go
                 // stale while the screen stays open.
                 val now = Instant.now()
@@ -140,14 +179,23 @@ class TodayViewModel @Inject constructor(
                 // way when there is one — it is the event the user is actually in.
                 val pending = alerts.filter { it.end.isAfter(now) }
 
-                // Readings but no usable day means what arrived stops short of today's end;
-                // no readings at all means nothing arrived. Only the second implicates the
-                // connection, and lastUpdated is non-null exactly in the first, so the card
-                // can date what it has.
                 val gap = when {
-                    readings.isEmpty() -> OutlookGap.NoReadings
-                    outlook.all { it.risk == OutlookRisk.Unknown } -> OutlookGap.ForecastBehind
-                    else -> null
+                    // A forecast that covers today and stops short of the week is the ordinary
+                    // state of a forecast, not a gap: the strip draws its tail faded instead.
+                    outlook.any { it.risk != OutlookRisk.Unknown } -> null
+
+                    // Something arrived once and has since fallen behind. lastUpdated is
+                    // non-null exactly here, so the card can date what it has rather than
+                    // diagnose it.
+                    readings.isNotEmpty() -> OutlookGap.ForecastBehind
+
+                    // Nothing arrived, and nothing in the readings can say why. The fetch can.
+                    else -> when (refreshState) {
+                        RefreshState.InFlight -> OutlookGap.Loading
+                        RefreshState.Failed -> OutlookGap.FetchFailed
+                        RefreshState.NoLocation -> OutlookGap.NoLocation
+                        RefreshState.Updated -> OutlookGap.NoReadings
+                    }
                 }
 
                 _uiState.value = TodayUiState(
