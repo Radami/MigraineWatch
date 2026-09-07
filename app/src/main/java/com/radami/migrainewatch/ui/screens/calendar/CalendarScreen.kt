@@ -84,6 +84,8 @@ import com.radami.migrainewatch.ui.theme.DangerRed
 import com.radami.migrainewatch.ui.theme.color
 import androidx.compose.ui.unit.IntOffset
 import com.radami.migrainewatch.ui.theme.Motion
+import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
+import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -213,7 +215,7 @@ private fun MonthCalendar(
                     Text(
                         label,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = MUTED_ALPHA)
                     )
                 }
             }
@@ -534,7 +536,7 @@ private fun DayDetailSheet(
             Text(
                 "Triggers",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
             )
             Spacer(Modifier.height(4.dp))
             FlowRow(
@@ -552,7 +554,7 @@ private fun DayDetailSheet(
             Text(
                 "Medication",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
             )
             Text(med, style = MaterialTheme.typography.bodyMedium)
         }
@@ -561,7 +563,7 @@ private fun DayDetailSheet(
             Text(
                 "Note",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
             )
             Text(notes, style = MaterialTheme.typography.bodyMedium)
         }

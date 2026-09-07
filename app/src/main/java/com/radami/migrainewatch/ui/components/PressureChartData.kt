@@ -6,6 +6,12 @@ import com.radami.migrainewatch.domain.ChartWindow
 import com.patrykandpatrick.vico.core.entry.FloatEntry
 import kotlin.math.abs
 
+/** One reading in a step is a value, not a range: it takes two for the step to span anything. */
+private const val MIN_READINGS_FOR_RANGE = 2
+
+/** And two steps that span something, before a band is a band rather than a lone upright. */
+private const val MIN_STEPS_FOR_BAND = 2
+
 // What the chart works out before anything is drawn. Kept apart from the drawing because none of
 // it needs a canvas: every function here is pure and covered by PressureChartTest.
 
@@ -40,8 +46,8 @@ internal fun <T> consecutiveRuns(items: List<T>, indexOf: (T) -> Int): List<List
  * step drew a band, which is what made a band at any other step impossible to ask for.
  *
  * A caller picks one per range, and the chart falls back to [Line] regardless when a step
- * holds too little data to have a range at all — see `drawn` in [PressureChart], the single
- * value the marks, the line colour and the legend all key off.
+ * holds too little data to have a range at all — so what a caller passes is a request, and
+ * [renderingFor] settles what is actually drawn.
  */
 enum class ChartRendering {
 
@@ -110,7 +116,7 @@ internal fun stepRanges(
     return ChartWindow.POINT_INDICES.mapNotNull { i ->
         val anchorEpoch = window.epochSecondAt(i)
         val inStep = readings.filter { abs(it.dateTime.epochSecond - anchorEpoch) <= half }
-        if (inStep.size < 2) return@mapNotNull null
+        if (inStep.size < MIN_READINGS_FOR_RANGE) return@mapNotNull null
         RangeEntry(i, inStep.minOf { it.pressureMsl }, inStep.maxOf { it.pressureMsl })
     }
 }
@@ -126,7 +132,8 @@ internal fun stepRanges(
 internal fun renderingFor(
     requested: ChartRendering,
     stepRanges: List<RangeEntry>,
-): ChartRendering = if (stepRanges.size >= 2) requested else ChartRendering.Line
+): ChartRendering =
+    if (stepRanges.size >= MIN_STEPS_FOR_BAND) requested else ChartRendering.Line
 
 /**
  * The two edges to plot, for whichever rendering [rendering] settled on.

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.radami.migrainewatch.ui.theme.Motion
+import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
 
 /**
  * Corner rounding shared by every severity-coloured surface. It is a percentage rather than
@@ -107,8 +108,12 @@ enum class DayEmphasis {
     ByRisk
 }
 
-/** How far a day recedes under [DayEmphasis.ByRisk] when nothing touches it. */
-private const val UNEMPHASISED_DAY_ALPHA = 0.5f
+/**
+ * How far a day recedes under [DayEmphasis.ByRisk] when nothing touches it. Its own name because
+ * it means something here that a bare step does not, and the scale's value so that a day and the
+ * muted text elsewhere on the screen recede by the same amount.
+ */
+private const val UNEMPHASISED_DAY_ALPHA = MUTED_ALPHA
 
 /** The size every legend swatch is drawn at, so two legends on different screens match. */
 val LEGEND_SWATCH_SIZE = 12.dp
