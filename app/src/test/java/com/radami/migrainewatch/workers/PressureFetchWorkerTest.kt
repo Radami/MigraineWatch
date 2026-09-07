@@ -71,35 +71,41 @@ class PressureFetchWorkerTest {
     @Test
     fun `a failed fetch is retried`() {
         coEvery { repository.refresh() } returns RefreshState.Failed
+        reconcileSucceeds()
 
         assertEquals(ListenableWorker.Result.retry(), runWorker())
     }
 
     /**
-     * And does not reconcile: the warnings would be rebuilt from the series the fetch failed to
-     * replace, which is the stale one this run existed to move past.
+     * And still prunes the queue on its way out.
+     *
+     * A reconcile is not only about new data: it rebuilds the pending set from the stored series
+     * and the clock, and the clock has moved even when the fetch brought nothing back. Skipped
+     * here, a device that spends a day offline goes on holding warnings for weather that is
+     * already over.
      */
     @Test
-    fun `a failed fetch leaves the pending warnings alone`() {
+    fun `a failed fetch still prunes the pending warnings`() {
         coEvery { repository.refresh() } returns RefreshState.Failed
+        reconcileSucceeds()
 
         runWorker()
 
-        coVerify(exactly = 0) { scheduler.reconcile(any()) }
+        coVerify(exactly = 1) { scheduler.reconcile(any()) }
     }
 
     /**
      * A fetch superseded by a move comes back as [RefreshState.InFlight]: the replacement is
-     * still running, so nothing has been stored yet. Reconciling here would queue warnings off
-     * the city the user has just left, and reporting success would leave them queued for a full
-     * interval before anything looked again.
+     * still running, so nothing has been stored yet. Reporting success would leave the app a
+     * full interval behind before anything looked again — and the reconcile that runs here is
+     * corrected by AlertReconcileMonitor as soon as the replacement lands.
      */
     @Test
     fun `a superseded fetch is retried rather than reported as a run that happened`() {
         coEvery { repository.refresh() } returns RefreshState.InFlight
+        reconcileSucceeds()
 
         assertEquals(ListenableWorker.Result.retry(), runWorker())
-        coVerify(exactly = 0) { scheduler.reconcile(any()) }
     }
 
     /**

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
+import com.radami.migrainewatch.data.preferences.AppSettings
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.RefreshState
@@ -43,6 +44,13 @@ enum class TimeRange(
     Hours48("48 hrs", ChartStep.SixHours, ChartRendering.Line),
     Days7("7 days", ChartStep.OneDay, ChartRendering.MinMaxBand)
 }
+
+/** Everything the screen is built from, as one emission. */
+private data class PressureInputs(
+    val readings: List<PressureReading>,
+    val settings: AppSettings,
+    val refreshState: RefreshState
+)
 
 data class PressureUiState(
     val currentPressure: Float? = null,
@@ -125,7 +133,7 @@ class PressureViewModel @Inject constructor(
                 pressureRepository.getReadingsInRange(from, to),
                 userPreferences.settings,
                 pressureRepository.refreshState
-            ) { readings, settings, refreshState -> Triple(readings, settings, refreshState) }
+            ) { readings, settings, refreshState -> PressureInputs(readings, settings, refreshState) }
                 .collectLatest { (readings, settings, refreshState) ->
                     // Re-evaluated per emission so the current reading and the relevance of an
                     // event don't go stale while the screen stays open.

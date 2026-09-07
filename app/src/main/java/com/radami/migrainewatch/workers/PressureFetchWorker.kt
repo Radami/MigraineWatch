@@ -31,25 +31,23 @@ class PressureFetchWorker @AssistedInject constructor(
      */
     override suspend fun doWork(): Result {
         return try {
-            when (pressureRepository.refresh()) {
-                // Nothing was stored. Retried on WorkManager's backoff, and without a
-                // reconcile: rebuilding the warnings now would only rebuild them from the
-                // stale series this run existed to move past.
-                RefreshState.Failed -> Result.retry()
+            val outcome = pressureRepository.refresh()
 
-                // Superseded by a fetch for a new location, which is still running — so
-                // nothing has landed to reconcile from, and the readings still in the table
-                // describe the city the user has left.
-                RefreshState.InFlight -> Result.retry()
+            // Whatever the fetch did. A reconcile rebuilds the pending set from the stored
+            // series *and the clock*, and the clock has moved even when the series has not: an
+            // event that has since finished loses its warning on a run that fetched nothing at
+            // all. Skipping it on a failure is how a device that spends a day offline stops
+            // pruning warnings for weather that is already over.
+            alertScheduler.reconcile()
 
-                // A new forecast can add, move or remove events, so the pending warnings are
-                // rebuilt from it every time. Also on the outcomes that stored nothing but
-                // settled: a warning left over from a series that is no longer there still
-                // has to be cancelled, and neither is a state a retry would improve.
-                RefreshState.Updated, RefreshState.NoReadings, RefreshState.NoLocation -> {
-                    alertScheduler.reconcile()
+            when (outcome) {
+                // Nothing was stored, or a fetch for a new location is still running. Either
+                // way this run has not brought the app up to date, so it goes back on
+                // WorkManager's backoff rather than waiting a whole interval for its next turn.
+                RefreshState.Failed, RefreshState.InFlight -> Result.retry()
+
+                RefreshState.Updated, RefreshState.NoReadings, RefreshState.NoLocation ->
                     Result.success()
-                }
             }
         } catch (e: Exception) {
             Result.retry()
