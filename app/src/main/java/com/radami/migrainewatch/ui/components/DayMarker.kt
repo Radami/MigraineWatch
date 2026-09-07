@@ -77,6 +77,20 @@ enum class RiskTransition {
     Animated
 }
 
+/**
+ * [target], or the value on its way there, according to whether this marker travels.
+ *
+ * Every property risk moves asks the same question of the same switch, and they all have to
+ * answer it the same way: a marker whose shape animated while its ring snapped would read as two
+ * things happening rather than one day changing.
+ */
+@Composable
+private fun <T> RiskTransition.settle(target: T, animate: @Composable (T) -> T): T =
+    when (this) {
+        RiskTransition.Animated -> animate(target)
+        RiskTransition.Immediate -> target
+    }
+
 /** How much weight the day number carries relative to the days around it. */
 enum class DayEmphasis {
 
@@ -126,16 +140,14 @@ fun DayMarker(
     // A snapped animation is still an animation: it holds state per property per marker — four
     // of them across forty-two calendar cells — and it still arrives on the frame after the
     // change, which is the single stale frame Immediate exists to prevent.
-    val targetCornerPercent =
+    val cornerPercent = transition.settle(
         if (risk == DayRisk.High) HIGH_RISK_CORNER_PERCENT else SEVERITY_CORNER_PERCENT
-    val cornerPercent = when (transition) {
-        RiskTransition.Animated -> animateIntAsState(
-            targetValue = targetCornerPercent,
+    ) {
+        animateIntAsState(
+            targetValue = it,
             animationSpec = tween(Motion.SHAPE_MORPH_MILLIS),
             label = "markerCorner"
         ).value
-
-        RiskTransition.Immediate -> targetCornerPercent
     }
     val markerShape = RoundedCornerShape(percent = cornerPercent)
 
@@ -154,23 +166,19 @@ fun DayMarker(
         risk == DayRisk.High -> MaterialTheme.colorScheme.outline
         else -> Color.Transparent
     }
-    val borderWidth = when (transition) {
-        RiskTransition.Animated -> animateDpAsState(
-            targetValue = targetBorderWidth,
+    val borderWidth = transition.settle(targetBorderWidth) {
+        animateDpAsState(
+            targetValue = it,
             animationSpec = tween(Motion.EMPHASIS_MILLIS),
             label = "markerBorderWidth"
         ).value
-
-        RiskTransition.Immediate -> targetBorderWidth
     }
-    val borderColor = when (transition) {
-        RiskTransition.Animated -> animateColorAsState(
-            targetValue = targetBorderColor,
+    val borderColor = transition.settle(targetBorderColor) {
+        animateColorAsState(
+            targetValue = it,
             animationSpec = tween(Motion.EMPHASIS_MILLIS),
             label = "markerBorderColor"
         ).value
-
-        RiskTransition.Immediate -> targetBorderColor
     }
 
     Box(
@@ -211,14 +219,12 @@ fun DayMarker(
         }
         // Weight cannot be interpolated, so bold still arrives in one frame. The colour
         // carries the change instead, which is the half of it the eye actually follows.
-        val textColor = when (transition) {
-            RiskTransition.Animated -> animateColorAsState(
-                targetValue = targetTextColor,
+        val textColor = transition.settle(targetTextColor) {
+            animateColorAsState(
+                targetValue = it,
                 animationSpec = tween(Motion.EMPHASIS_MILLIS),
                 label = "markerTextColor"
             ).value
-
-            RiskTransition.Immediate -> targetTextColor
         }
 
         Text(
