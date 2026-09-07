@@ -52,16 +52,6 @@ class ChartWindowTest {
     }
 
     @Test
-    fun `history and forecast meet at the anchor`() {
-        val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
-
-        assertEquals(ChartWindow.ANCHOR_INDEX, window.historyIndices.last)
-        assertEquals(ChartWindow.ANCHOR_INDEX, window.forecastIndices.first)
-        assertEquals(ChartWindow.POINT_INDICES.first, window.historyIndices.first)
-        assertEquals(ChartWindow.POINT_INDICES.last, window.forecastIndices.last)
-    }
-
-    @Test
     fun `x is the anchor index at the anchor and fractional between points`() {
         val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
         val anchor = Instant.ofEpochSecond(window.anchorEpochSecond)

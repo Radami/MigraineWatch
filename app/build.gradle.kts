@@ -257,6 +257,10 @@ dependencies {
     testImplementation(libs.androidx.arch.core.testing)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.compose.ui.test)
+    // Supplies the bare ComponentActivity that createComposeRule() launches, which has to
+    // reach the variant's own merged manifest rather than the test classpath. Already wired
+    // for debug above; tests build against sandbox, so it has to be wired there too.
+    "${SANDBOX_BUILD_TYPE}Implementation"(libs.androidx.compose.ui.test.manifest)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.compose.ui.test)

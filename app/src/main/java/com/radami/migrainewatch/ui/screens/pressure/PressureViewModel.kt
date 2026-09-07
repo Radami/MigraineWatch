@@ -59,6 +59,17 @@ data class PressureUiState(
      * card is told, the same way the Today screen's outlook is.
      */
     val refreshState: RefreshState = RefreshState.InFlight,
+    /**
+     * Whether the first state has been computed, as distinct from anything about the data.
+     *
+     * Nothing on screen reads it: what a reader needs to know while waiting is already carried
+     * by [refreshState] and the chart's empty message, which say *why* there is nothing
+     * rather than merely that there is nothing yet. What this marks is the boundary between
+     * the defaults this state starts life with and the first emission the flow produced — the
+     * one thing no other field can express, because every other default is also a value the
+     * screen legitimately settles on. Kept for that: it is what lets a caller tell a computed
+     * state from an unstarted one.
+     */
     val isLoading: Boolean = true
 )
 

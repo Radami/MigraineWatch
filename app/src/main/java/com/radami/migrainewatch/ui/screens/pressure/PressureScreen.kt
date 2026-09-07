@@ -234,14 +234,25 @@ private fun PressureHistoryCard(
 private fun EmptyChartMessage(state: PressureUiState) {
     val message = when {
         // Something arrived; it just does not cover what this chip asks for. Nothing to do with
-        // the network, and the other chips may well have data — so the range is what is named.
-        state.readings.isNotEmpty() -> "No readings in the last ${state.selectedRange.label}"
+        // the network, and the other chips may well have data.
+        //
+        // The range is not named here. A chip's label is not the span it draws — the 24 hrs
+        // chip covers nine hours back and twelve ahead — and the line directly above this one
+        // already says what the span is, so repeating it here could only contradict it.
+        state.readings.isNotEmpty() -> "No readings in this range"
 
         else -> when (state.refreshState) {
-            RefreshState.InFlight -> "Loading pressure readings…"
-            RefreshState.Failed -> "Couldn't reach the forecast — check your connection"
+            // A stored series reaches this screen through Room, several hops after the fetch
+            // that stored it returned, so a fetch that worked and an empty table is still the
+            // first load — see RefreshState.NoReadings.
+            RefreshState.InFlight, RefreshState.Updated -> "Loading pressure readings…"
+
+            // Each line speaks in this screen's own terms rather than borrowing the Today
+            // card's: the two say the same things about the same fetch, and a message shared
+            // verbatim between them would be one nobody could reword without touching both.
+            RefreshState.NoReadings -> "No pressure readings available for this location"
+            RefreshState.Failed -> "Couldn't load pressure readings — check your connection"
             RefreshState.NoLocation -> "Set a location to see pressure"
-            RefreshState.Updated -> "No pressure readings available for this location"
         }
     }
 
