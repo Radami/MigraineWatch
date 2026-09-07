@@ -38,6 +38,18 @@ import kotlin.math.roundToInt
 internal const val RISK_FADE_DELAY_MILLIS = Animation.DIFF_DURATION / 2
 internal const val RISK_FADE_MILLIS = Animation.DIFF_DURATION - RISK_FADE_DELAY_MILLIS
 
+/** The dashed "now" line, in dp: stroke, then the on and off lengths of its dashes. */
+private const val NOW_LINE_WIDTH_DP = 2f
+private const val NOW_DASH_ON_DP = 10f
+private const val NOW_DASH_OFF_DP = 6f
+
+/**
+ * How far a point has to sit from the plot edge before the strip between them is worth drawing.
+ * Under a pixel there is nothing to carry, and a zero-length segment still lays down a stroke of
+ * its own width.
+ */
+private const val MIN_OVERHANG_PX = 1f
+
 /** Whether a traced run opens a new path contour or continues the one in progress. */
 private enum class RunStart { MoveTo, LineTo }
 
@@ -153,8 +165,9 @@ internal class ChartOverlayDecoration(
     private fun ensurePaintDensity(density: Float) {
         if (initialisedDensity == density) return
         initialisedDensity = density
-        nowPaint.strokeWidth = 2f * density
-        nowPaint.pathEffect = DashPathEffect(floatArrayOf(10f * density, 6f * density), 0f)
+        nowPaint.strokeWidth = NOW_LINE_WIDTH_DP * density
+        nowPaint.pathEffect =
+            DashPathEffect(floatArrayOf(NOW_DASH_ON_DP * density, NOW_DASH_OFF_DP * density), 0f)
         rangePaint.strokeWidth = RANGE_LINE_WIDTH_DP * density
         overhangPaint.strokeWidth = RANGE_LINE_WIDTH_DP * density
     }
@@ -318,9 +331,7 @@ internal class ChartOverlayDecoration(
     ) {
         val fromPx = context.dataX(from.index.toFloat(), bounds)
 
-        // Nothing to carry when the point already sits on the edge; a zero-length segment
-        // would still lay down a stroke of its own width.
-        if (abs(edgePx - fromPx) < 1f) return
+        if (abs(edgePx - fromPx) < MIN_OVERHANG_PX) return
 
         val offset = edgeOffsetAt(context.dataXInverse(edgePx, bounds), from.index) ?: return
 

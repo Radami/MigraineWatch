@@ -56,6 +56,10 @@ import com.radami.migrainewatch.R
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.notifications.NotificationPermissionState
 import com.radami.migrainewatch.ui.theme.BrandTerracottaLight
+import com.radami.migrainewatch.ui.theme.FAINT_ALPHA
+import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
+import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
+import com.radami.migrainewatch.ui.theme.SUPPORTING_ALPHA
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -129,7 +133,7 @@ private fun SettingsList(viewModel: SettingsViewModel) {
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = SUPPORTING_ALPHA)
                 )
             }
         }
@@ -142,7 +146,7 @@ private fun SettingsList(viewModel: SettingsViewModel) {
                 Text(
                     "We warn you when pressure is forecast to drop by this amount within 24 hours.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
                 )
                 Text(
                     "${state.alertSensitivity.thresholdHpa.toInt()} hPa",
@@ -176,7 +180,7 @@ private fun SettingsList(viewModel: SettingsViewModel) {
                 Text(
                     state.alertSensitivity.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = MUTED_ALPHA),
                     minLines = 2
                 )
             }
@@ -294,7 +298,7 @@ private fun SettingsList(viewModel: SettingsViewModel) {
             Text(
                 "${stringResource(R.string.app_name)} · v${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = FAINT_ALPHA),
                 modifier = Modifier.padding(top = 16.dp)
             )
         }
@@ -349,7 +353,7 @@ private fun SettingsRow(
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
                 )
             }
             trailing?.invoke()

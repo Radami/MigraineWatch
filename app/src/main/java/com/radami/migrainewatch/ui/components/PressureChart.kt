@@ -46,12 +46,22 @@ import java.time.ZoneId
 import kotlin.math.roundToInt
 
 /**
+ * Headroom above and below the data, so the line does not run along the frame. A fraction of the
+ * data's own spread, with a floor in hPa for the flat stretches — a day that barely moved would
+ * otherwise be drawn as a line squeezed between its own two extremes.
+ */
+private const val Y_PADDING_FRACTION = 0.2f
+private const val MIN_Y_PADDING_HPA = 2f
+
+/**
  * @param readings every reading the chart may draw from, sorted by time. The chart samples the
  *   eight instants [window] names out of these rather than plotting them one for one, so it is
  *   given the whole series and not the slice one range happens to need.
  * @param window which slice of time the chart draws, and at what resolution.
- * @param rendering what to draw for each of its points — a sampled line, or the band each
- *   step's readings span. Independent of the step: any step can be drawn either way.
+ * @param requestedRendering what to draw for each of its points — a sampled line, or the band
+ *   each step's readings span. Independent of the step: any step can be drawn either way. A
+ *   request rather than an instruction: a series too sparse to have a band falls back to the
+ *   line, and everything below is drawn from what [renderingFor] settled on.
  * @param alerts risk windows to shade, in the order the caller lists them. Those
  *   [ChartWindow.covers] returns false for are left to the caller to account for — the chart
  *   cannot show them at this range — and only as many as the palette has colours are shaded,
@@ -67,25 +77,23 @@ fun PressureChart(
     readings: List<PressureReading>,
     window: ChartWindow,
     modifier: Modifier = Modifier,
-    rendering: ChartRendering = ChartRendering.Line,
+    requestedRendering: ChartRendering = ChartRendering.Line,
     alerts: List<AlertWindow> = emptyList(),
     emptyContent: @Composable () -> Unit
 ) {
-    // Two separate questions that used to have one answer. The step still decides how labels
-    // are written and how the axis lays out; only the marks depend on the rendering.
-    val isDaily = window.step == ChartStep.OneDay
-    val stepSeconds = window.step.seconds
-
     // Remembered unconditionally rather than inside the branch that needs it: switching
     // rendering would otherwise change the shape of the composition.
-    val rangeEntries = remember(readings, window, rendering) {
-        stepRanges(readings, window, rendering)
+    val rangeEntries = remember(readings, window, requestedRendering) {
+        stepRanges(readings, window, requestedRendering)
     }
 
-    val drawn = renderingFor(rendering, rangeEntries)
+    // What the chart can actually draw, which is not always what was asked for. The one value
+    // the marks, the line colour and the legend all key off from here on; the request is not
+    // read again.
+    val rendering = renderingFor(requestedRendering, rangeEntries)
 
-    val edges = remember(readings, window, drawn, rangeEntries) {
-        seriesEdges(readings, window, drawn, rangeEntries)
+    val edges = remember(readings, window, rendering, rangeEntries) {
+        seriesEdges(readings, window, rendering, rangeEntries)
     }
 
     // Nothing to plot: not one of the eight instants this window names falls inside the
@@ -100,8 +108,8 @@ fun PressureChart(
         return
     }
 
-    val edgeOffsetAt = remember(readings, window, drawn) {
-        edgeOffsetSampler(readings, window, drawn)
+    val edgeOffsetAt = remember(readings, window, rendering) {
+        edgeOffsetSampler(readings, window, rendering)
     }
 
     // Both edges go through the model, so Vico tweens them between ranges the way it already
@@ -156,9 +164,13 @@ fun PressureChart(
     // above covers them together.
     val dataMin = edges.lower.minOf { it.y }
     val dataMax = edges.upper.maxOf { it.y }
-    val yPadding = maxOf((dataMax - dataMin) * 0.2f, 2f)
+    val yPadding = maxOf((dataMax - dataMin) * Y_PADDING_FRACTION, MIN_Y_PADDING_HPA)
     val yMin = dataMin - yPadding
     val yMax = dataMax + yPadding
+
+    // The step still decides how labels are written and how the axis lays out, which is a
+    // separate question from what the marks are: only the marks depend on the rendering.
+    val isDaily = window.step == ChartStep.OneDay
 
     // Mon/Tue/… for the 7-day chip, "3PM"/"9AM" for the hourly steps
     val labelFormatter = remember(window.step) {
@@ -170,6 +182,7 @@ fun PressureChart(
     }
     val xFormatter = remember(window, labelFormatter, dayFormatter) {
         val zone = ZoneId.systemDefault()
+        val stepSeconds = window.step.seconds
         AxisValueFormatter<AxisPosition.Horizontal.Bottom> { value, _ ->
             val index = value.roundToInt()
             val anchorEpoch = window.epochSecondAt(index)
@@ -207,11 +220,11 @@ fun PressureChart(
 
     // Deliberately not keyed on the fade: see ChartOverlayDecoration.riskAlpha.
     val decoration = remember(
-        alertBands, drawn, edgeOffsetAt, positions, seriesColor, nowX, nowLineColor
+        alertBands, rendering, edgeOffsetAt, positions, seriesColor, nowX, nowLineColor
     ) {
         ChartOverlayDecoration(
             alertBands = alertBands,
-            rendering = drawn,
+            rendering = rendering,
             edgeOffsetAt = edgeOffsetAt,
             positions = positions,
             seriesColor = seriesColor,
@@ -276,7 +289,7 @@ fun PressureChart(
         ChartLegend(
             seriesColor = seriesColor,
             nowLineColor = nowLineColor,
-            rendering = drawn,
+            rendering = rendering,
             rangeLabel = rangeLegendLabel(window.step),
             alertColors = alertBands.map { it.color }
         )

@@ -46,6 +46,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.radami.migrainewatch.data.remote.dto.GeocodingResult
+import com.radami.migrainewatch.ui.theme.SUPPORTING_ALPHA
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -166,7 +167,7 @@ private fun RationaleStep(
             "Pressure varies by location. We need your location to show accurate readings.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = SUPPORTING_ALPHA)
         )
         Spacer(Modifier.height(40.dp))
         Button(
