@@ -142,8 +142,8 @@ fun DayMarker(
     // A circle is always outlined, filled or not: the ring is what makes the silhouette read
     // as deliberate rather than as a differently-shaped severity chip. Exactly one ring is
     // ever drawn, and today outranks risk for the edge — the shape has already said
-    // "high risk" by then. A day wearing no ring is drawn with a transparent one of no width
-    // rather than no border at all, so the ring has something to fade in from.
+    // "high risk" by then. A day wearing no ring targets a transparent one of no width rather
+    // than nothing at all, so an animated ring has a width to travel from.
     val targetBorderWidth = when {
         isToday -> TODAY_BORDER_WIDTH
         risk == DayRisk.High -> HIGH_RISK_BORDER_WIDTH
@@ -178,7 +178,16 @@ fun DayMarker(
         modifier = modifier
             .clip(markerShape)
             .background(severityColor ?: Color.Transparent)
-            .border(borderWidth, borderColor, markerShape)
+            // Only while there is a ring to draw. A width of zero draws nothing whichever way
+            // it got there, and the calendar's forty-two cells mostly wear no ring and animate
+            // nothing — so they carry no border node either.
+            .then(
+                if (borderWidth > NO_BORDER_WIDTH) {
+                    Modifier.border(borderWidth, borderColor, markerShape)
+                } else {
+                    Modifier
+                }
+            )
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
             .then(
                 if (contentDescription != null) {

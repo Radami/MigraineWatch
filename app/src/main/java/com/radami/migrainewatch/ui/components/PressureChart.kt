@@ -100,6 +100,29 @@ private const val RISK_FADE_MILLIS = Animation.DIFF_DURATION - RISK_FADE_DELAY_M
 private enum class RunStart { MoveTo, LineTo }
 
 /**
+ * [items] split wherever their indices stop running consecutively.
+ *
+ * A gap in the data has to break the lines where it falls rather than be bridged by a segment
+ * describing no step at all: the chart drops a point it has no readings for, so a hole in the
+ * series arrives here as a jump in the indices and nothing else.
+ *
+ * Generic over what it is splitting so it can be exercised without a draw context — the points
+ * it runs on in the chart only exist part-way through a frame.
+ */
+internal fun <T> consecutiveRuns(items: List<T>, indexOf: (T) -> Int): List<List<T>> = buildList {
+    var current = mutableListOf<T>()
+    for (item in items) {
+        if (current.isEmpty() || indexOf(item) == indexOf(current.last()) + 1) {
+            current.add(item)
+        } else {
+            add(current)
+            current = mutableListOf(item)
+        }
+    }
+    if (current.isNotEmpty()) add(current)
+}
+
+/**
  * How the chart draws the readings each of its points stands for.
  *
  * Separate from [ChartStep] because the two are independent: a step decides how much time a
@@ -420,21 +443,6 @@ private class ChartOverlayDecoration(
         }
     }
 
-    // Group consecutive entries so a gap in the data breaks the lines there rather than
-    // bridging it with a segment that describes no day.
-    private fun runsOf(series: List<DrawnEntry>): List<List<DrawnEntry>> = buildList {
-        var current = mutableListOf<DrawnEntry>()
-        for (entry in series) {
-            if (current.isEmpty() || entry.index == current.last().index + 1) {
-                current.add(entry)
-            } else {
-                add(current)
-                current = mutableListOf(entry)
-            }
-        }
-        if (current.isNotEmpty()) add(current)
-    }
-
     override fun onDrawBehindChart(context: ChartDrawContext, bounds: RectF) {
         ensurePaintDensity(context.density)
         drawAlertBands(context, bounds)
@@ -469,7 +477,7 @@ private class ChartOverlayDecoration(
         if (rendering != ChartRendering.MinMaxBand || series.isEmpty()) return
 
         val path = Path()
-        for (run in runsOf(series)) {
+        for (run in consecutiveRuns(series) { it.index }) {
             // A run of one has no neighbour to trace towards, so there is no area to fill:
             // the step is drawn as the vertical it spans instead of vanishing.
             if (run.size == 1) {
@@ -608,7 +616,8 @@ private class ChartOverlayDecoration(
  * @param emptyContent what to put in the chart's place when there is nothing to plot. Required,
  *   and a slot rather than a message: the chart is the only thing that knows whether the
  *   readings reach the window it was given, and the screen around it is the only thing that
- *   knows why they might not — so each says the half it can.
+ *   knows why they might not — so each says the half it can. Laid out under [modifier], as the
+ *   chart itself is: it stands in the same place and has to take up the same width.
  */
 @Composable
 fun PressureChart(
@@ -644,7 +653,7 @@ fun PressureChart(
     // series that cannot fill them cannot half-fill them either, and the axes, the overlays and
     // the legend used to vanish together and leave the card blank without saying anything.
     if (edges.lower.isEmpty()) {
-        emptyContent()
+        Box(modifier) { emptyContent() }
         return
     }
 

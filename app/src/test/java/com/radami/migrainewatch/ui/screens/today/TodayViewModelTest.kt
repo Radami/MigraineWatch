@@ -224,9 +224,9 @@ class TodayViewModelTest {
     }
 
     @Test
-    fun `no readings behind a fetch that worked is a location with no forecast`() = runTest {
+    fun `no readings behind a fetch that found none is a location with no forecast`() = runTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
-        refreshState.value = RefreshState.Updated
+        refreshState.value = RefreshState.NoReadings
 
         val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
             .loadedState()
@@ -253,6 +253,27 @@ class TodayViewModelTest {
             .loadedState()
 
         assertEquals(OutlookGap.FetchFailed, state.outlookGap)
+    }
+
+    /**
+     * The other half of that, and the one the card got wrong once the fetch started reporting
+     * back: a stored series does not reach a screen the moment the fetch that stored it
+     * returns. Room delivers a committed write several executor hops later, so every cold start
+     * passes through "the fetch succeeded and the readings are still empty".
+     *
+     * Read as an absent forecast, that pairing puts a wrong message on the card for a frame or
+     * three of every first launch — and the outlook card animates its placeholder in and back
+     * out, which stretches those frames into something the reader actually sees.
+     */
+    @Test
+    fun `a fetch that has landed but whose readings have not is still loading`() = runTest {
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
+        refreshState.value = RefreshState.Updated
+
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
+
+        assertEquals(OutlookGap.Loading, state.outlookGap)
     }
 
     /**

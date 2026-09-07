@@ -290,6 +290,39 @@ class PressureChartTest {
             .lower.isEmpty())
     }
 
+    // --- consecutiveRuns ----------------------------------------------------------------------
+
+    /**
+     * A gap in the readings has to break the drawing where it falls. The chart drops a point it
+     * cannot sample, so a hole arrives at the drawing as a jump in the indices — and a run
+     * traced straight across one would draw a band or a line over steps that hold no data.
+     */
+    @Test
+    fun `a jump in the indices starts a new run`() {
+        val runs = consecutiveRuns(listOf(0, 1, 2, 5, 6)) { it }
+
+        assertEquals(listOf(listOf(0, 1, 2), listOf(5, 6)), runs)
+    }
+
+    @Test
+    fun `an unbroken series is a single run`() {
+        assertEquals(
+            listOf(ChartWindow.POINT_INDICES.toList()),
+            consecutiveRuns(ChartWindow.POINT_INDICES.toList()) { it }
+        )
+    }
+
+    /** A step stranded between two gaps is its own run, which is what the chart draws upright. */
+    @Test
+    fun `an isolated index is a run of one`() {
+        assertEquals(listOf(listOf(0), listOf(3), listOf(7)), consecutiveRuns(listOf(0, 3, 7)) { it })
+    }
+
+    @Test
+    fun `nothing to split is no runs at all`() {
+        assertEquals(emptyList<List<Int>>(), consecutiveRuns(emptyList<Int>()) { it })
+    }
+
     // --- rangeLegendLabel -------------------------------------------------------------------
 
     /**

@@ -102,8 +102,14 @@ data class TodayUiState(
      */
     val outlookGap: OutlookGap? = OutlookGap.Loading,
     /**
-     * Whether the first state has been computed. Not the same question as [outlookGap]: this
-     * one is about the screen, and turns over on the first emission whatever it contains.
+     * Whether the first state has been computed, as distinct from anything about the data.
+     *
+     * Nothing on screen reads it: what a reader needs to know while waiting is already carried
+     * by [outlookGap], which says *why* there is nothing rather than merely that there is
+     * nothing yet. What this marks is the boundary between the defaults this state
+     * starts life with and the first emission the flow produced — the one thing no other field
+     * can express, because every other default is also a value the screen legitimately settles
+     * on. Kept for that: it is what lets a caller tell a computed state from an unstarted one.
      */
     val isLoading: Boolean = true
 )
@@ -191,10 +197,15 @@ class TodayViewModel @Inject constructor(
 
                     // Nothing arrived, and nothing in the readings can say why. The fetch can.
                     else -> when (refreshState) {
-                        RefreshState.InFlight -> OutlookGap.Loading
+                        // A stored series does not reach here the moment the fetch that stored
+                        // it returns — Room delivers a committed write several hops later — so
+                        // a fetch that worked and an empty table is a first load still running,
+                        // not a week there is nothing to say about.
+                        RefreshState.InFlight, RefreshState.Updated -> OutlookGap.Loading
+
+                        RefreshState.NoReadings -> OutlookGap.NoReadings
                         RefreshState.Failed -> OutlookGap.FetchFailed
                         RefreshState.NoLocation -> OutlookGap.NoLocation
-                        RefreshState.Updated -> OutlookGap.NoReadings
                     }
                 }
 
