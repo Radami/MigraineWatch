@@ -67,12 +67,6 @@ data class ChartWindow(
         }
     }
 
-    /** Points up to and including the anchor — measured pressure. */
-    val historyIndices: IntRange = POINT_INDICES.first..ANCHOR_INDEX
-
-    /** Points from the anchor on — forecast. The anchor is in both, so the lines join up. */
-    val forecastIndices: IntRange = ANCHOR_INDEX..POINT_INDICES.last
-
     /**
      * How far the plot area reaches past the first and last point. The daily step is drawn
      * segmented — one cell per day with its point at the centre — so the plot begins half a

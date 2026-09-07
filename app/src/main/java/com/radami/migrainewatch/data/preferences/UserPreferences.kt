@@ -1,15 +1,19 @@
 package com.radami.migrainewatch.data.preferences
 
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,6 +44,10 @@ data class AppSettings(
 class UserPreferences @Inject constructor(
     private val dataStore: DataStore<Preferences>
 ) {
+    private companion object {
+        const val TAG = "UserPreferences"
+    }
+
     private object Keys {
         val LOCATION_SOURCE = stringPreferencesKey("location_source")
         val LOCATION_LAT = doublePreferencesKey("location_lat")
@@ -53,7 +61,25 @@ class UserPreferences @Inject constructor(
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
     }
 
-    val settings: Flow<AppSettings> = dataStore.data.map { prefs ->
+    /**
+     * Falls back to the defaults when the store cannot be read, rather than passing the failure
+     * on.
+     *
+     * DataStore reports a failed read by throwing into the stream, which ends every collector
+     * of it. Two of those cannot afford to end: a screen's, where the exception reaches
+     * `viewModelScope` and takes the process down, and [
+     * com.radami.migrainewatch.data.repository.PressureRepository]'s watch for the user moving,
+     * which is a single coroutine started once — its death is silent, and refetch-on-move
+     * simply stops until the app is restarted.
+     *
+     * Only [IOException], which is what a store that cannot be read raises; anything else is a
+     * bug in the reading rather than in the file, and is left to surface.
+     */
+    val settings: Flow<AppSettings> = dataStore.data.catch { cause ->
+        if (cause !is IOException) throw cause
+        Log.e(TAG, "Could not read settings; falling back to defaults", cause)
+        emit(emptyPreferences())
+    }.map { prefs ->
         AppSettings(
             alertThresholdHpa = prefs[Keys.ALERT_THRESHOLD] ?: AlertSensitivity.Default.thresholdHpa,
             notificationsEnabled = prefs[Keys.NOTIFICATIONS_ENABLED] ?: true,

@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -66,6 +67,15 @@ enum class RefreshState {
 
     /** The series was fetched and stored. */
     Updated,
+
+    /**
+     * The fetch worked and carried no readings, so nothing was stored and nothing ever will be
+     * for this location. Distinct from [Updated] because a screen with an empty table cannot
+     * tell the two apart on its own, and only one of them means the wait is over: a stored
+     * series reaches a screen through Room, several hops after the fetch that stored it
+     * returned, so an empty table behind an [Updated] is a first load still in progress.
+     */
+    NoReadings,
 
     /** No location is set, so there was nothing to fetch for. */
     NoLocation,
@@ -167,7 +177,7 @@ class PressureRepository @Inject constructor(
                 inFlight?.cancelAndJoin()
                 inFlight = null
             }
-            inFlight?.takeIf { it.isActive } ?: startFetch(mode)
+            inFlight?.takeIf { it.isActive } ?: startFetch(mode).also { inFlight = it }
         }
 
         return try {
@@ -182,10 +192,11 @@ class PressureRepository @Inject constructor(
     }
 
     /**
-     * Starts a fetch, records it as the one in flight, and publishes what becomes of it.
+     * Starts a fetch and publishes what becomes of it. Recording it as the one in flight is
+     * left to the caller, where a reader of [fetch] can see it happen.
      *
-     * Called under [refreshMutex], so neither [inFlight] nor the two writes to [_refreshState]
-     * here can interleave with another fetch's.
+     * Called under [refreshMutex], so the two writes to [_refreshState] here cannot interleave
+     * with another fetch's.
      *
      * [RefreshState.InFlight] is published before the coroutine is dispatched rather than from
      * inside it, so a caller that starts a refresh and then reads the state cannot catch the
@@ -197,7 +208,6 @@ class PressureRepository @Inject constructor(
     private fun startFetch(mode: RefreshMode): Deferred<RefreshState> {
         _refreshState.value = RefreshState.InFlight
         return scope.async { fetchAndStore(mode).also { _refreshState.value = it } }
-            .also { inFlight = it }
     }
 
     /**
@@ -216,6 +226,12 @@ class PressureRepository @Inject constructor(
                 .distinctUntilChanged()
                 // The location in force when the app starts is where the data already is.
                 .drop(1)
+                // A settings read that failed arrives here as the defaults, which describe no
+                // location at all. That is nowhere the user has gone, so it is not a move —
+                // acted on, it would fetch for a place that does not exist. Placed after the
+                // drop so that onboarding, where the first location genuinely does arrive after
+                // an empty one, still counts as a change like any other.
+                .filter { it.lat != 0.0 || it.lon != 0.0 }
                 .collect { fetch(RefreshMode.ReplaceEverything) }
         }
     }
@@ -303,6 +319,15 @@ class PressureRepository @Inject constructor(
         )
         val fetchedAt = Instant.now()
         val readings = parseResponse(response, fetchedAt, response.timezone.ifBlank { timezone })
+
+        // Not written, because writing it would take away rather than add: both writes clear
+        // what they are about to replace, so an empty response would delete the forecast on
+        // screen — or, on a move, the whole table — and leave the app with less than it had
+        // before it asked.
+        if (readings.isEmpty()) {
+            Log.w(TAG, "Forecast response carried no readings; leaving the stored series alone")
+            return RefreshState.NoReadings
+        }
 
         val historical = readings.filter { it.dateTime.isBefore(now) }
         val forecast = readings.filter { !it.dateTime.isBefore(now) }

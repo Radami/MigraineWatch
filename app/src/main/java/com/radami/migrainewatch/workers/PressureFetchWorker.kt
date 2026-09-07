@@ -24,18 +24,33 @@ class PressureFetchWorker @AssistedInject constructor(
     private val alertScheduler: AlertNotificationScheduler
 ) : CoroutineWorker(appContext, params) {
 
+    /**
+     * The outcome has to be read rather than inferred from whether anything was thrown: the
+     * repository reports a failure as a value, so a run that never reached the network would
+     * otherwise look like a run that had worked and wait a full interval for its next chance.
+     */
     override suspend fun doWork(): Result {
         return try {
-            // A failed fetch is exactly what retrying is for, and it has to be asked for by
-            // name: the repository reports a failure rather than throwing it, so a fetch that
-            // never reached the network would otherwise be reported here as a successful run
-            // and wait a full interval for its next chance.
-            if (pressureRepository.refresh() == RefreshState.Failed) return Result.retry()
+            when (pressureRepository.refresh()) {
+                // Nothing was stored. Retried on WorkManager's backoff, and without a
+                // reconcile: rebuilding the warnings now would only rebuild them from the
+                // stale series this run existed to move past.
+                RefreshState.Failed -> Result.retry()
 
-            // A new forecast can add, move or remove events, so the pending warnings are
-            // rebuilt from it every time.
-            alertScheduler.reconcile()
-            Result.success()
+                // Superseded by a fetch for a new location, which is still running — so
+                // nothing has landed to reconcile from, and the readings still in the table
+                // describe the city the user has left.
+                RefreshState.InFlight -> Result.retry()
+
+                // A new forecast can add, move or remove events, so the pending warnings are
+                // rebuilt from it every time. Also on the outcomes that stored nothing but
+                // settled: a warning left over from a series that is no longer there still
+                // has to be cancelled, and neither is a state a retry would improve.
+                RefreshState.Updated, RefreshState.NoReadings, RefreshState.NoLocation -> {
+                    alertScheduler.reconcile()
+                    Result.success()
+                }
+            }
         } catch (e: Exception) {
             Result.retry()
         }

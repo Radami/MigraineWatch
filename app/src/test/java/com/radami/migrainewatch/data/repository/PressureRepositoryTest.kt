@@ -110,6 +110,11 @@ class PressureRepositoryTest {
         )
     )
 
+    /** A response that parsed to nothing: the shape a location with no series comes back in. */
+    private fun emptyResponse() = response().copy(
+        hourly = HourlyData(time = emptyList(), pressureMsl = emptyList(), surfacePressure = emptyList())
+    )
+
     /**
      * Skips the archive gap fill, so a test about the forecast fetch is only about that: the
      * repository reaches for the archive when its newest stored history is over 30 days old.
@@ -272,6 +277,47 @@ class PressureRepositoryTest {
         coVerify(exactly = 0) { forecastApi.getForecast(any(), any(), timezone = any()) }
     }
 
+    /**
+     * Settings falling back to their defaults is not somewhere the user has gone.
+     *
+     * A store that cannot be read reports itself as the defaults rather than as a throw — see
+     * UserPreferencesTest — and the defaults carry no location at all. Read as a move, that
+     * would send a fetch after a place that does not exist on the strength of a disk error.
+     */
+    @Test
+    fun `settings falling back to no location is not treated as a move`() = runTest {
+        coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns response()
+        stubRecentHistory()
+
+        repository.refresh()
+        assertEquals(RefreshState.Updated, repository.refreshState.value)
+
+        settings.value = AppSettings()
+        advanceUntilIdle()
+
+        // Acted on, the fallback would start a fetch for nowhere — which cancels whatever is
+        // in flight on its way past, and settles on NoLocation. The screens read that state:
+        // a disk error would have the card asking for a location that is perfectly well set.
+        assertEquals(RefreshState.Updated, repository.refreshState.value)
+    }
+
+    /** And the watch is still watching once the store can be read again. */
+    @Test
+    fun `a move after a failed settings read is still noticed`() = runTest {
+        coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns response()
+        stubRecentHistory()
+
+        settings.value = AppSettings()
+        advanceUntilIdle()
+
+        settings.value = AppSettings(location = KATHMANDU)
+        advanceUntilIdle()
+
+        coVerify {
+            forecastApi.getForecast(KATHMANDU.lat, KATHMANDU.lon, timezone = KATHMANDU.timezone)
+        }
+    }
+
     @Test
     fun `refresh skips when no location is set`() = runTest {
         settings.value = AppSettings(location = LocationData(lat = 0.0, lon = 0.0))
@@ -309,6 +355,66 @@ class PressureRepositoryTest {
 
         coVerify(exactly = 0) { dao.replaceSeries(any(), any(), any()) }
         coVerify(exactly = 0) { dao.replaceAllReadings(any(), any()) }
+    }
+
+    /**
+     * The state a screen watches has to move when the fetching does, not only when it ends: a
+     * card reading it in the middle of a fetch would otherwise be told about the fetch before.
+     */
+    @Test
+    fun `a refresh reports itself in flight before settling on its outcome`() = runTest {
+        coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns response()
+        stubRecentHistory()
+
+        repository.refresh()
+        assertEquals(RefreshState.Updated, repository.refreshState.value)
+
+        // Held open so the second refresh can be caught while it is still out.
+        val releaseFetch = CompletableDeferred<Unit>()
+        coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } coAnswers {
+            releaseFetch.await()
+            response()
+        }
+
+        val second = async { repository.refresh() }
+        advanceUntilIdle()
+        assertEquals(RefreshState.InFlight, repository.refreshState.value)
+
+        releaseFetch.complete(Unit)
+        second.await()
+        assertEquals(RefreshState.Updated, repository.refreshState.value)
+    }
+
+    /**
+     * A response carrying no readings is reported rather than stored.
+     *
+     * Storing it would be destructive, not merely pointless: a write with no rows still clears
+     * what it was going to replace — replaceSeries deletes the stored forecast and then inserts
+     * nothing — so an empty or unparseable response would delete the forecast on screen and
+     * leave the app with less than it had before it asked.
+     */
+    @Test
+    fun `a response with no readings is reported and not written`() = runTest {
+        coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns emptyResponse()
+        stubRecentHistory()
+
+        assertEquals(RefreshState.NoReadings, repository.refresh())
+
+        coVerify(exactly = 0) { dao.replaceSeries(any(), any(), any()) }
+        coVerify(exactly = 0) { dao.deleteForecast(any()) }
+    }
+
+    /** And a move with nothing to move to leaves the old city's readings rather than the table empty. */
+    @Test
+    fun `a move whose response is empty does not clear the stored series`() = runTest {
+        coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns emptyResponse()
+        stubRecentHistory()
+
+        settings.value = AppSettings(location = KATHMANDU)
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { dao.replaceAllReadings(any(), any()) }
+        coVerify(exactly = 0) { dao.deleteAllReadings() }
     }
 
     /**
