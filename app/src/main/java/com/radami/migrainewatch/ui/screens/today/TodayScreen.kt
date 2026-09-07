@@ -84,6 +84,11 @@ import com.radami.migrainewatch.ui.components.TodayLegendSwatch
 import com.radami.migrainewatch.ui.theme.BrandTerracottaDark
 import com.radami.migrainewatch.ui.theme.BrandTerracottaLight
 import com.radami.migrainewatch.ui.theme.color
+import com.radami.migrainewatch.ui.theme.FULL_ALPHA
+import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
+import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
+import com.radami.migrainewatch.ui.theme.SUBDUED_ALPHA
+import com.radami.migrainewatch.ui.theme.SUPPORTING_ALPHA
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -130,7 +135,7 @@ fun TodayScreen(
                 SettlingText(
                     text = "Updated ${state.lastUpdated?.let { timeFormatter.format(it) } ?: "—"}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA),
                     label = "updatedAt"
                 )
             }
@@ -228,9 +233,6 @@ private fun AlertBanner(alerts: List<AlertWindow>, phase: AlertPhase, onClick: (
 /** Shared by the banner's fill and the clip its ripple has to stay inside. */
 private val ALERT_BANNER_SHAPE = RoundedCornerShape(12.dp)
 
-/** Text that is present but not the point: timestamps, subtitles, date ranges. */
-private const val SECONDARY_TEXT_ALPHA = 0.6f
-
 private val OUTLOOK_MARKER_SIZE = 36.dp
 
 /**
@@ -249,9 +251,6 @@ private const val UNKNOWN_DAY_ALPHA = 0.6f
 /** The weekday above a day worth looking at, and above one that isn't. */
 private const val WEEKDAY_ALPHA_AT_RISK = 0.9f
 private const val WEEKDAY_ALPHA = 0.45f
-
-/** A day the forecast reached, drawn at its own full strength. */
-private const val FULL_ALPHA = 1f
 
 /**
  * The week ahead at a glance: what today looks like, then which of the days after it carry a
@@ -333,7 +332,7 @@ private fun TodayHeadline(today: DayOutlook, outlook: List<DayOutlook>) {
     SettlingText(
         text = weekAheadLabel(outlook),
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA),
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA),
         label = "weekAhead"
     )
 }
@@ -496,9 +495,6 @@ private const val NO_LOCATION_SET = "Set a location to see the forecast"
 /** The fetch worked and brought nothing back, which is about the place rather than the app. */
 private const val NO_FORECAST_FOR_LOCATION = "No forecast available for this location"
 
-/** Text that is present but not the point. */
-private const val MUTED_ALPHA = 0.5f
-
 private val STREAK_SEVERITY_DOT_SIZE = 10.dp
 
 @Composable
@@ -554,7 +550,7 @@ private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
             Text(
                 dayUnit(streak.currentDays),
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = SUPPORTING_ALPHA),
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         }
@@ -572,7 +568,7 @@ private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
             Text(
                 lastEventLabel,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
             )
         }
     }
@@ -594,7 +590,7 @@ private fun LongestStreak(longest: SymptomFreeStreak.Run?, currentYear: Int) {
         Text(
             "Longest streak",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = SUBDUED_ALPHA)
         )
         Spacer(Modifier.width(8.dp))
         // A second event is what creates the first gap to measure, so until then there is
@@ -614,7 +610,7 @@ private fun LongestStreak(longest: SymptomFreeStreak.Run?, currentYear: Int) {
     Text(
         rangeLabel,
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
     )
 }
 
@@ -636,13 +632,13 @@ private fun NotEnoughDataMessage(hint: String) {
     Text(
         NOT_ENOUGH_DATA,
         style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SUPPORTING_ALPHA)
     )
     Spacer(Modifier.height(4.dp))
     Text(
         hint,
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
     )
 }
 

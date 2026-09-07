@@ -63,6 +63,8 @@ import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.ui.components.SectionHeading
 import com.radami.migrainewatch.ui.components.PressureChart
 import com.radami.migrainewatch.ui.theme.alertColorPalette
+import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
+import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
 import java.time.Instant
 import java.time.ZoneId
 import kotlin.math.roundToInt
@@ -77,11 +79,6 @@ private enum class ChartVisibility { InView, OutOfView }
  * rows and the count of the ones it is holding back on separate schedules.
  */
 private data class AlertListing(val rows: List<AlertWindow>, val hidden: Int)
-
-/** Text that is present but not the point: an empty card, or a row the chart cannot show. */
-private const val MUTED_ALPHA = 0.5f
-
-private const val SECONDARY_TEXT_ALPHA = 0.6f
 
 @Composable
 fun PressureScreen(
@@ -129,7 +126,7 @@ fun PressureScreen(
                 Text(
                     "Updated ${state.lastUpdated?.let { timeFormatter.format(it) } ?: "—"}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
                 )
             }
         }
@@ -178,7 +175,7 @@ private fun PressureHistoryCard(
                             ChartStep.OneDay -> "3 days back · 4 days ahead"
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
                     )
                 }
                 Text(
@@ -212,7 +209,7 @@ private fun PressureHistoryCard(
             PressureChart(
                 readings = state.readings,
                 window = window,
-                rendering = state.selectedRange.rendering,
+                requestedRendering = state.selectedRange.rendering,
                 alerts = state.alertWindows,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -276,7 +273,7 @@ private fun AlertsCard(state: PressureUiState, window: ChartWindow) {
                 "Pressure events above ${formatThreshold(state.alertThresholdHpa)} hPa, " +
                     "shaded on the chart above",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_TEXT_ALPHA)
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
             )
             Spacer(Modifier.height(12.dp))
 
@@ -392,7 +389,7 @@ private fun AlertRow(alert: AlertWindow, color: Color, visibility: ChartVisibili
                 "${formatter.format(alert.start)} → ${formatter.format(alert.end)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface
-                    .copy(alpha = SECONDARY_TEXT_ALPHA * contentAlpha)
+                    .copy(alpha = SECONDARY_ALPHA * contentAlpha)
             )
             // A line of its own, short and left-aligned: at the end of the row or of the
             // times it would run under the log-symptoms button floating over this corner.

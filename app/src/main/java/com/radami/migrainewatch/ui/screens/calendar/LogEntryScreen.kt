@@ -50,6 +50,14 @@ import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.description
 import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.ui.theme.color
+import com.radami.migrainewatch.ui.theme.FAINT_ALPHA
+import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
+
+/**
+ * How much of a severity's own colour tints the card that selects it. A wash rather than a step
+ * off the emphasis scale: this one says "chosen", not "quieter than the thing beside it".
+ */
+private const val SELECTED_SEVERITY_FILL_ALPHA = 0.1f
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -134,7 +142,7 @@ private fun StepIndicator(currentStep: Int, totalSteps: Int) {
                 color = if (idx < currentStep)
                     MaterialTheme.colorScheme.primary
                 else
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = FAINT_ALPHA),
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -186,10 +194,14 @@ private fun SeverityOption(
         onClick = onClick,
         border = BorderStroke(
             width = if (selected) 2.dp else 1.dp,
-            color = if (selected) color else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+            color = if (selected) color else MaterialTheme.colorScheme.outline.copy(alpha = FAINT_ALPHA)
         ),
         colors = CardDefaults.outlinedCardColors(
-            containerColor = if (selected) color.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
+            containerColor = if (selected) {
+                color.copy(alpha = SELECTED_SEVERITY_FILL_ALPHA)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -210,7 +222,7 @@ private fun SeverityOption(
                 Text(
                     description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
                 )
             }
         }
@@ -232,7 +244,7 @@ private fun Step2Triggers(
     Text(
         "Optional — select all that apply",
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
     )
     Spacer(Modifier.height(4.dp))
     FlowRow(
@@ -279,7 +291,7 @@ private fun Step3Details(
     Text(
         "All details are optional",
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
     )
 
     LabelledChoice("Duration") {

@@ -22,8 +22,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.radami.migrainewatch.domain.ChartStep
+import com.radami.migrainewatch.ui.theme.SUPPORTING_ALPHA
 
 // What the marks under the chart stand for, drawn at swatch size from the same values.
+
+/** Small enough to read as a caption under the chart rather than as part of it. */
+private val LEGEND_LABEL_SIZE = 11.sp
 
 private val SWATCH_WIDTH = 24.dp
 
@@ -98,7 +102,11 @@ private fun LegendEntry(label: String, swatch: @Composable () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         swatch()
         Spacer(Modifier.width(4.dp))
-        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+        Text(
+            label,
+            fontSize = LEGEND_LABEL_SIZE,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = SUPPORTING_ALPHA)
+        )
     }
 }
 

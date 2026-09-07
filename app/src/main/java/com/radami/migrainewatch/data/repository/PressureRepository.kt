@@ -94,6 +94,18 @@ private data class SeriesLocation(val lat: Double, val lon: Double, val timezone
 private const val TAG = "PressureRepo"
 
 /**
+ * How far back the forecast endpoint returns history of its own (`past_days=30`). The line
+ * between what an ordinary refresh already covers and what the archive has to be asked for.
+ */
+private const val FORECAST_HISTORY_DAYS = 30L
+
+/** How far back to reach the first time, when there is no stored history to fill a gap in. */
+private const val INITIAL_BACKFILL_DAYS = 60L
+
+/** A forecast older than this is worth refetching. Open-Meteo publishes hourly. */
+private const val FORECAST_FRESHNESS_HOURS = 1L
+
+/**
  * [runCatching] with cancellation left alone.
  *
  * `runCatching` catches [Throwable], cancellation included, which would turn a fetch superseded
@@ -283,17 +295,17 @@ class PressureRepository @Inject constructor(
      */
     private suspend fun gapFillIfNeeded(loc: LocationData, timezone: String, now: Instant) {
         val lastHistorical = dao.getLatestHistorical(now)
-        val thirtyDaysAgo = now.minus(30, ChronoUnit.DAYS)
-        if (lastHistorical != null && !lastHistorical.dateTime.isBefore(thirtyDaysAgo)) return
+        val historyStart = now.minus(FORECAST_HISTORY_DAYS, ChronoUnit.DAYS)
+        if (lastHistorical != null && !lastHistorical.dateTime.isBefore(historyStart)) return
 
-        val gapStart = lastHistorical?.dateTime ?: now.minus(60, ChronoUnit.DAYS)
-        Log.d(TAG, "Fetching archive from ${formatDate(gapStart, timezone)} to ${formatDate(thirtyDaysAgo, timezone)}")
+        val gapStart = lastHistorical?.dateTime ?: now.minus(INITIAL_BACKFILL_DAYS, ChronoUnit.DAYS)
+        Log.d(TAG, "Fetching archive from ${formatDate(gapStart, timezone)} to ${formatDate(historyStart, timezone)}")
 
         val response = archiveApi.getArchive(
             latitude = loc.lat,
             longitude = loc.lon,
             startDate = formatDate(gapStart, timezone),
-            endDate = formatDate(thirtyDaysAgo, timezone),
+            endDate = formatDate(historyStart, timezone),
             timezone = timezone
         )
         val fetchedAt = Instant.now()
@@ -359,8 +371,7 @@ class PressureRepository @Inject constructor(
     suspend fun isForecastStale(): Boolean {
         val now = Instant.now()
         val fetchedAt = dao.getLatestForecastFetchTime(now) ?: return true
-        val oneHourAgo = now.minus(1, ChronoUnit.HOURS)
-        return fetchedAt.isBefore(oneHourAgo)
+        return fetchedAt.isBefore(now.minus(FORECAST_FRESHNESS_HOURS, ChronoUnit.HOURS))
     }
 
     private fun parseResponse(
