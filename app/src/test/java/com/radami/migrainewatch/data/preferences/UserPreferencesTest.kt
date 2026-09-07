@@ -9,6 +9,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -62,22 +63,28 @@ class UserPreferencesTest {
     }
 
     /**
-     * And the stream survives it. A `catch` that emitted and then let the flow complete would
-     * leave the location watch just as dead as one that rethrew — the failure would simply be
-     * quieter.
+     * And the stream carries on afterwards, picking the store back up when it can be read.
+     *
+     * The distinction this test exists for: a `catch` that emits and lets the flow complete
+     * passes for a fallback while leaving the location watch just as dead as an exception would
+     * — its collector returns, quietly, and never hears anything again. Only a stream that
+     * survives the failure can deliver the value after it.
+     *
+     * Collected with [take] rather than to the end, because a stream that ends is the defect:
+     * `toList` here would either hang or, on a flow that completed, quietly assert nothing.
      */
     @Test
     fun `a failed read does not end the stream`() = runTest {
+        var attempts = 0
         every { dataStore.data } returns flow {
+            if (attempts++ == 0) throw IOException("store unreadable")
             emit(preferencesOf(BERLIN_LAT, BERLIN_LON))
-            throw IOException("store became unreadable")
         }
 
-        val emissions = UserPreferences(dataStore).settings.toList()
+        val emissions = UserPreferences(dataStore).settings.take(2).toList()
 
-        assertEquals(2, emissions.size)
-        assertEquals(BERLIN_LAT, emissions.first().location.lat, 0.0)
-        assertEquals(AppSettings(), emissions.last())
+        assertEquals(AppSettings(), emissions.first())
+        assertEquals(BERLIN_LAT, emissions.last().location.lat, 0.0)
     }
 
     /** A failure that is not about reading the file is a bug, and is left to surface. */

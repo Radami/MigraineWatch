@@ -11,8 +11,9 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.retryWhen
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -46,6 +47,13 @@ class UserPreferences @Inject constructor(
 ) {
     private companion object {
         const val TAG = "UserPreferences"
+
+        /**
+         * How long to wait before reading the store again after it refused. Long enough that a
+         * store which is broken for good is not re-read in a tight loop for the life of the
+         * process, short enough that a transient failure heals while the user is still looking.
+         */
+        const val READ_RETRY_MILLIS = 10_000L
     }
 
     private object Keys {
@@ -62,8 +70,7 @@ class UserPreferences @Inject constructor(
     }
 
     /**
-     * Falls back to the defaults when the store cannot be read, rather than passing the failure
-     * on.
+     * Falls back to the defaults when the store cannot be read, and keeps reading.
      *
      * DataStore reports a failed read by throwing into the stream, which ends every collector
      * of it. Two of those cannot afford to end: a screen's, where the exception reaches
@@ -72,13 +79,26 @@ class UserPreferences @Inject constructor(
      * which is a single coroutine started once — its death is silent, and refetch-on-move
      * simply stops until the app is restarted.
      *
+     * [retryWhen] rather than `catch` for exactly that second reason. `catch` emits and then
+     * lets the flow complete, which leaves a collector no better off than an exception would: it
+     * returns, quietly, and never hears anything again. Resubscribing keeps the stream open, so
+     * a store that becomes readable again — a transient IO error, a device that was out of space
+     * — is picked up rather than waited out until the next launch.
+     *
      * Only [IOException], which is what a store that cannot be read raises; anything else is a
      * bug in the reading rather than in the file, and is left to surface.
      */
-    val settings: Flow<AppSettings> = dataStore.data.catch { cause ->
-        if (cause !is IOException) throw cause
+    val settings: Flow<AppSettings> = dataStore.data.retryWhen { cause, attempt ->
+        if (cause !is IOException) return@retryWhen false
         Log.e(TAG, "Could not read settings; falling back to defaults", cause)
-        emit(emptyPreferences())
+
+        // Once, on the first failure. Collectors need something to work with, but a fallback
+        // republished on every attempt would have every screen recompute itself on a timer for
+        // as long as the store stayed broken.
+        if (attempt == 0L) emit(emptyPreferences())
+
+        delay(READ_RETRY_MILLIS)
+        true
     }.map { prefs ->
         AppSettings(
             alertThresholdHpa = prefs[Keys.ALERT_THRESHOLD] ?: AlertSensitivity.Default.thresholdHpa,
