@@ -31,17 +31,13 @@ private val LEGEND_LABEL_SIZE = 11.sp
 
 private val SWATCH_WIDTH = 24.dp
 
-/** Risk gets one swatch per window in view, so they are narrowed to leave the legend on one line. */
+/** Narrower than other swatches so one-per-window risk entries still fit one line. */
 private val RISK_SWATCH_WIDTH = 14.dp
 
 /**
- * What the band entry is called, which has to name the step: "daily min/max" over three-hourly
- * data would describe a spread the chart is not showing.
- *
- * Only the daily chip asks for a band today, so only the first branch is reached by any screen.
- * The others are what makes the rendering a per-chip choice rather than a rule — see
- * [com.radami.migrainewatch.ui.screens.pressure.TimeRange] — and they are covered by tests so
- * that changing one chip's rendering does not also need this rewriting.
+ * Band entry label, naming the step so it doesn't misdescribe the spread being shown.
+ * Only the daily chip uses a band today; the other branch keeps rendering a per-chip
+ * choice rather than a rule.
  */
 internal fun rangeLegendLabel(step: ChartStep): String = when (step) {
     ChartStep.OneDay -> "daily min/max"
@@ -57,8 +53,8 @@ internal fun ChartLegend(
     rangeLabel: String,
     alertColors: List<Color>,
 ) {
-    // Wraps rather than clips: the risk entry appears and disappears with the data, and at a
-    // large font scale the three entries no longer fit one line.
+    // Wraps rather than clips: entry count varies with the data and can exceed one line
+    // at a large font scale.
     FlowRow(
         modifier = Modifier
             .fillMaxWidth()
@@ -66,12 +62,12 @@ internal fun ChartLegend(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // "now" always leads, so the legend stays stable when switching chart ranges.
+        // "now" always leads, so the legend stays stable across chart ranges.
         LegendEntry(label = "now") {
             LegendLine(color = nowLineColor.copy(alpha = NOW_LINE_ALPHA), dashed = true)
         }
 
-        // The two are alternatives: a band replaces the sampled line rather than joining it.
+        // Alternatives: a band replaces the line rather than joining it.
         when (rendering) {
             ChartRendering.MinMaxBand ->
                 LegendEntry(label = rangeLabel) { LegendRangeSwatch(color = seriesColor) }
@@ -81,8 +77,7 @@ internal fun ChartLegend(
         }
 
         if (alertColors.isNotEmpty()) {
-            // One swatch per shaded window, in chart order, so the legend says how many
-            // risk periods are in view as well as what the shading means.
+            // One swatch per shaded window, in chart order, so count is visible too.
             LegendEntry(label = if (alertColors.size == 1) "risk window" else "risk windows") {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     alertColors.forEach { color ->

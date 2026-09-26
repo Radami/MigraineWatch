@@ -24,12 +24,8 @@ import java.time.Instant
 import java.time.LocalDate
 
 /**
- * Relief, which the log entry flow records as a short list of chips rather than a slider.
- *
- * The distinction the tests exist for is 0% against no answer: a chip list makes "the
- * medication did nothing" and "I did not say" one tap apart, and storing the first as the
- * second — or the second as a zero — loses the only part of the entry a user could disagree
- * with later.
+ * Relief is recorded as chips, not a slider, so 0% and "unanswered" must stay distinguishable.
+ * Confusing "did nothing" with "no answer" loses data a user could later disagree with.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class LogEntryViewModelTest {

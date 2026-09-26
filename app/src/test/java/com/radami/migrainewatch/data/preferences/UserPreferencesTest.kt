@@ -17,12 +17,8 @@ import org.junit.Test
 import java.io.IOException
 
 /**
- * What the settings stream does when the store underneath it cannot be read.
- *
- * DataStore reports a failed read by throwing into the stream rather than returning anything,
- * and an exception in a flow ends every collector of it. Two of those must not end: a screen's,
- * where it reaches `viewModelScope` and takes the process down, and the repository's watch for
- * the user moving — one coroutine, started once, whose death is silent.
+ * DataStore signals a failed read by throwing into the flow, which would otherwise end every
+ * collector. That must not kill the screen's viewModelScope or the repository's location watch.
  */
 class UserPreferencesTest {
 
@@ -63,15 +59,8 @@ class UserPreferencesTest {
     }
 
     /**
-     * And the stream carries on afterwards, picking the store back up when it can be read.
-     *
-     * The distinction this test exists for: a `catch` that emits and lets the flow complete
-     * passes for a fallback while leaving the location watch just as dead as an exception would
-     * — its collector returns, quietly, and never hears anything again. Only a stream that
-     * survives the failure can deliver the value after it.
-     *
-     * Collected with [take] rather than to the end, because a stream that ends is the defect:
-     * `toList` here would either hang or, on a flow that completed, quietly assert nothing.
+     * A `catch` that emits and completes looks like a fallback but still kills the collector.
+     * Uses [take] instead of collecting to the end, since a stream that ends is the bug.
      */
     @Test
     fun `a failed read does not end the stream`() = runTest {

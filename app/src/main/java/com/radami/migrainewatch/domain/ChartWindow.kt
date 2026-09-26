@@ -8,10 +8,7 @@ private const val SECONDS_PER_HOUR = 3600L
 /** Daily points sit at local noon, so a day's label lands in the middle of its own data. */
 private const val DAILY_ANCHOR_HOUR = 12
 
-/**
- * How much time one point of the pressure chart covers, which also fixes how far the whole
- * chart reaches: eight points either side of the anchor, so the step is the only dial.
- */
+/** How much time one chart point covers; also fixes how far the chart reaches overall. */
 enum class ChartStep(val hours: Int) {
     ThreeHours(3),
     SixHours(6),
@@ -21,16 +18,9 @@ enum class ChartStep(val hours: Int) {
 }
 
 /**
- * The span the pressure chart draws, and the single definition of where a moment in time
- * lands on it.
- *
- * The chart is anchored on "now" snapped to the step: three steps of history sit before the
- * anchor and four ahead of it, always at the same eight indices whatever the step. Callers
- * need the same maths the chart draws with — the Pressure screen has to say which alerts its
- * chart can actually show — so it lives here rather than inside the composable, where it
- * would have to be re-derived from a step count and be untestable besides. It sits in the
- * domain and not beside the chart for the same reason: a ViewModel deciding what its chart
- * can reach should not have to reach into the view layer to find out.
+ * The span the pressure chart draws, and the single definition of where a moment lands on it.
+ * Anchored on "now" snapped to the step: three steps of history, four ahead. Lives in the
+ * domain, not the composable, so callers like the ViewModel can use the same math.
  */
 data class ChartWindow(
     val anchorEpochSecond: Long,
@@ -45,8 +35,7 @@ data class ChartWindow(
 
         /**
          * The window around [now]. Sub-day steps floor to the step boundary; the daily step
-         * snaps to local noon instead, which keeps the "now" line near the current day's
-         * label rather than halfway to the next one during the morning.
+         * snaps to local noon so the "now" line stays near the current day's label.
          */
         fun around(
             now: Instant,
@@ -68,9 +57,8 @@ data class ChartWindow(
     }
 
     /**
-     * How far the plot area reaches past the first and last point. The daily step is drawn
-     * segmented — one cell per day with its point at the centre — so the plot begins half a
-     * step before the first point. The hourly steps put their points on the edges themselves.
+     * How far the plot area reaches past the first/last point. The daily step draws segmented
+     * cells with the point centred, so it needs a half-step margin; hourly steps don't.
      */
     private val edgeMarginSeconds: Long = when (step) {
         ChartStep.OneDay -> step.seconds / 2
@@ -78,11 +66,8 @@ data class ChartWindow(
     }
 
     /**
-     * The instant point [index] is sampled at.
-     *
-     * Exact multiples of the step, so a daily window crossing a DST boundary has its later
-     * points an hour off local noon. That cannot move a point onto another date, so the day
-     * labels stay right; only the segment edges stop landing exactly on midnight.
+     * The instant point [index] is sampled at, in exact multiples of the step. A daily window
+     * crossing DST can drift later points an hour off local noon, but never onto another date.
      */
     fun epochSecondAt(index: Int): Long =
         anchorEpochSecond + (index - ANCHOR_INDEX) * step.seconds
@@ -95,9 +80,8 @@ data class ChartWindow(
         ANCHOR_INDEX + (instant.epochSecond - anchorEpochSecond).toFloat() / step.seconds
 
     /**
-     * The instant chart x-value [x] falls on: the inverse of [xOf], defined between points as
-     * well as on them. The chart needs it for the strip of plot that reaches past its last
-     * point, which is a position on screen before it is an instant in time.
+     * The instant chart x-value [x] falls on: the inverse of [xOf], defined between points too.
+     * Needed for the strip of plot past the last point.
      */
     fun instantAt(x: Float): Instant =
         Instant.ofEpochSecond(anchorEpochSecond + ((x - ANCHOR_INDEX) * step.seconds).toLong())
@@ -110,10 +94,7 @@ data class ChartWindow(
     val lastVisible: Instant =
         Instant.ofEpochSecond(epochSecondAt(POINT_INDICES.last) + edgeMarginSeconds)
 
-    /**
-     * Whether any part of [alert] falls inside the plot area. An alert that merely touches an
-     * edge does not count: it would draw a band of no width, which reads as a missing one.
-     */
+    /** Whether any part of [alert] falls inside the plot area (merely touching an edge doesn't count). */
     fun covers(alert: AlertWindow): Boolean =
         alert.end.isAfter(firstVisible) && alert.start.isBefore(lastVisible)
 }

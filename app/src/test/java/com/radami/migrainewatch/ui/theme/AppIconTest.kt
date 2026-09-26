@@ -8,17 +8,9 @@ import java.io.File
 import java.util.Locale
 
 /**
- * That the app's mark is the same mark wherever it is drawn.
- *
- * It is described three times over and cannot be described once: a vector drawable cannot
- * include another, and the three copies are not interchangeable anyway — the launcher
- * foreground carries the mark in colour with its cream dot, the themed layer needs the stroke
- * alone because the dot silhouettes into a bump at the trough, and the notification icon is
- * refitted to a 24dp canvas with the dot dropped entirely.
- *
- * What the copies do have to agree on is the geometry the two 108dp layers share and the colour
- * the brand is. Those are what "keep the two in step" asked a reader to do by hand, and what
- * this checks instead.
+ * Checks the app mark stays consistent across its three separate drawable copies (a vector
+ * drawable can't include another). They must agree on the shared 108dp geometry and brand
+ * color, which used to be kept in sync by hand.
  */
 class AppIconTest {
 
@@ -51,11 +43,7 @@ class AppIconTest {
             PATH_DATA.findAll(source).single { it.groupValues[1] == name }.groupValues[2]
     }
 
-    /**
-     * The themed layer is the launcher layer's stroke with the colour thrown away, so the two
-     * have to trace the same line. Drifting apart would show as a home screen whose icon changes
-     * shape when the wallpaper theme is turned on.
-     */
+    /** The themed layer is the launcher stroke with color dropped; they must trace the same line. */
     @Test
     fun `the themed icon traces the same mark as the launcher icon`() {
         val foreground = drawable(FOREGROUND)
@@ -69,9 +57,8 @@ class AppIconTest {
     }
 
     /**
-     * The launcher icon is where the brand colour is drawn largest, and play-assets/make_icon.py
-     * renders the store listing straight from this file. A wordmark and an app icon in two
-     * different terracottas is the kind of drift nobody notices until they are side by side.
+     * play-assets/make_icon.py renders the store listing straight from this file, so a color
+     * drift here would put a mismatched terracotta on the store listing.
      */
     @Test
     fun `the launcher icon is drawn in the brand terracotta`() {

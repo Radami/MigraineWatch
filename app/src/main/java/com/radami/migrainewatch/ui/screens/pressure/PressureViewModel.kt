@@ -27,13 +27,8 @@ import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 /**
- * The chip above the chart: the resolution each one asks for, and what it asks to be drawn.
- *
- * A band says how far pressure moved inside a step, so it is worth drawing only where a step
- * is long enough to have moved: over a day it opens into something readable, over three hours
- * it collapses onto the line it is drawn around and reads as a thicker line. So the hourly
- * chips take the line and the daily chip takes the band — a per-chip choice rather than a rule
- * the chart infers, which is what lets the two be compared by changing one value here.
+ * The chip above the chart: resolution and drawing mode. A min/max band only reads well over a
+ * long step (a day); shorter steps use a plain line instead. Set per-chip, not inferred by the chart.
  */
 enum class TimeRange(
     val label: String,
@@ -61,23 +56,9 @@ data class PressureUiState(
     val selectedRange: TimeRange = TimeRange.Days7,
     val locationName: String = "",
     val lastUpdated: Instant? = null,
-    /**
-     * How the fetching is going. The chart cannot explain an empty plot on its own — an empty
-     * table looks the same whether a fetch is out, failed, or came back with nothing — so the
-     * card is told, the same way the Today screen's outlook is.
-     */
+    /** How the fetch is going. An empty table alone can't tell in-flight from failed from empty. */
     val refreshState: RefreshState = RefreshState.InFlight,
-    /**
-     * Whether the first state has been computed, as distinct from anything about the data.
-     *
-     * Nothing on screen reads it: what a reader needs to know while waiting is already carried
-     * by [refreshState] and the chart's empty message, which say *why* there is nothing
-     * rather than merely that there is nothing yet. What this marks is the boundary between
-     * the defaults this state starts life with and the first emission the flow produced — the
-     * one thing no other field can express, because every other default is also a value the
-     * screen legitimately settles on. Kept for that: it is what lets a caller tell a computed
-     * state from an unstarted one.
-     */
+    /** Whether the first state has been computed. Lets a caller tell "computed" apart from "still default". */
     val isLoading: Boolean = true
 )
 
@@ -89,12 +70,7 @@ class PressureViewModel @Inject constructor(
 ) : ViewModel() {
 
     private companion object {
-        /**
-         * How much history to read. The widest chip draws three and a half days of it, and
-         * detection reads back [PressureAlertUseCase.DETECTION_HISTORY_HOURS] to find where an
-         * event underway began; a whole day over the longer of the two absorbs the drift
-         * between opening the screen and each later emission.
-         */
+        /** Covers the widest chip's span plus detection's lookback, with a day of slack for drift. */
         const val HISTORY_DAYS = 4L
     }
 
@@ -102,8 +78,7 @@ class PressureViewModel @Inject constructor(
     val uiState: StateFlow<PressureUiState> = _uiState.asStateFlow()
 
     init {
-        // No dispatcher of its own: both calls do their own work elsewhere — the staleness
-        // check in Room's executor, the fetch in the repository's scope.
+        // Staleness check runs in Room's executor, the fetch in the repository's own scope.
         viewModelScope.launch {
             if (pressureRepository.isForecastStale()) {
                 pressureRepository.refresh()
@@ -112,18 +87,13 @@ class PressureViewModel @Inject constructor(
         observeData()
     }
 
-    /**
-     * The range only picks the resolution the chart draws at, so it is written straight to the
-     * state rather than fed back through the data flow: the chip has to select on the tap, not
-     * a database round trip later, and none of the data below depends on it.
-     */
+    /** Written straight to state, not through the data flow: selection must be instant, not wait on a DB round trip. */
     fun selectRange(range: TimeRange) {
         _uiState.update { it.copy(selectedRange = range) }
     }
 
     private fun observeData() {
-        // Fixed when the screen opens, as the Today screen's is: a range that slid with the
-        // clock would resubscribe the query on every emission.
+        // Fixed at screen open; a clock-following range would resubscribe the query every emission.
         val queryStart = Instant.now()
         val from = queryStart.minus(HISTORY_DAYS, ChronoUnit.DAYS)
         val to = queryStart.plus(PressureAlertUseCase.FORECAST_DAYS, ChronoUnit.DAYS)
@@ -135,19 +105,15 @@ class PressureViewModel @Inject constructor(
                 pressureRepository.refreshState
             ) { readings, settings, refreshState -> PressureInputs(readings, settings, refreshState) }
                 .collectLatest { (readings, settings, refreshState) ->
-                    // Re-evaluated per emission so the current reading and the relevance of an
-                    // event don't go stale while the screen stays open.
+                    // Re-evaluated per emission so nothing goes stale while the screen stays open.
                     val now = Instant.now()
 
-                    // Detection goes through the shared use case, so the windows shaded here
-                    // are exactly the ones the Today banner and the notifications describe
-                    // rather than a second opinion on the same data.
+                    // Shared use case, so this matches exactly what the Today banner and notifications describe.
                     val alerts = withContext(Dispatchers.Default) {
                         alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now)
                     }
 
-                    // The last measured reading, or the earliest forecast one if the screen is
-                    // open before any measurement has landed.
+                    // Last measured reading, or the earliest forecast one if opened before any measurement lands.
                     val current = readings.lastOrNull { it.dateTime.isBefore(now) }
                         ?: readings.firstOrNull()
 

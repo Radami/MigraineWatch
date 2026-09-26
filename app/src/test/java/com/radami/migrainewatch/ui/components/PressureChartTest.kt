@@ -13,12 +13,8 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 
 /**
- * What the chart works out before it draws anything: which steps hold a range, which rendering
- * that leaves it able to draw, the series it plots, and how far it carries that series past its
- * last point to reach the edge of the plot.
- *
- * The drawing itself is not covered here — it needs a Vico draw context and a canvas — so these
- * cover the decisions rather than the pixels.
+ * Covers the chart's pre-draw decisions (ranges, rendering mode, plotted series, edge offset),
+ * not the actual pixels — that needs a Vico draw context and canvas.
  */
 class PressureChartTest {
 
@@ -38,12 +34,7 @@ class PressureChartTest {
             fetchedDateTime = NOW
         )
 
-        /**
-         * Hourly readings spanning the whole of [window] and an hour past each end, so nothing
-         * a test asks for falls outside the data unless it means to. The pressure at any hour
-         * is that hour's offset from the window's anchor, which makes an expected value
-         * something a test can state rather than look up.
-         */
+        /** Spans [window] plus an hour each side; pressure = hours from anchor, so expected values are easy to state. */
         fun coveringReadings(window: ChartWindow): List<PressureReading> {
             val first = window.epochSecondAt(ChartWindow.POINT_INDICES.first) - HOUR
             val last = window.epochSecondAt(ChartWindow.POINT_INDICES.last) + HOUR
@@ -261,10 +252,7 @@ class PressureChartTest {
         assertNull(offsetAt(lastIndex + 0.5f, lastIndex))
     }
 
-    /**
-     * The chart draws nothing at all from an empty pair, so this is also the question "is there
-     * anything to draw" — the single decision the card's empty message hangs off.
-     */
+    /** An empty edge pair is also the signal the empty-state card's message hangs off. */
     @Test
     fun `a window the readings do not reach has no edges to plot`() {
         val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
@@ -292,11 +280,7 @@ class PressureChartTest {
 
     // --- consecutiveRuns ----------------------------------------------------------------------
 
-    /**
-     * A gap in the readings has to break the drawing where it falls. The chart drops a point it
-     * cannot sample, so a hole arrives at the drawing as a jump in the indices — and a run
-     * traced straight across one would draw a band or a line over steps that hold no data.
-     */
+    /** A gap must break the drawing: an unsampled point becomes a jump in indices, not a smoothed-over run. */
     @Test
     fun `a jump in the indices starts a new run`() {
         val runs = consecutiveRuns(listOf(0, 1, 2, 5, 6)) { it }
@@ -326,10 +310,8 @@ class PressureChartTest {
     // --- rangeLegendLabel -------------------------------------------------------------------
 
     /**
-     * The label has to name the step it describes, not the one chip that happens to ask for a
-     * band today: "daily min/max" over six-hourly data would claim a spread the chart is not
-     * showing. Pinned because moving a chip to [ChartRendering.MinMaxBand] is a one-value change
-     * that should not also need this rewriting — see TimeRange.
+     * Must name the actual step, not whichever chip asked for a band, or the label would claim
+     * a spread the chart isn't showing.
      */
     @Test
     fun `the band legend names the step it is drawn at`() {

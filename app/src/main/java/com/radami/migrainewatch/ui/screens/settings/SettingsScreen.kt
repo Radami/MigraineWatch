@@ -68,20 +68,18 @@ fun SettingsScreen(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // The permission can be revoked, or granted from the system settings, while the app sits in
-    // the background — so it is re-read on every resume rather than once at launch. Kept at the
-    // screen root: an item scrolled out of the LazyColumn below would be disposed.
+    // Re-read on every resume since permission can change in the background. Kept at the screen
+    // root, not inside a LazyColumn item, which would be disposed once scrolled out of view.
     LifecycleResumeEffect(Unit) {
         viewModel.refreshPermissionState()
         onPauseOrDispose { }
     }
 
     if (BuildConfig.DEBUG) {
-        // Collected at the screen root rather than inside the debug section: a LazyColumn item
-        // that scrolls out of view is disposed, and would take the subscription with it.
+        // Collected at the screen root so scrolling the debug section out of view doesn't drop it.
         LaunchedEffect(Unit) {
             viewModel.debugMessages.collect { message ->
-                // The newest outcome is the interesting one, so it replaces rather than queues.
+                // Newest outcome replaces the old one rather than queueing.
                 snackbarHostState.currentSnackbarData?.dismiss()
                 snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
             }
@@ -249,10 +247,8 @@ private fun SettingsList(viewModel: SettingsViewModel) {
             item { HorizontalDivider() }
             item { SettingsSectionHeading("Debug") }
             item {
-                // Drives the alert pipeline over whatever forecast is loaded. The mock data is
-                // built to cover every sensitivity preset on its own, so there is nothing to
-                // set up first — DebugAlertReceiver can still swap the forecast shape over adb
-                // in the rare case a different one is wanted.
+                // Drives the alert pipeline over whatever forecast is loaded; mock data already
+                // covers every sensitivity preset, so no setup is needed.
                 Column(modifier = Modifier.padding(vertical = 4.dp)) {
                     // Short labels and tight padding so the three fit one row; the full action
                     // is spelled out in each content description. FlowRow rather than Row so
@@ -310,11 +306,7 @@ private fun SettingsList(viewModel: SettingsViewModel) {
 private val DEBUG_ACTION_SPACING = 0.dp
 private val DebugActionPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
 
-/**
- * The leading space a section heading needs here. Settings has no cards, so a heading follows
- * the previous section's content directly rather than a card edge, and has to open the gap
- * itself.
- */
+/** Top space a heading needs here since Settings has no cards to open a gap against. */
 private val SECTION_HEADING_TOP_SPACE = 8.dp
 
 /** [SectionHeading] with the space Settings needs above it. */

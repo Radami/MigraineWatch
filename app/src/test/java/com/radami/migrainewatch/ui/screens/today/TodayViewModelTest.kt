@@ -53,11 +53,7 @@ class TodayViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
-    /**
-     * How the fetching went, as the screen sees it. Mutable so a test can put the repository in
-     * a state and read what the card makes of it; [RefreshState.Updated] by default, because
-     * every test that is not about the gap wants a fetch that has been and gone.
-     */
+    /** Mutable so tests can drive the outlook-gap state; defaults to a completed fetch. */
     private val refreshState = MutableStateFlow(RefreshState.Updated)
 
     @Before
@@ -67,8 +63,7 @@ class TodayViewModelTest {
         every { userPreferences.settings } returns flowOf(AppSettings())
         every { symptomRepository.getAllEntries() } returns flowOf(emptyList())
 
-        // Combined into the screen's state, so a mock that never emits would leave the whole
-        // flow silent and every wait for a loaded state hanging.
+        // A mock that never emits here would leave the combined flow silent forever.
         every { pressureRepository.refreshState } returns refreshState
     }
 
@@ -78,11 +73,8 @@ class TodayViewModelTest {
     }
 
     /**
-     * The first state the screen would actually render.
-     *
-     * Detection runs on [Dispatchers.Default], which the test scheduler has no say over, so
-     * advancing it proves nothing: waiting on the state itself is what rules out reading the
-     * placeholder the ViewModel starts with. Same helper as PressureViewModelTest, same reason.
+     * Detection runs on [Dispatchers.Default], outside the test scheduler's control, so
+     * advancing time proves nothing — must wait on the actual state instead.
      */
     private suspend fun TodayViewModel.loadedState(): TodayUiState =
         uiState.first { !it.isLoading }
@@ -113,9 +105,8 @@ class TodayViewModelTest {
     @Test
     fun `an event that has already finished is not offered to the banner`() = runTest {
         val now = Instant.now()
-        // A 10 hPa drop that ended two hours ago: inside the relevance window, so it still
-        // counts as current and still marks its day — but the banner warns, and there is
-        // nothing left to warn about.
+        // Ended 2h ago, inside the relevance window, so it still marks its day but the
+        // banner has nothing left to warn about.
         val end = now.minus(2, ChronoUnit.HOURS)
         val readings = listOf(
             PressureReading(end.minus(24, ChronoUnit.HOURS), 1020f, 1020f, now),
@@ -126,8 +117,7 @@ class TodayViewModelTest {
 
         val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
 
-        // Waited for rather than advanced: an empty list is also what an unloaded state holds,
-        // so advancing the scheduler would let this pass without the screen ever loading.
+        // Waited for, not advanced: an unloaded state also holds an empty list.
         assertTrue(viewModel.loadedState().pendingAlerts.isEmpty())
     }
 
@@ -159,8 +149,7 @@ class TodayViewModelTest {
     @Test
     fun `an event already under way is reported as under way, not as the next one coming`() = runTest {
         val now = Instant.now()
-        // A 10 hPa drop that began six hours ago and has six to run: still pending, because it
-        // has not finished, but its start is in the past and "starts" would be a lie about it.
+        // Started 6h ago, 6h left: still pending, but "starts" would misdescribe it.
         val readings = listOf(
             PressureReading(now.minus(6, ChronoUnit.HOURS), 1020f, 1020f, now),
             PressureReading(now.plus(6, ChronoUnit.HOURS), 1010f, 1010f, now)
@@ -206,8 +195,7 @@ class TodayViewModelTest {
     @Test
     fun `readings that stop before today are a forecast fallen behind`() = runTest {
         val now = Instant.now()
-        // A stale cache: history only, nothing covering today or after. Something did arrive
-        // once, so the card dates what it has rather than blaming a connection it never tested.
+        // Stale cache, history only. Card dates what it has instead of blaming the connection.
         val readings = (1..12).map { hoursAgo ->
             PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS), 1013f, 1013f, now)
         }
@@ -239,10 +227,8 @@ class TodayViewModelTest {
     }
 
     /**
-     * The distinction the card exists to make. An empty table is the same table whether the
-     * fetch failed, is still out, or came back with nothing, so the reason has to come from the
-     * repository — and only one of the three is worth telling the reader to check their
-     * connection over.
+     * An empty table looks the same whether the fetch failed, is in flight, or found nothing,
+     * so the reason must come from the repository, not the data.
      */
     @Test
     fun `no readings behind a failed fetch is a failed fetch`() = runTest {
@@ -256,14 +242,9 @@ class TodayViewModelTest {
     }
 
     /**
-     * The other half of that, and the one the card got wrong once the fetch started reporting
-     * back: a stored series does not reach a screen the moment the fetch that stored it
-     * returns. Room delivers a committed write several executor hops later, so every cold start
-     * passes through "the fetch succeeded and the readings are still empty".
-     *
-     * Read as an absent forecast, that pairing puts a wrong message on the card for a frame or
-     * three of every first launch — and the outlook card animates its placeholder in and back
-     * out, which stretches those frames into something the reader actually sees.
+     * Room delivers a committed write several executor hops after the fetch returns, so every
+     * cold start briefly passes through "succeeded, but readings still empty" — misread as an
+     * absent forecast, that flashed a wrong message for a few frames of every launch.
      */
     @Test
     fun `a fetch that has landed but whose readings have not is still loading`() = runTest {
@@ -276,11 +257,7 @@ class TodayViewModelTest {
         assertEquals(OutlookGap.Loading, state.outlookGap)
     }
 
-    /**
-     * The case the old card got wrong: Room answers an empty table straight away, long before
-     * the fetch that will fill it has been anywhere, and reporting that as a failure blames the
-     * connection for a request still in the air.
-     */
+    /** Room answers empty immediately, before the fetch even runs; reporting failure here is wrong. */
     @Test
     fun `no readings while a fetch is still out is not a failure`() = runTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
@@ -304,10 +281,7 @@ class TodayViewModelTest {
         assertEquals(OutlookGap.NoLocation, state.outlookGap)
     }
 
-    /**
-     * A forecast that arrived and fell behind is dated, not diagnosed, however the last fetch
-     * went: the readings on hand are evidence enough, and they say more than the fetch does.
-     */
+    /** Stale readings on hand are dated, not diagnosed, whatever the last fetch's own result was. */
     @Test
     fun `readings that fell behind are dated even when the last fetch failed`() = runTest {
         val now = Instant.now()
@@ -324,12 +298,7 @@ class TodayViewModelTest {
         assertNotNull(state.lastUpdated)
     }
 
-    /**
-     * The boundary the two gaps sit either side of. A forecast that covers today and stops
-     * short of the week is the ordinary state of a forecast, not a failure: the strip draws it
-     * with its tail faded and the label says how far it got, so reporting a gap here would
-     * replace a working card with an error.
-     */
+    /** Covering today but stopping short of the week is normal, not a failure to report as a gap. */
     @Test
     fun `a forecast covering only today is not a gap`() = runTest {
         val now = Instant.now()
@@ -351,9 +320,8 @@ class TodayViewModelTest {
     }
 
     /**
-     * The composition, not either half of it: `coverageEnd` and `DayOutlook.forecast` each
-     * looked right on their own while the screen still refused to call its own last day clear.
-     * What pins it is the series shape the app is actually handed.
+     * Regression: `coverageEnd` and `DayOutlook.forecast` each looked right alone, but together
+     * still refused to call the last day clear. Pins the actual series shape the app is handed.
      */
     @Test
     fun `the last outlook day is clear when the forecast ends at 23-00 on it`() = runTest {
@@ -361,10 +329,8 @@ class TodayViewModelTest {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now()
 
-        // What Open-Meteo returns for forecast_days=7: whole days of hourly readings, so the
-        // last slot is 23:00 on the seventh day rather than midnight on the eighth. Built from
-        // wall-clock times, the way the response is parsed, so a DST week keeps this shape.
-        // Flat, so nothing is detected and every day falls through to the coverage check.
+        // Mirrors Open-Meteo's forecast_days=7 shape: last slot is 23:00 on day 7, not midnight
+        // on day 8. Flat values, so nothing is detected and every day falls to the coverage check.
         val readings = (0 until DayOutlook.DAYS).flatMap { day ->
             (0 until HOURS_PER_DAY).map { hour ->
                 val at = today.plusDays(day.toLong()).atTime(hour, 0).atZone(zone).toInstant()

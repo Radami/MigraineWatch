@@ -24,11 +24,7 @@ class MockDataInterceptor : Interceptor {
     }
 
     companion object {
-        /**
-         * Which forecast shape is served. [Scenario.THREE_EVENTS] covers every alert
-         * sensitivity on its own, so this is only changed by the tests and by
-         * [com.radami.migrainewatch.debug.DebugAlertReceiver] over adb.
-         */
+        /** Which forecast shape is served; changed by tests and by DebugAlertReceiver over adb. */
         var currentScenario: Scenario = Scenario.THREE_EVENTS
 
         /** 30 days of history and the 7-day forecast Open-Meteo returns, hour by hour. */
@@ -36,25 +32,15 @@ class MockDataInterceptor : Interceptor {
         private const val LAST_HOUR = 168
 
         /**
-         * Three back-to-back events fill the Pressure chart's 7 days range, which spans
-         * 3 days behind to 4 ahead: a 12 hPa drop already under way, the 9 hPa recovery from
-         * it, then a 7 hPa drop. Each event's turning point is where the next one starts,
-         * so the detector reports three separate alerts and the sensitivity presets peel them
-         * off one at a time — High (6) shows all three, Medium (8) two, Low (10) one.
-         *
-         * Those deltas are exactly 12, 9 and 7 because no wobble is laid over them. An event
-         * sized 1 hPa clear of a preset boundary with noise laid over it can only be trusted
-         * by simulating every phase of the noise, which is what the previous shape needed.
+         * 3 back-to-back events (12/9/7 hPa) sized so each sensitivity preset shows a
+         * different count: High 3, Medium 2, Low 1. No noise, so the deltas stay exact.
          */
         private val THREE_EVENT_CURVE = listOf(
             Anchor(FIRST_HOUR, 0f),
-            // Two completed excursions inside the past month. They are older than any screen
-            // reaches, so they only ever serve as history for the chart's data to sit on.
+            // Two older excursions, outside chart range: history filler only.
             Anchor(-250, 0f), Anchor(-226, -15f), Anchor(-224, -15f), Anchor(-200, 0f),
             Anchor(-160, 0f), Anchor(-136, -15f), Anchor(-134, -15f), Anchor(-110, 0f),
-            // Pressure climbs gently into the peak rather than arriving along a flat plateau.
-            // An event is pinned to the first reading holding its extreme value, so a dead
-            // flat approach would date the drop from the far end of the plateau.
+            // Gentle climb into the peak, not a flat plateau, so the drop dates correctly.
             Anchor(-36, -0.8f), Anchor(-12, 0f),
             Anchor(8, -12f), Anchor(12, -12f),
             Anchor(32, -3f), Anchor(36, -3f),
@@ -63,17 +49,9 @@ class MockDataInterceptor : Interceptor {
         )
 
         /**
-         * One event more than the alert palette has colours, which is what bounds the Alerts
-         * card: it lists three and says how many it is holding back. Four back-to-back events
-         * laid out like [THREE_EVENT_CURVE] — 20 h of movement, then a 4 h plateau where the
-         * next one begins — so the detector reports four separate alerts.
-         *
-         * Every delta is 12 hPa or more, well clear of all three presets, so the count is four
-         * at every sensitivity. A scenario about what happens above three events must not also
-         * be a scenario about which of them qualify.
-         *
-         * The last event ends 80 h out, so all four sit inside the widest chart range whatever
-         * time of day the test runs at — the cap has to be the only reason a row goes unshaded.
+         * 4 back-to-back events, one more than the Alerts card's 3-item palette can list.
+         * Every delta is 12+ hPa so all four show at every sensitivity, and all sit
+         * within the widest chart range regardless of time of day.
          */
         private val FOUR_EVENT_CURVE = listOf(
             Anchor(FIRST_HOUR, 0f),
@@ -86,14 +64,8 @@ class MockDataInterceptor : Interceptor {
         )
 
         /**
-         * A storm arriving and clearing: a 9 hPa drop and the 9 hPa recovery behind it, each
-         * over 20 h so a 24 h detection window sees the whole of one.
-         *
-         * 9 sits a clear 1 hPa inside both neighbouring presets, which is what makes the two
-         * properties the tests lean on hold everywhere rather than at one location: the events
-         * always show at High and Medium, and never at Low. `UserJourneyTest.scenarioC` walks
-         * the sensitivity down until the banner goes away, so "never at Low" has to be a
-         * guarantee, not a calibration.
+         * A 9 hPa drop and its 9 hPa recovery, each over 20h. 9 sits 1 hPa clear of both
+         * neighboring presets, so it reliably shows at High/Medium and never at Low.
          */
         private val TWO_EVENT_CURVE = listOf(
             Anchor(FIRST_HOUR, 0f),
@@ -113,11 +85,7 @@ class MockDataInterceptor : Interceptor {
             Scenario.NO_EVENTS -> NO_EVENT_CURVE
         }
 
-        /**
-         * The curve's value at [hour], eased between the anchors on either side. Smoothstep
-         * rather than a straight line: it still passes exactly through every anchor, so the
-         * deltas the table describes survive, but the corners are rounded off.
-         */
+        /** The curve's value at [hour], eased between anchors with smoothstep (corners rounded, deltas exact). */
         private fun List<Anchor>.offsetAt(hour: Int): Float {
             if (hour <= first().hour) return first().offsetHpa
             if (hour >= last().hour) return last().offsetHpa
@@ -135,12 +103,7 @@ class MockDataInterceptor : Interceptor {
         private fun smoothStep(t: Float): Float = t * t * (3f - 2f * t)
     }
 
-    /**
-     * One point on a scenario's pressure curve: [offsetHpa] away from the base pressure,
-     * [hour] hours from now. Defining a scenario as a table of these keeps its shape readable
-     * — and its alert deltas exact — where ramp arithmetic spread over a when-block was
-     * neither.
-     */
+    /** One point on a scenario's curve: [offsetHpa] from base pressure, [hour] hours from now. */
     private data class Anchor(val hour: Int, val offsetHpa: Float)
 
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -179,10 +142,8 @@ class MockDataInterceptor : Interceptor {
         val locationSeed = (lat + lon).toFloat()
         val basePressure = 1013f + (locationSeed % 5f)
 
-        // No noise is layered on top: every scenario's alerts are exactly the size its curve
-        // describes, at every location. Sizing an event 1 hPa clear of a sensitivity preset
-        // and then adding a wobble that can reach it means the scenario only behaves where it
-        // happened to be checked.
+        // No noise layered on top, so every scenario's alerts are exactly the size its curve
+        // describes, everywhere. A wobble could push an event past a preset boundary.
         val curve = curveFor(currentScenario)
 
         for (hour in FIRST_HOUR..LAST_HOUR) {

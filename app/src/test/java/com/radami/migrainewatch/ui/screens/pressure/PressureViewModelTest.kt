@@ -47,11 +47,7 @@ class PressureViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
-    /**
-     * How the fetching went, as the card sees it. Mutable so a test can put the repository in a
-     * state and read what the empty chart says about it; [RefreshState.Updated] by default,
-     * because every test that is not about the empty chart wants a fetch that has been and gone.
-     */
+    /** Mutable so tests can drive the empty-chart state; defaults to a completed fetch. */
     private val refreshState = MutableStateFlow(RefreshState.Updated)
 
     @Before
@@ -59,8 +55,7 @@ class PressureViewModelTest {
         Dispatchers.setMain(testDispatcher)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = THRESHOLD_HPA))
 
-        // Combined into the screen's state, so a mock that never emits would leave the whole
-        // flow silent and every wait for a loaded state hanging.
+        // A mock that never emits here would leave the combined flow silent forever.
         every { pressureRepository.refreshState } returns refreshState
     }
 
@@ -76,11 +71,8 @@ class PressureViewModelTest {
     }
 
     /**
-     * The first state the screen would actually render.
-     *
-     * Detection runs on [Dispatchers.Default], which the test scheduler has no say over, so
-     * advancing it proves nothing: waiting on the state itself is what rules out reading the
-     * placeholder the ViewModel starts with.
+     * Detection runs on [Dispatchers.Default], outside the test scheduler's control, so
+     * advancing time proves nothing — must wait on the actual state instead.
      */
     private suspend fun PressureViewModel.loadedState(): PressureUiState =
         uiState.first { !it.isLoading }
@@ -130,10 +122,8 @@ class PressureViewModelTest {
     @Test
     fun `an event that finished days ago is not listed`() = runTest {
         val now = Instant.now()
-        // Well inside both the query range and the detection history, and far above the
-        // threshold, but over and done with: the card lists what is current, not the history
-        // the chart happens to reach. Kept clear of the 72 h detection edge on purpose —
-        // sitting on it would drop a reading and pass for the wrong reason.
+        // Well within range and above threshold, but finished: card lists current events only.
+        // Kept clear of the 72h detection edge so it can't pass for the wrong reason.
         readingsReturn(
             listOf(
                 PressureReading(now.minusSeconds(48 * HOUR_SECONDS), 1020f, 1020f, now),
@@ -147,10 +137,8 @@ class PressureViewModelTest {
     @Test
     fun `an event past the widest chart range is listed but not shaded`() = runTest {
         val now = Instant.now()
-        // Six days out: detection reaches seven days ahead, while the widest chip reaches four
-        // and a half. That gap is deliberate — a chart wide enough to hold the whole forecast
-        // would squash the days the user can still act on — so the row is listed anyway and
-        // marked "not in view" rather than being dropped or silently unshaded.
+        // Detection reaches 7 days out, the widest chip only 4.5 (a wider chart would squash
+        // actionable days), so this event must be listed but marked "not in view".
         readingsReturn(
             listOf(
                 PressureReading(now.plusSeconds(6 * DAY_SECONDS), 1020f, 1020f, now),
@@ -179,17 +167,13 @@ class PressureViewModelTest {
 
         viewModel.selectRange(TimeRange.Hours24)
 
-        // Applied on the tap rather than after a round trip through the database, so reading
-        // the state straight away is enough.
+        // Applied on tap, not after a DB round trip, so reading state immediately is enough.
         val state = viewModel.uiState.value
         assertEquals(TimeRange.Hours24, state.selectedRange)
         assertEquals(1013f, state.currentPressure)
     }
 
-    /**
-     * The card explains an empty chart rather than drawing nothing, and to do that it has to be
-     * told how the fetch went — an empty table looks the same whichever way it went.
-     */
+    /** An empty chart needs to know why it's empty, since an empty table alone can't tell it. */
     @Test
     fun `how the fetch went reaches the screen`() = runTest {
         readingsReturn(emptyList())
@@ -199,13 +183,8 @@ class PressureViewModelTest {
     }
 
     /**
-     * A band is drawn exactly where a step is long enough to have a range worth showing. Over
-     * a day pressure moves several hPa and the band opens up; over three or six hours it
-     * collapses onto the line it surrounds and only reads as a thicker line.
-     *
-     * Pinned because the chips are the only place that says so — the chart draws whatever it
-     * is handed — and because the two are one value apart, which is what makes it easy to
-     * change a chip's rendering without meaning to.
+     * A band only makes sense over a full day; shorter steps collapse it onto the line. Pinned
+     * here since the chip is the only place that decides this — the chart just draws what it gets.
      */
     @Test
     fun `only the daily step draws a band`() {

@@ -10,10 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import javax.inject.Singleton
 
-/**
- * The HTTP client, kept apart from [NetworkModule] so tests can swap it without also having to
- * restate the Json, Retrofit and API providers that would come with replacing a larger module.
- */
+/** Kept apart from [NetworkModule] so tests can swap the client without restating those providers. */
 @Module
 @InstallIn(SingletonComponent::class)
 object HttpClientModule {

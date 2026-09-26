@@ -9,12 +9,9 @@ import okhttp3.OkHttpClient
 import javax.inject.Singleton
 
 /**
- * Serves generated weather to every test, unconditionally.
- *
- * The journey tests script a specific forecast and assert on the alerts it produces, so they
- * cannot run against the real Open-Meteo. Replacing the provider rather than reading
- * BuildConfig.USE_MOCK_DATA is what makes that independent of the build flag: a developer
- * pointing their own build at the live API should not turn the suite red.
+ * Serves generated weather to every test, unconditionally. Journey tests script a specific
+ * forecast, so they can't hit the real Open-Meteo API. Replacing the provider (not reading
+ * BuildConfig.USE_MOCK_DATA) keeps this independent of a developer's own build flag.
  */
 @Module
 @TestInstallIn(components = [SingletonComponent::class], replaces = [HttpClientModule::class])

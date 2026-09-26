@@ -41,10 +41,7 @@ import javax.inject.Inject
 class UserJourneyTest {
 
     private companion object {
-        /**
-         * Journeys start on the most sensitive setting rather than the default, so the TWO_EVENTS
-         * scenario's 9 hPa events both qualify and the tests don't move when the default does.
-         */
+        /** Most sensitive setting, so TWO_EVENTS' 9 hPa events qualify regardless of the default. */
         val STARTING_SENSITIVITY = AlertSensitivity.HIGH
 
         /** Both TWO_EVENTS events are 9 hPa exactly, so the Low level silences the banner. */
@@ -65,8 +62,7 @@ class UserJourneyTest {
     @get:Rule(order = 0)
     val hiltRule = HiltAndroidRule(this)
 
-    // Activities are launched per test (see [launchApp]) rather than by the rule, so each
-    // test can seed preferences and pick its mock scenario before any ViewModel starts.
+    // Launched per test (see [launchApp]), so each can seed prefs before any ViewModel starts.
     @get:Rule(order = 1)
     val composeTestRule = createEmptyComposeRule()
 
@@ -78,8 +74,7 @@ class UserJourneyTest {
     fun setup() {
         hiltRule.inject()
 
-        // HiltTestApplication replaces MigraineWatchApp, which is what normally calls
-        // WorkManager.initialize(); without this MainActivity fails on getInstance().
+        // HiltTestApplication skips the normal WorkManager.initialize() call, so do it here.
         WorkManagerTestInitHelper.initializeTestWorkManager(ApplicationProvider.getApplicationContext())
 
         // Start every journey as a returning user, past onboarding and with a location set.
@@ -88,9 +83,8 @@ class UserJourneyTest {
             userPreferences.setOnboardingComplete(true)
             userPreferences.setAlertSensitivity(STARTING_SENSITIVITY)
 
-            // A returning user has already met the notification prompt. Without this the
-            // location picker finishes by asking for the permission and waits on a dialog
-            // result Robolectric never delivers, leaving it stuck on its spinner.
+            // Otherwise the picker asks for notification permission and waits on a dialog
+            // result Robolectric never delivers.
             userPreferences.setNotificationPermissionRequested(true)
         }
     }
@@ -105,16 +99,11 @@ class UserJourneyTest {
         MockDataInterceptor.currentScenario = mockScenario
         scenarios += ActivityScenario.launch(MainActivity::class.java)
 
-        // The location chip only renders once the first pressure fetch has landed, which
-        // makes it the signal that Today is done loading rather than showing placeholders.
+        // The location chip renders only after the first fetch, so it signals Today is loaded.
         awaitDisplayed(hasContentDescription("Location"))
     }
 
-    /**
-     * Waits for a node to be both present and on screen. Existence alone is not enough:
-     * banners and screen transitions animate, so a node can be composed while its bounds
-     * are still outside the viewport.
-     */
+    /** Existence alone isn't enough: animating nodes can be composed while still off-screen. */
     private fun awaitDisplayed(matcher: SemanticsMatcher) {
         composeTestRule.waitUntil(UI_TIMEOUT_MILLIS) {
             runCatching { composeTestRule.onNode(matcher).assertIsDisplayed() }.isSuccess
@@ -130,14 +119,8 @@ class UserJourneyTest {
     }
 
     /**
-     * Scrolls the screen's lazy list until [matcher] resolves.
-     *
-     * `performScrollTo` cannot do this: it needs the node to exist already, and a LazyColumn
-     * never composes what sits far below the viewport. A card pushed down by a tall alert
-     * banner is therefore not merely off screen, it is absent from the tree entirely.
-     *
-     * Matched on ScrollToIndex rather than on any scroll action, because the pressure chart
-     * scrolls too and only a lazy list can be scrolled by index.
+     * `performScrollTo` needs the node to already exist, but a LazyColumn never composes what
+     * is far below the viewport. Matches ScrollToIndex specifically since the chart also scrolls.
      */
     private fun scrollToInList(matcher: SemanticsMatcher) {
         composeTestRule.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollToIndex))
@@ -148,10 +131,7 @@ class UserJourneyTest {
     private fun countOf(matcher: SemanticsMatcher): Int =
         composeTestRule.onAllNodes(matcher).fetchSemanticsNodes().size
 
-    /**
-     * Bottom bar destinations are found in the unmerged tree: the description sits on the
-     * item's icon, and the merged tab node exposes only its label.
-     */
+    /** Uses the unmerged tree: the icon carries the description, the merged node only the label. */
     private fun clickBottomNav(contentDescription: String) {
         composeTestRule.onNodeWithContentDescription(contentDescription, useUnmergedTree = true)
             .performClick()
@@ -174,14 +154,12 @@ class UserJourneyTest {
         awaitDisplayed(hasText("Zurich, Switzerland", substring = true))
         composeTestRule.onNodeWithText("Zurich, Switzerland", substring = true).performClick()
 
-        // 4. Verify we are back on Today screen with Zurich. The chip has to be the signal:
-        //    the picker stays up on a spinner while the location saves, and "Zurich" alone
-        //    matches the search field this test just typed into.
+        // 4. Back on Today with Zurich. Uses the chip, not the search field text, as the
+        //    signal since the picker stays up on a spinner while the location saves.
         awaitDisplayed(hasContentDescription("Location"))
         awaitDisplayed(hasText("Zurich", substring = true))
 
-        // 5. Verify the forecast is present. Whether the card starts on screen depends on
-        //    how tall the alert banner above it ends up, so scroll it into view first.
+        // 5. Scroll first: card position depends on the alert banner's height above it.
         scrollToInList(hasText("7-day outlook"))
         composeTestRule.onNodeWithText("7-day outlook").assertIsDisplayed()
     }
@@ -191,17 +169,15 @@ class UserJourneyTest {
         // 1. Force a storm scenario so the app starts with a 9 hPa drop in its data
         launchApp(MockDataInterceptor.Scenario.TWO_EVENTS)
 
-        // 2. Verify "Elevated risk" banner is displayed. The outlook headline below it says
-        //    "Elevated risk today" as well, so the text alone matches two nodes; the banner is
-        //    one merged node carrying both its description and its text, so ask for both.
+        // 2. Matches on description AND text: the outlook headline below also says
+        //    "Elevated risk today", so text alone would match two nodes.
         awaitDisplayed(hasContentDescription("Pressure alert banner"))
         composeTestRule.onNode(
             hasContentDescription("Pressure alert banner") and
                 hasText("Elevated risk", substring = true)
         ).assertIsDisplayed()
 
-        // 3. Tapping the banner — anywhere on it — switches to the Pressure tab, which is
-        //    where every current event is listed and shaded on the chart
+        // 3. Tapping the banner switches to the Pressure tab.
         composeTestRule.onNodeWithContentDescription("Pressure alert banner").performClick()
 
         // 4. Verify the chart and the event that raised the banner
@@ -220,20 +196,18 @@ class UserJourneyTest {
         awaitDisplayed(hasContentDescription("Time range 7 days"))
         scrollToInList(hasText("Alerts"))
 
-        // 3. Only as many rows as there are colours to tell one event's shading from another's
+        // 3. Only as many rows as there are palette colours.
         assertEquals(
             "one row per colour in the palette",
             ALERT_COLOR_COUNT,
-            // Unique to an alert row: the card's own subtitle also mentions hPa.
             countOf(hasText("hPa in 24h", substring = true))
         )
 
-        // 4. The three kept are the three soonest, not the three last: the scenario runs
-        //    drop, rise, drop, rise, so keeping the wrong end would invert these counts.
+        // 4. Must keep the three soonest, not the three last (order is drop/rise/drop/rise).
         assertEquals("drops shown", 2, countOf(hasContentDescription("pressure drop")))
         assertEquals("rises shown", 1, countOf(hasContentDescription("pressure rise")))
 
-        // 5. And the card says what it is holding back, so three never passes for all of them
+        // 5. Card must disclose the one event it's hiding.
         composeTestRule.onNodeWithText("1 more event not shown").assertIsDisplayed()
     }
 
@@ -242,19 +216,15 @@ class UserJourneyTest {
         // 1. A week with events in it, so the strip has days worth tapping
         launchApp(MockDataInterceptor.Scenario.TWO_EVENTS)
 
-        // 2. The outlook strip announces each column as one thing — the weekday, the number
-        //    and the risk are cleared and replaced by a single description, so this is what a
-        //    screen reader hears and what a tap has to land on. The comma keeps it clear of
-        //    the "Today" bottom-nav tab.
+        // 2. Each column merges into one semantics node for screen readers; the comma
+        //    disambiguates it from the "Today" bottom-nav tab.
         scrollToInList(hasText("7-day outlook"))
         awaitDisplayed(hasContentDescription("Today,", substring = true))
 
-        // 3. Tapping a day goes to the Pressure tab, the same place the banner leads: the
-        //    strip names a day, and that is where the day's events are listed and shaded.
+        // 3. Tapping a day goes to the Pressure tab, like the banner does.
         composeTestRule.onNodeWithContentDescription("Today,", substring = true).performClick()
 
-        // 4. Verify we arrived. A day column is barely wider than its marker, so this also
-        //    pins that the whole column is the target rather than the number inside it.
+        // 4. Also confirms the whole column is tappable, not just the number inside it.
         awaitDisplayed(hasContentDescription("Time range 7 days"))
     }
 
@@ -269,10 +239,8 @@ class UserJourneyTest {
         // 3. Navigate to Settings
         clickBottomNav("Settings screen")
 
-        // 4. Drop to the least sensitive level, above every event in the data. The segmented
-        //    control is driven through its semantics action: injected touches reach it on a
-        //    real device (NavigationTest) but not under Robolectric, where they are swallowed
-        //    without invoking onClick.
+        // 4. Driven via the semantics OnClick action: injected touches work on a real device
+        //    but are swallowed under Robolectric without invoking onClick.
         awaitDisplayed(hasContentDescription(SILENT_SENSITIVITY_OPTION))
         composeTestRule.onNodeWithContentDescription(SILENT_SENSITIVITY_OPTION)
             .performSemanticsAction(SemanticsActions.OnClick)

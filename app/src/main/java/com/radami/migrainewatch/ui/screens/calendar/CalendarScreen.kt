@@ -105,8 +105,7 @@ fun CalendarScreen(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        // When everything fits on screen there is nothing to scroll to; disable dragging
-        // (and its overscroll stretch) so the screen feels as static as the Today screen.
+        // Disable dragging/overscroll when content fits, so it feels as static as the Today screen.
         userScrollEnabled = listState.canScrollForward || listState.canScrollBackward
     ) {
         item {
@@ -222,9 +221,7 @@ private fun MonthCalendar(
         }
         Spacer(Modifier.height(4.dp))
 
-        // The whole grid moves as one panel. Its height changes with the month — a month
-        // needing six week-rows instead of five moves everything below the calendar by a row —
-        // so the size travels with it rather than stepping when the new month lands.
+        // Whole grid moves as one panel; size animates with it since row count varies by month.
         AnimatedContent(
             targetState = MonthGrid(month, entries, highRiskDays),
             transitionSpec = { monthSlide { it.month } },
@@ -316,10 +313,7 @@ private fun CalendarLegend() {
     }
 }
 
-/**
- * The one legend entry that stands for a shape rather than a colour, so it is drawn as an
- * unfilled circle in the same outline the unlogged high-risk days use.
- */
+/** Stands for a shape, not a color: drawn as the same unfilled circle outline as unlogged high-risk days. */
 @Composable
 private fun LegendHighRiskItem() {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -339,17 +333,8 @@ private fun LegendItem(color: Color, label: String) {
 }
 
 /**
- * One month as the grid draws it.
- *
- * The month travels with its own entries rather than reading them from the screen's state,
- * because a slide renders both months at once and the state only ever holds the incoming one:
- * the outgoing August would otherwise be drawn with September's logged days, losing its marks
- * as it left.
- *
- * A tap is answered from here too, for the same reason and not only to keep the drawing
- * honest: a day tapped on the outgoing grid, looked up in the state, would come back with no
- * entry and be offered for logging — a day that is already logged, and whose mark the reader
- * can see under their finger. Hence the entry travelling with the tap in [MonthGridRows].
+ * One month as the grid draws it, carrying its own entries rather than reading the screen's
+ * state — a slide renders both months at once, and the state only ever holds the incoming one.
  */
 private data class MonthGrid(
     val month: YearMonth,
@@ -358,12 +343,8 @@ private data class MonthGrid(
 )
 
 /**
- * The movement a month change makes: the arriving month comes from the side it lies on, and
- * the leaving one goes the other way, so the gesture says which way through the year you went.
- *
- * A change that leaves the month alone — logging a day, a refresh landing — is not a movement
- * through anything and gets no animation, or the calendar would slide sideways every time a
- * day was marked.
+ * Slides the arriving month in from the direction of travel through the year. A change that
+ * doesn't switch months (logging a day, a refresh) gets no animation.
  */
 private fun <S> AnimatedContentTransitionScope<S>.monthSlide(
     monthOf: (S) -> YearMonth
@@ -379,10 +360,8 @@ private fun <S> AnimatedContentTransitionScope<S>.monthSlide(
     }
     val spec = tween<IntOffset>(Motion.PANEL_SLIDE_MILLIS)
 
-    // Both months travel for the whole slide, but the one leaving is faded out before the one
-    // arriving fades in — the same order a settling line of text uses. Cross-fading them over
-    // each other instead leaves two grids at half strength in the middle of the card, and two
-    // sets of dates overlapping is unreadable in a way two overlapping words are not.
+    // Leaving month fades out before the arriving one fades in, rather than cross-fading —
+    // two overlapping grids of dates read as unreadable, unlike overlapping words.
     return (
         slideIntoContainer(towards, spec) + fadeIn(
             tween(Motion.CONTENT_ENTER_MILLIS, delayMillis = Motion.CONTENT_EXIT_MILLIS)
@@ -390,8 +369,7 @@ private fun <S> AnimatedContentTransitionScope<S>.monthSlide(
         ).togetherWith(
             slideOutOfContainer(towards, spec) + fadeOut(tween(Motion.CONTENT_EXIT_MILLIS))
         )
-        // Clipped, unlike a settling line of text: a month on its way out must not paint
-        // beyond the card it is leaving.
+        // Clipped so the outgoing month can't paint beyond the card it's leaving.
         .using(SizeTransform(clip = true))
 }
 
@@ -447,9 +425,7 @@ private fun StatsCard(
             ) {
                 Severity.entries.forEach { severity ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        // Only the figure means something different when the period changes —
-                        // the swatch and the name below it stand for the same severity in every
-                        // period, so re-fading them would animate three labels saying nothing.
+                        // Only the figure changes with the period; swatch and label stay the same, so only it animates.
                         SettlingText(
                             text = (counts[severity] ?: 0).toString(),
                             style = MaterialTheme.typography.titleLarge,
@@ -517,8 +493,7 @@ private fun DayDetailSheet(
             )
         }
         Spacer(Modifier.height(12.dp))
-        // FlowRow, not Row: chips carry user-entered labels of any length and must wrap
-        // onto further lines instead of running off the edge of the sheet.
+        // FlowRow, not Row: labels are user-entered and may need to wrap.
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

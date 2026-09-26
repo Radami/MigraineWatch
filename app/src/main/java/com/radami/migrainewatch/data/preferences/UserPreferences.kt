@@ -28,10 +28,7 @@ data class LocationData(
 
 data class AppSettings(
     val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
-    /**
-     * Whether the user wants alerts, not whether the system will deliver them. The runtime
-     * permission is tracked separately and must never be written back into this.
-     */
+    /** Whether the user wants alerts, not whether the system will deliver them. Tracked separately. */
     val notificationsEnabled: Boolean = true,
     val notificationPermissionRequested: Boolean = false,
     val onboardingComplete: Boolean = false,
@@ -48,11 +45,7 @@ class UserPreferences @Inject constructor(
     private companion object {
         const val TAG = "UserPreferences"
 
-        /**
-         * How long to wait before reading the store again after it refused. Long enough that a
-         * store which is broken for good is not re-read in a tight loop for the life of the
-         * process, short enough that a transient failure heals while the user is still looking.
-         */
+        /** Delay before retrying a failed read: long enough to avoid a tight loop, short enough to heal fast. */
         const val READ_RETRY_MILLIS = 10_000L
     }
 
@@ -70,31 +63,15 @@ class UserPreferences @Inject constructor(
     }
 
     /**
-     * Falls back to the defaults when the store cannot be read, and keeps reading.
-     *
-     * DataStore reports a failed read by throwing into the stream, which ends every collector
-     * of it. Two of those cannot afford to end: a screen's, where the exception reaches
-     * `viewModelScope` and takes the process down, and [
-     * com.radami.migrainewatch.data.repository.PressureRepository]'s watch for the user moving,
-     * which is a single coroutine started once — its death is silent, and refetch-on-move
-     * simply stops until the app is restarted.
-     *
-     * [retryWhen] rather than `catch` for exactly that second reason. `catch` emits and then
-     * lets the flow complete, which leaves a collector no better off than an exception would: it
-     * returns, quietly, and never hears anything again. Resubscribing keeps the stream open, so
-     * a store that becomes readable again — a transient IO error, a device that was out of space
-     * — is picked up rather than waited out until the next launch.
-     *
-     * Only [IOException], which is what a store that cannot be read raises; anything else is a
-     * bug in the reading rather than in the file, and is left to surface.
+     * Falls back to defaults on a read failure and keeps the flow alive: letting it throw
+     * would crash a screen's viewModelScope and kill PressureRepository's move-watcher.
+     * [retryWhen] resubscribes so it recovers if the store heals; `catch` would not.
      */
     val settings: Flow<AppSettings> = dataStore.data.retryWhen { cause, attempt ->
         if (cause !is IOException) return@retryWhen false
         Log.e(TAG, "Could not read settings; falling back to defaults", cause)
 
-        // Once, on the first failure. Collectors need something to work with, but a fallback
-        // republished on every attempt would have every screen recompute itself on a timer for
-        // as long as the store stayed broken.
+        // Emit only once, on the first failure, not on every retry attempt.
         if (attempt == 0L) emit(emptyPreferences())
 
         delay(READ_RETRY_MILLIS)
@@ -135,10 +112,7 @@ class UserPreferences @Inject constructor(
         dataStore.edit { it[Keys.NOTIFICATIONS_ENABLED] = enabled }
     }
 
-    /**
-     * Records that the runtime permission dialog has been shown once. Android will not show it
-     * again after a denial, so this is what separates "not asked yet" from "refused".
-     */
+    /** Marks the permission dialog as shown; separates "not asked yet" from "refused". */
     suspend fun setNotificationPermissionRequested(requested: Boolean) {
         dataStore.edit { it[Keys.NOTIFICATION_PERMISSION_REQUESTED] = requested }
     }

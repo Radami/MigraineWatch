@@ -101,11 +101,7 @@ class OnboardingViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Alerts are on by default, so the permission behind them is asked for here rather than
-     * left for the user to discover. Without this the default is a promise the app never keeps:
-     * the Settings switch already reads on, so nothing there would trigger the request.
-     */
+    /** Alerts default on, so ask for the permission here — nothing in Settings would trigger it later. */
     private suspend fun finishSetup() {
         val mustAsk = permissionMonitor.currentState() == NotificationPermissionState.REQUESTABLE
         _uiState.value = _uiState.value.copy(

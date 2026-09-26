@@ -41,11 +41,7 @@ class PressureRepositoryTest {
         const val BERLIN_LAT = 52.52
         const val BERLIN_LON = 13.41
 
-        /**
-         * Somewhere on a quarter-hour offset, which is the case a plain refresh cannot clean
-         * up: readings are keyed by instant and both APIs report hourly on the hour in local
-         * time, so Kathmandu's grid sits 45 minutes off Berlin's and nothing collides.
-         */
+        /** 45 min off Berlin's hourly grid, so REPLACE would collide with nothing. */
         val KATHMANDU = LocationData(
             source = "manual",
             lat = 27.71,
@@ -72,15 +68,11 @@ class PressureRepositoryTest {
     private val archiveApi = mockk<OpenMeteoArchiveApi>()
     private val prefs = mockk<UserPreferences>()
 
-    // The repository fetches here rather than in the caller's scope. Unconfined so a started
-    // fetch runs inline as far as its first suspension, which is what lets a test say "the
-    // fetch is now in flight" without waiting on a clock.
+    // Unconfined so a started fetch runs inline to its first suspension, letting a test say
+    // "the fetch is in flight" without waiting on a clock.
     private val refreshScope = CoroutineScope(UnconfinedTestDispatcher())
 
-    /**
-     * Mutable so a test can move the user. Stubbed before the repository is built, because it
-     * starts watching the location the moment it is constructed.
-     */
+    /** Mutable so a test can move the user; stubbed before construction since the watch starts then. */
     private val settings = MutableStateFlow(
         AppSettings(location = LocationData(lat = BERLIN_LAT, lon = BERLIN_LON, name = "Berlin"))
     )
@@ -115,10 +107,7 @@ class PressureRepositoryTest {
         hourly = HourlyData(time = emptyList(), pressureMsl = emptyList(), surfacePressure = emptyList())
     )
 
-    /**
-     * Skips the archive gap fill, so a test about the forecast fetch is only about that: the
-     * repository reaches for the archive when its newest stored history is over 30 days old.
-     */
+    /** Skips the archive gap fill (triggered when stored history is over 30 days old). */
     private fun stubRecentHistory() {
         val now = Instant.now()
         coEvery { dao.getLatestHistorical(any()) } returns PressureReading(now, 1013f, 1000f, now)
@@ -136,13 +125,9 @@ class PressureRepositoryTest {
     }
 
     /**
-     * The forecast has to be replaced in one transaction, not cleared and refilled in two.
-     * The screens observe the readings table, and an observer that reads between a bare
-     * delete and its insert sees a series with no forecast in it — which the Today screen
-     * reports as a failed load, flickering an error over data that arrived intact.
-     *
-     * Asserted on the calls rather than on what an observer saw: the tear is a race, so a
-     * behavioural test of it can pass on a broken repository. This one cannot.
+     * Must replace the forecast in one transaction: a separate delete+insert lets an observer
+     * see a torn series, which Today reports as a failed load. Asserted on the calls, not on
+     * what an observer saw, since the tear itself is a race a behavioral test could miss.
      */
     @Test
     fun `refresh replaces the forecast atomically rather than deleting and reinserting`() = runTest {
@@ -157,19 +142,15 @@ class PressureRepositoryTest {
     }
 
     /**
-     * Callers overlap in the running app — the Today screen refreshes as it opens, the
-     * Pressure screen when its data is stale, the worker on its own schedule — and separate
-     * fetches racing each other write in whatever order they finish, so the series that lands
-     * last need not be the one fetched last. A caller arriving while a fetch is open has to
-     * join it rather than start another.
+     * Multiple screens/worker can call refresh at once; racing fetches could write out of
+     * order. A caller arriving mid-fetch must join it, not start a competing one.
      */
     @Test
     fun `overlapping refreshes share one fetch`() = runTest {
         val fetches = AtomicInteger()
 
-        // Held open so every caller is inside the repository at once. Without it the first
-        // fetch could finish before the second caller arrived, and the test would pass on a
-        // repository that had never shared anything.
+        // Held open so every caller is inside the repository at once, or the first fetch could
+        // finish before the second caller even arrives.
         val releaseFetch = CompletableDeferred<Unit>()
         coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } coAnswers {
             fetches.incrementAndGet()
@@ -178,9 +159,7 @@ class PressureRepositoryTest {
         }
         stubRecentHistory()
 
-        // The test scope's own async, not backgroundScope: advanceUntilIdle drives foreground
-        // work, and background work only runs when the test would otherwise be waiting — so
-        // background callers would still be queued here, each going on to open its own fetch.
+        // Uses the test scope's own async, not backgroundScope, so advanceUntilIdle drives it.
         val callers = List(OVERLAPPING_CALLERS) { async { repository.refresh() } }
         advanceUntilIdle()
 
@@ -203,11 +182,7 @@ class PressureRepositoryTest {
         coVerify(exactly = 2) { forecastApi.getForecast(any(), any(), timezone = any()) }
     }
 
-    /**
-     * Everything stored describes where the user was, so a move refetches. Nothing asks the
-     * repository to do this — the screen that saves a location just saves it — which is the
-     * point: the series belongs to a place, so noticing the place changed belongs here.
-     */
+    /** Stored readings belong to a place, so the repository itself notices a move and refetches. */
     @Test
     fun `moving refetches for the new location`() = runTest {
         coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns response()
@@ -222,14 +197,9 @@ class PressureRepositoryTest {
     }
 
     /**
-     * And discards what was stored rather than laying the new city over it. The old rows are
-     * only overwritten where the two grids agree, which between Berlin and Kathmandu is
-     * nowhere — left in place they would interleave into one series describing neither city,
-     * and the detector would read the seam between them as pressure moving.
-     *
-     * Asserted on the calls, like the atomicity test above and for the same reason: a delete
-     * and an insert that a screen can read between is the defect, so the test has to be about
-     * how the write is made, not about what a reader happened to catch.
+     * Must discard old rows, not overlay the new city: Berlin and Kathmandu grids never agree,
+     * so leftover rows would interleave into a bogus series. Asserted on calls, not observed
+     * state, for the same reason as the atomicity test above.
      */
     @Test
     fun `moving replaces the stored series rather than merging into it`() = runTest {
@@ -255,10 +225,7 @@ class PressureRepositoryTest {
         coVerify(exactly = 0) { forecastApi.getForecast(any(), any(), timezone = any()) }
     }
 
-    /**
-     * The name is a label for the user, not part of what was fetched. Re-picking one city under
-     * another spelling — or by GPS after having typed it — describes the same readings.
-     */
+    /** The name is just a label, not part of what was fetched; a rename describes the same readings. */
     @Test
     fun `renaming a location without moving it does not refetch`() = runTest {
         coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns response()
@@ -278,11 +245,8 @@ class PressureRepositoryTest {
     }
 
     /**
-     * Settings falling back to their defaults is not somewhere the user has gone.
-     *
-     * A store that cannot be read reports itself as the defaults rather than as a throw — see
-     * UserPreferencesTest — and the defaults carry no location at all. Read as a move, that
-     * would send a fetch after a place that does not exist on the strength of a disk error.
+     * A store that can't be read reports the defaults (no location) rather than throwing.
+     * Read as a move, a disk error would wrongly send a fetch for a nonexistent place.
      */
     @Test
     fun `settings falling back to no location is not treated as a move`() = runTest {
@@ -295,9 +259,8 @@ class PressureRepositoryTest {
         settings.value = AppSettings()
         advanceUntilIdle()
 
-        // Acted on, the fallback would start a fetch for nowhere — which cancels whatever is
-        // in flight on its way past, and settles on NoLocation. The screens read that state:
-        // a disk error would have the card asking for a location that is perfectly well set.
+        // If acted on, this would cancel any in-flight fetch and settle on NoLocation, making
+        // the card ask for a location that's actually set fine.
         assertEquals(RefreshState.Updated, repository.refreshState.value)
     }
 
@@ -329,12 +292,9 @@ class PressureRepositoryTest {
     }
 
     /**
-     * A fetch that cannot reach the network has to come back as a value.
-     *
-     * Thrown instead, it would reach three places that cannot take it: the worker, which would
-     * report the run a success and wait a full interval for its next chance; a ViewModel's init,
-     * which has no handler and would take the process down; and the location collector, which
-     * is one coroutine for the life of the process — see the move test below.
+     * A network failure must come back as a value, not a throw: thrown, it would reach the
+     * worker (reported as false success), a ViewModel init (crash), or kill the location
+     * collector permanently.
      */
     @Test
     fun `a failed fetch is reported rather than thrown`() = runTest {
@@ -386,12 +346,8 @@ class PressureRepositoryTest {
     }
 
     /**
-     * A response carrying no readings is reported rather than stored.
-     *
-     * Storing it would be destructive, not merely pointless: a write with no rows still clears
-     * what it was going to replace — replaceSeries deletes the stored forecast and then inserts
-     * nothing — so an empty or unparseable response would delete the forecast on screen and
-     * leave the app with less than it had before it asked.
+     * An empty response must be reported, not stored: replaceSeries still deletes the old
+     * forecast even when it has nothing to insert, so storing this would erase good data.
      */
     @Test
     fun `a response with no readings is reported and not written`() = runTest {
@@ -418,13 +374,8 @@ class PressureRepositoryTest {
     }
 
     /**
-     * The storage a fetch consults on its way to the network used to sit outside every catch,
-     * so a Room failure there threw out of the fetch entirely — into a ViewModel's init, which
-     * has no handler, or into the location collector, which is one coroutine for the life of
-     * the process and is never replaced.
-     *
-     * The refresh still succeeds: what this call is for is the archive gap fill, and the
-     * forecast endpoint returns its 30 days of history without it.
+     * This DAO call used to sit outside every catch, so a Room failure here threw out of the
+     * fetch entirely. Refresh still succeeds: this call is only for the archive gap fill.
      */
     @Test
     fun `a storage failure on the way to the network is not thrown out of refresh`() = runTest {
@@ -436,12 +387,8 @@ class PressureRepositoryTest {
     }
 
     /**
-     * And the collector that watches for a move keeps watching afterwards.
-     *
-     * A guard on the design rather than a reproduction of one bug: whatever a fetch fails on,
-     * it has to come back as a value, because a throw reaching this collector would end it and
-     * the app would carry on running having quietly stopped noticing that the user had moved —
-     * no crash, no log, and nothing short of a restart to bring it back.
+     * The location collector must keep watching after a failed fetch. A throw reaching it would
+     * end it silently, and the app would quietly stop noticing moves until restarted.
      */
     @Test
     fun `a move whose fetch fails does not stop the next move being noticed`() = runTest {
@@ -461,17 +408,9 @@ class PressureRepositoryTest {
     }
 
     /**
-     * A move waits out the fetch it is replacing rather than cancelling it and pressing on.
-     *
-     * Cancellation is only noticed where a coroutine suspends, and the write is the one part of
-     * a fetch that cannot be left half done — Room's transaction runs to its end. So a fetch
-     * let go of mid-write carries on writing, and what it writes is the city the user has just
-     * left, on top of the readings that replaced it.
-     *
-     * The uninterruptible write is what the [NonCancellable] stub stands in for: without it the
-     * old fetch unwinds at the first suspension either way and the test says nothing about the
-     * waiting. With it, a move that only cancelled would write Kathmandu first and let Berlin
-     * land on top.
+     * A move must wait out the fetch it replaces, not just cancel it: Room's write can't be
+     * interrupted mid-transaction, so a cancelled-but-still-writing fetch could land the old
+     * city's data on top of the new one. [NonCancellable] simulates that uninterruptible write.
      */
     @Test
     fun `a move waits for the fetch it supersedes to finish writing`() = runTest {
@@ -494,9 +433,7 @@ class PressureRepositoryTest {
         val ordinary = async { repository.refresh() }
         berlinWriteReached.await()
 
-        // Cancels the Berlin fetch, which is inside a write it cannot be pulled out of. The
-        // collector suspends on the wait rather than pressing on, so this returns and the test
-        // is free to let that write finish.
+        // Cancels the Berlin fetch mid-write; the collector suspends waiting for it to finish.
         settings.value = AppSettings(location = KATHMANDU)
 
         releaseBerlinWrite.complete(Unit)

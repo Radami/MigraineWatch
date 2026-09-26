@@ -14,9 +14,9 @@ import javax.inject.Named
 import javax.inject.Singleton
 
 /**
- * City search lives in its own module because, unlike the pressure endpoints, it is never
- * served by [com.radami.migrainewatch.data.remote.mock.MockDataInterceptor] — which lets
- * tests swap the whole module for a fake instead of reaching the real geocoding service.
+ * Separate from the pressure endpoints because city search is never served by
+ * [com.radami.migrainewatch.data.remote.mock.MockDataInterceptor]; tests swap this whole
+ * module for a fake instead.
  */
 @Module
 @InstallIn(SingletonComponent::class)

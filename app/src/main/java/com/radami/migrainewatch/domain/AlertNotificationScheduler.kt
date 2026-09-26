@@ -32,11 +32,8 @@ sealed interface ReconcileResult {
  * Keeps the set of scheduled pressure warnings in step with the forecast and the user's
  * settings.
  *
- * This is a reconcile rather than an append: every run recomputes the complete set of
- * warnings that should be pending and makes the queue match it. That is what lets one method
- * serve three callers — a refreshed forecast, a changed sensitivity, and app start — and why
- * an event that drops out of the forecast, or stops clearing a raised threshold, takes its
- * pending notification with it.
+ * A reconcile rather than an append: every run recomputes the full set of warnings that should
+ * be pending and makes the queue match it, so one method serves all callers correctly.
  */
 @Singleton
 class AlertNotificationScheduler @Inject constructor(
@@ -62,10 +59,7 @@ class AlertNotificationScheduler @Inject constructor(
 
     private val _results = MutableSharedFlow<ReconcileResult>(extraBufferCapacity = RESULT_BUFFER)
 
-    /**
-     * The outcome of every reconcile, whoever triggered it. The debug settings section listens
-     * here so a fetch, a sensitivity change and the hourly worker all report themselves.
-     */
+    /** The outcome of every reconcile, whoever triggered it. Debug settings listen here. */
     val results: SharedFlow<ReconcileResult> = _results.asSharedFlow()
 
     suspend fun reconcile(now: Instant = Instant.now()): ReconcileResult {
@@ -90,8 +84,7 @@ class AlertNotificationScheduler @Inject constructor(
             notifiedAlertDao.deleteOlderThan(now.minus(HISTORY_RETENTION))
             ReconcileResult.Success(pending = wanted.size, cancelled = cancelled)
         }.getOrElse { error ->
-            // Never let scheduling take down the caller: a failed reconcile costs one cycle,
-            // and the next fetch runs it again.
+            // Never let scheduling take down the caller; the next fetch retries.
             Log.e(TAG, "Failed to reconcile alert notifications", error)
             ReconcileResult.Failed(error)
         }

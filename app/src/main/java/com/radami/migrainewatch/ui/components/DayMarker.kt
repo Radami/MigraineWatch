@@ -27,32 +27,23 @@ import com.radami.migrainewatch.ui.theme.Motion
 import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
 
 /**
- * Corner rounding shared by every severity-coloured surface. It is a percentage rather than
- * a fixed dp so a 12 dp legend swatch and a 45 dp day cell read as the same shape.
+ * Corner rounding shared by every severity-coloured surface. A percentage, not a fixed dp,
+ * so swatches of different sizes read as the same shape.
  */
 val SeverityShape = RoundedCornerShape(percent = SEVERITY_CORNER_PERCENT)
 
-/**
- * The two silhouettes as corner percentages, which is what lets a marker travel between them
- * rather than swap. 50% of a square is a circle, so the high-risk value draws exactly
- * [HighRiskShape] — the legend and the days it explains stay identical.
- */
+/** Corner percentages for the two marker silhouettes; 50% of a square is a circle, letting
+ * a marker morph between them instead of swapping shapes. */
 private const val SEVERITY_CORNER_PERCENT = 28
 private const val HIGH_RISK_CORNER_PERCENT = 50
 
-/**
- * The silhouette of a high-risk day. Shape, not colour, carries the risk so that the severity
- * palette is left free to mean only what it has always meant.
- */
+/** Silhouette of a high-risk day. Shape, not colour, carries the risk. */
 val HighRiskShape = CircleShape
 
 private val TODAY_BORDER_WIDTH = 2.dp
 
-/**
- * Thinner than today's border on purpose: both rings can land on the same day, and today is
- * the cell users hunt for, so it has to stay the heavier of the two. Public because the legend
- * draws the same ring, and the two have to stay identical for the legend to mean anything.
- */
+/** Thinner than today's border since both rings can land on one day and today's ring must
+ * stay the heavier of the two. Public so the legend can draw an identical ring. */
 val HIGH_RISK_BORDER_WIDTH = 1.5.dp
 
 /** The width a marker wearing no ring is drawn at, so the ring has a value to animate from. */
@@ -64,26 +55,18 @@ enum class DayRisk { Normal, High }
 /** Whether a change of [DayRisk] is travelled or simply arrived at. */
 enum class RiskTransition {
 
-    /**
-     * The marker takes its new silhouette on the frame it changes, having animated nothing.
-     * What the calendar grid wants: it scrolls, and a recycled composition slot would otherwise
-     * morph from whichever day it used to hold into the one it now shows.
-     */
+    /** Takes the new silhouette instantly. Used by the calendar grid, where a recycled cell
+     * would otherwise morph from the day it used to show into the new one. */
     Immediate,
 
-    /**
-     * The marker rounds from one silhouette into the other. For the outlook strip, which is
-     * rewritten under the reader whenever a new forecast lands.
-     */
+    /** Rounds from one silhouette into the other. Used by the outlook strip, which
+     * rewrites itself under the reader as new forecasts arrive. */
     Animated
 }
 
 /**
- * [target], or the value on its way there, according to whether this marker travels.
- *
- * Every property risk moves asks the same question of the same switch, and they all have to
- * answer it the same way: a marker whose shape animated while its ring snapped would read as two
- * things happening rather than one day changing.
+ * [target], or its animated approach to it, depending on [RiskTransition].
+ * All risk-driven properties must share this switch so a day changes as one movement.
  */
 @Composable
 private fun <T> RiskTransition.settle(target: T, animate: @Composable (T) -> T): T =
@@ -95,36 +78,27 @@ private fun <T> RiskTransition.settle(target: T, animate: @Composable (T) -> T):
 /** How much weight the day number carries relative to the days around it. */
 enum class DayEmphasis {
 
-    /**
-     * Every day reads the same. What a calendar grid wants: the numbers are how a day is
-     * found, so a quiet day has to stay as legible as a busy one.
-     */
+    /** Every day reads the same, so a quiet day stays as legible as a busy one. */
     Uniform,
 
-    /**
-     * A day at risk is set in bold and the rest recede. For a short strip read at a glance,
-     * where the point is which days to look at rather than which day is which.
-     */
+    /** Risky days are bold and the rest recede, for a glance-read strip like the outlook. */
     ByRisk
 }
 
-/**
- * How far a day recedes under [DayEmphasis.ByRisk] when nothing touches it. Its own name because
- * it means something here that a bare step does not, and the scale's value so that a day and the
- * muted text elsewhere on the screen recede by the same amount.
- */
+/** Recede amount for an unemphasised day under [DayEmphasis.ByRisk], matched to the
+ * muted text alpha used elsewhere on screen. */
 private const val UNEMPHASISED_DAY_ALPHA = MUTED_ALPHA
 
 /** The size every legend swatch is drawn at, so two legends on different screens match. */
 val LEGEND_SWATCH_SIZE = 12.dp
 
 /**
- * A single day in the calendar grid: the day number centred in a shape that says whether the
- * day is high risk, filled with the severity colour once something has been logged.
+ * A single day in the calendar grid: number centred in a shape marking risk, filled with
+ * severity colour once logged.
  *
- * @param severityColor fill for a logged day; null leaves the marker unfilled.
- * @param risk whether a pressure event crossing the alert threshold touches the day.
- * @param emphasis whether the number leans on [risk] for its weight.
+ * @param severityColor fill for a logged day; null leaves it unfilled.
+ * @param risk whether an alert-threshold pressure event touches the day.
+ * @param emphasis whether the number's weight follows [risk].
  */
 @Composable
 fun DayMarker(
@@ -138,13 +112,9 @@ fun DayMarker(
     contentDescription: String? = null,
     onClick: (() -> Unit)? = null
 ) {
-    // Every property that risk moves is animated off the same switch, so a day that turns
-    // risky changes shape, ring and weight as one movement rather than three.
-    //
-    // An Immediate marker reads its targets straight rather than animating them on `snap()`.
-    // A snapped animation is still an animation: it holds state per property per marker — four
-    // of them across forty-two calendar cells — and it still arrives on the frame after the
-    // change, which is the single stale frame Immediate exists to prevent.
+    // All risk-driven properties animate off the same switch, so shape, ring and weight
+    // change as one movement. Immediate reads targets straight instead of snap-animating,
+    // avoiding the one-frame lag and per-marker state a snapped animation would still cost.
     val cornerPercent = transition.settle(
         if (risk == DayRisk.High) HIGH_RISK_CORNER_PERCENT else SEVERITY_CORNER_PERCENT
     ) {
@@ -156,11 +126,9 @@ fun DayMarker(
     }
     val markerShape = RoundedCornerShape(percent = cornerPercent)
 
-    // A circle is always outlined, filled or not: the ring is what makes the silhouette read
-    // as deliberate rather than as a differently-shaped severity chip. Exactly one ring is
-    // ever drawn, and today outranks risk for the edge — the shape has already said
-    // "high risk" by then. A day wearing no ring targets a transparent one of no width rather
-    // than nothing at all, so an animated ring has a width to travel from.
+    // The ring marks the shape as deliberate rather than an oddly-shaped chip. Only one ring
+    // is ever drawn; today outranks risk since the shape already signals risk. No ring still
+    // targets a transparent zero-width one, giving an animation something to travel from.
     val targetBorderWidth = when {
         isToday -> TODAY_BORDER_WIDTH
         risk == DayRisk.High -> HIGH_RISK_BORDER_WIDTH
@@ -191,9 +159,8 @@ fun DayMarker(
         modifier = modifier
             .clip(markerShape)
             .background(severityColor ?: Color.Transparent)
-            // Only while there is a ring to draw. A width of zero draws nothing whichever way
-            // it got there, and the calendar's forty-two cells mostly wear no ring and animate
-            // nothing — so they carry no border node either.
+            // Only add the border node when there is a ring to draw, so the many cells with
+            // no ring carry no extra node.
             .then(
                 if (borderWidth > NO_BORDER_WIDTH) {
                     Modifier.border(borderWidth, borderColor, markerShape)
@@ -241,10 +208,8 @@ fun DayMarker(
     }
 }
 
-/**
- * The ring a high-risk day wears, at legend size. Shared rather than redrawn per screen: a
- * legend showing anything other than the exact ring the day wears explains nothing.
- */
+/** The ring a high-risk day wears, at legend size, so the legend matches exactly what a
+ * day itself draws. */
 @Composable
 fun HighRiskLegendSwatch(modifier: Modifier = Modifier) {
     Box(
@@ -254,11 +219,8 @@ fun HighRiskLegendSwatch(modifier: Modifier = Modifier) {
     )
 }
 
-/**
- * The ring today wears, at legend size. Drawn in the plain day silhouette rather than the
- * circle: the circle is what says "high risk", and a legend entry that borrowed it would be
- * explaining two things at once.
- */
+/** The ring today wears, at legend size, drawn on the plain day shape rather than the
+ * circle (which already means "high risk"). */
 @Composable
 fun TodayLegendSwatch(modifier: Modifier = Modifier) {
     Box(
