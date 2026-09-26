@@ -25,25 +25,20 @@ class PressureFetchWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, params) {
 
     /**
-     * The outcome has to be read rather than inferred from whether anything was thrown: the
-     * repository reports a failure as a value, so a run that never reached the network would
-     * otherwise look like a run that had worked and wait a full interval for its next chance.
+     * The repository reports failure as a value rather than a thrown exception, so it must be
+     * read explicitly or a failed run looks like a success.
      */
     override suspend fun doWork(): Result {
         return try {
             val outcome = pressureRepository.refresh()
 
-            // Whatever the fetch did. A reconcile rebuilds the pending set from the stored
-            // series *and the clock*, and the clock has moved even when the series has not: an
-            // event that has since finished loses its warning on a run that fetched nothing at
-            // all. Skipping it on a failure is how a device that spends a day offline stops
-            // pruning warnings for weather that is already over.
+            // Reconcile always runs, even on a failed fetch: the clock has moved regardless,
+            // and skipping it would leave warnings for events that already finished.
             alertScheduler.reconcile()
 
             when (outcome) {
-                // Nothing was stored, or a fetch for a new location is still running. Either
-                // way this run has not brought the app up to date, so it goes back on
-                // WorkManager's backoff rather than waiting a whole interval for its next turn.
+                // This run did not bring the app up to date, so retry on WorkManager's backoff
+                // instead of waiting a full interval.
                 RefreshState.Failed, RefreshState.InFlight -> Result.retry()
 
                 RefreshState.Updated, RefreshState.NoReadings, RefreshState.NoLocation ->
@@ -58,12 +53,7 @@ class PressureFetchWorker @AssistedInject constructor(
         private const val WORK_NAME = "pressure_fetch"
         private const val RUN_NOW_WORK_NAME = "pressure_fetch_now"
 
-        /**
-         * How often the forecast is re-fetched. Open-Meteo publishes hourly, so this is as
-         * fine-grained as the data gets; widening it to 3 or 6 hours costs little once alerts
-         * are scheduled ahead of an event rather than discovered by polling, and saves the
-         * radio waking up 24 times a day. WorkManager will not go below 15 minutes.
-         */
+        /** How often the forecast is re-fetched. Open-Meteo publishes hourly, so this is as fine as the data gets. */
         const val REFRESH_INTERVAL_HOURS = 1L
 
         fun schedule(workManager: WorkManager) {

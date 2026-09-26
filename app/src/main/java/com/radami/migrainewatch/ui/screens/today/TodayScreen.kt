@@ -166,23 +166,16 @@ fun TodayScreen(
 }
 
 /**
- * @param alerts events under way or still ahead, earliest first, and never empty. The banner
- *   heads the first — the one under way when there is one, otherwise the one arriving soonest
- *   — and counts the rest, so a caller passing a finished event would have it announced as
- *   something the user still has ahead.
- * @param phase where that first event sits relative to now, which is the difference between
- *   telling the user something is coming and telling them they are already in it. It comes
- *   from the ViewModel because a composable has no clock of its own.
+ * @param alerts events under way or upcoming, earliest first, never empty. First is headlined, rest counted.
+ * @param phase where the first event sits relative to now; comes from the ViewModel, which has the clock.
  */
 @Composable
 private fun AlertBanner(alerts: List<AlertWindow>, phase: AlertPhase, onClick: () -> Unit) {
     val first = alerts.first()
     val zone = remember { ZoneId.systemDefault() }
 
-    // The banner says which way the risk runs and when, and stops there. How big the swing
-    // is what the screen behind the chevron is for, and reading it off a two-line banner never
-    // told anyone anything they could act on. The wording is the notification's own, so the two
-    // cannot describe the same event differently.
+    // Only direction and timing here; magnitude belongs on the detail screen. Wording matches
+    // the notification's own so the two never describe the same event differently.
     val timing = remember(first, phase, zone) {
         formatAlertTiming(first, phase, AlertTimingDetail.Brief, zone)
     }
@@ -192,9 +185,8 @@ private fun AlertBanner(alerts: List<AlertWindow>, phase: AlertPhase, onClick: (
     Surface(
         shape = ALERT_BANNER_SHAPE,
         color = MaterialTheme.colorScheme.errorContainer,
-        // Clipped before it is made clickable: a modifier passed to Surface sits outside the
-        // clipping Surface does for its own shape, so an unclipped ripple would flash square
-        // corners over the rounded ones.
+        // Clip before clickable: Surface clips its own content, not modifiers applied to it,
+        // so an unclipped ripple would flash square corners over the rounded shape.
         modifier = Modifier
             .fillMaxWidth()
             .clip(ALERT_BANNER_SHAPE)
@@ -219,8 +211,7 @@ private fun AlertBanner(alerts: List<AlertWindow>, phase: AlertPhase, onClick: (
                 label = "alertMessage"
             )
 
-            // A plain icon now, not a button: the whole banner is the target, and a nested one
-            // would be a second thing to tap and a second thing to announce for the same trip.
+            // Plain icon, not a button: the whole banner is already the tap target.
             Icon(
                 Icons.Default.ChevronRight,
                 contentDescription = null,
@@ -235,28 +226,17 @@ private val ALERT_BANNER_SHAPE = RoundedCornerShape(12.dp)
 
 private val OUTLOOK_MARKER_SIZE = 36.dp
 
-/**
- * The ripple a tapped day shows. Rounded rather than square because the column is barely wider
- * than the marker inside it, so a hard-cornered flash reads as a glitch rather than a press.
- */
+/** Rounded ripple shape; the column is barely wider than the marker, so square corners flash oddly. */
 private val OUTLOOK_DAY_SHAPE = RoundedCornerShape(8.dp)
 
-/**
- * How far a day the forecast never reached is faded. It sits on top of the fading a quiet day
- * already gets from [DayEmphasis.ByRisk], so it only has to open a gap below that — enough to
- * read as "nothing known here" rather than "checked, and quiet".
- */
+/** Extra fade for a day the forecast never reached, stacked on top of [DayEmphasis.ByRisk]'s own fade. */
 private const val UNKNOWN_DAY_ALPHA = 0.6f
 
 /** The weekday above a day worth looking at, and above one that isn't. */
 private const val WEEKDAY_ALPHA_AT_RISK = 0.9f
 private const val WEEKDAY_ALPHA = 0.45f
 
-/**
- * The week ahead at a glance: what today looks like, then which of the days after it carry a
- * pressure event. The days are drawn with the calendar's own [DayMarker], so a day marked to
- * watch here has the silhouette it will have there.
- */
+/** The week ahead: today, then which upcoming days carry a pressure event, using the calendar's own [DayMarker]. */
 @Composable
 private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
     Card(
@@ -267,15 +247,13 @@ private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
             SectionHeading("${DayOutlook.DAYS}-day outlook")
             Spacer(Modifier.height(12.dp))
 
-            // Nothing can be said about the week before the first load lands, and a week the
-            // forecast never reached is reported rather than drawn as a row of empty days.
-            // Which of those it is comes from the ViewModel — see TodayUiState.outlookGap.
+            // No week to draw before first load, or if the forecast never reached it; see
+            // TodayUiState.outlookGap for which case applies.
             val today = state.outlook.firstOrNull()
             val hasForecast = today != null && state.outlookGap == null
 
-            // Switched on whether there is a week to show rather than on the week itself: the
-            // days inside animate individually, and a card-wide crossfade on every changed
-            // value would run over the top of them.
+            // Keyed on whether there is a week to show, not the week itself, since the days
+            // inside animate individually and a full crossfade would fight that.
             AnimatedContent(
                 targetState = hasForecast,
                 transitionSpec = {
@@ -285,8 +263,8 @@ private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
                 },
                 label = "outlookBody"
             ) { forecastArrived ->
-                // Re-checked rather than trusted: during a transition this lambda runs for the
-                // outgoing branch too, and by then the week it described may be gone.
+                // Re-checked, not trusted: this lambda also runs for the outgoing branch during
+                // a transition, by which point `today` may be stale.
                 if (!forecastArrived || today == null) {
                     OutlookPlaceholder(gap = state.outlookGap, lastUpdated = state.lastUpdated)
                     return@AnimatedContent
@@ -308,12 +286,8 @@ private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
 private fun TodayHeadline(today: DayOutlook, outlook: List<DayOutlook>) {
     val isElevated = today.risk == OutlookRisk.Elevated
 
-    // Today's own risk is the one thing on this card worth colouring: everything below is
-    // context for it. The app's own terracotta rather than the theme's error colour — a day
-    // worth watching is not an error, and the wordmark and the store icon already say this is
-    // what the app's voice looks like. Read at a glance, so it takes the shade its theme can
-    // carry. The colour crosses over on its own rather than through the text transition, so a
-    // day that turns risky without changing wording still shows it.
+    // Brand terracotta, not the theme's error color: a day to watch isn't an error. Animated
+    // independently of the text so a risk change shows even without new wording.
     val riskColor = if (isSystemInDarkTheme()) BrandTerracottaDark else BrandTerracottaLight
     val headlineColor by animateColorAsState(
         targetValue = if (isElevated) riskColor else MaterialTheme.colorScheme.onSurface,
@@ -348,12 +322,8 @@ private fun OutlookStrip(outlook: List<DayOutlook>, onDayClick: () -> Unit) {
         outlook.forEachIndexed { index, day ->
             OutlookDay(
                 day = day,
-                // Only the first column is today, and it is today by construction rather
-                // than by a date comparison that could disagree with the list it was built
-                // from. Left open across midnight with nothing emitting, the whole strip goes
-                // stale together — the ViewModel's LocalDate.now() dated these days — so the
-                // ring stays on the column the dates agree is today rather than drifting off
-                // its own strip. Wrong by a day, but not wrong about itself.
+                // Today is the first column by construction, not by date comparison, so it
+                // can't disagree with the list it came from even if the whole strip goes stale.
                 isToday = index == 0,
                 weekday = weekdayFormatter.format(day.date),
                 onClick = onDayClick
@@ -364,9 +334,8 @@ private fun OutlookStrip(outlook: List<DayOutlook>, onDayClick: () -> Unit) {
 
 @Composable
 private fun OutlookDay(day: DayOutlook, isToday: Boolean, weekday: String, onClick: () -> Unit) {
-    // The column reads as one thing, so it is announced as one: left alone, the weekday, the
-    // day number and the swing are three separate stops that never mention the risk. The tap
-    // target is the whole column rather than the marker, so the weekday above it works too.
+    // Announced as one node (weekday + number + risk) rather than three separate ones.
+    // Tap target is the whole column, including the weekday above the marker.
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -377,12 +346,10 @@ private fun OutlookDay(day: DayOutlook, isToday: Boolean, weekday: String, onCli
                 contentDescription = outlookDayDescription(day, isToday, weekday)
             }
     ) {
-        // The whole column leans one way or the other, label included: a bold number under a
-        // weekday of the same weight as every other would be a smaller signal than it should be.
+        // The weekday label also bolds at risk, so the whole column signals together.
         val atRisk = day.risk == OutlookRisk.Elevated
 
-        // Both opacities travel with the marker's own morph, so a day arriving at a new risk
-        // moves as one piece: the weekday leans in as the number's ring rounds into place.
+        // Animated alongside the marker's own morph so the column moves as one piece.
         val weekdayAlpha by animateFloatAsState(
             targetValue = if (atRisk) WEEKDAY_ALPHA_AT_RISK else WEEKDAY_ALPHA,
             animationSpec = tween(Motion.EMPHASIS_MILLIS),
@@ -409,21 +376,15 @@ private fun OutlookDay(day: DayOutlook, isToday: Boolean, weekday: String, onCli
             modifier = Modifier
                 .size(OUTLOOK_MARKER_SIZE)
                 .alpha(markerAlpha),
-            // The strip is rewritten under the reader when a forecast lands, so its days
-            // travel between silhouettes. The calendar's do not — see RiskTransition.
+            // Strip days animate between silhouettes as the forecast lands; calendar days don't.
             transition = RiskTransition.Animated,
-            // Only here: the calendar is a grid people read a specific day out of, so its
-            // numbers all carry the same weight.
+            // Only here: calendar numbers all carry equal weight since it's a lookup grid.
             emphasis = DayEmphasis.ByRisk
         )
     }
 }
 
-/**
- * What the rings in the strip mean. Both swatches are drawn by the marker itself rather than
- * redrawn here, so the legend cannot drift from the days: high risk in the calendar's own
- * words and swatch, since the two screens mark a day to watch the same way.
- */
+/** What the strip's rings mean. Swatches come from the marker itself so the legend can't drift from the days. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun OutlookLegend() {
@@ -432,7 +393,7 @@ private fun OutlookLegend() {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // Today first, matching the strip: its first column is the one this entry explains.
+        // Today first, matching the strip's first column.
         LegendItem(swatch = { TodayLegendSwatch() }, label = "Today")
         LegendItem(swatch = { HighRiskLegendSwatch() }, label = "High risk")
     }
@@ -448,12 +409,8 @@ private fun LegendItem(swatch: @Composable () -> Unit, label: String) {
 }
 
 /**
- * What the card says when it has no week to draw.
- *
- * Each [OutlookGap] gets its own line, because only one of them is about the connection. A
- * forecast that arrived and has since fallen behind gets dated rather than diagnosed, and a
- * fetch that is still out is not reported at all — the app only names the network where it has
- * actually tried it and been turned away.
+ * What the card says when it has no week to draw. Each [OutlookGap] gets its own message; only
+ * an actual failed fetch is blamed on the network.
  */
 @Composable
 private fun OutlookPlaceholder(gap: OutlookGap?, lastUpdated: Instant?) {
@@ -464,16 +421,13 @@ private fun OutlookPlaceholder(gap: OutlookGap?, lastUpdated: Instant?) {
     val message = when (gap) {
         OutlookGap.ForecastBehind -> lastUpdated
             ?.let { "Forecast is out of date — last updated ${timeFormatter.format(it)}" }
-            // Readings with no fetch time behind them is not a state the ViewModel produces,
-            // so this stands in for one arriving later rather than describing anything today.
-            ?: "Forecast is out of date"
+            ?: "Forecast is out of date" // fallback; ViewModel doesn't actually produce this case
 
         OutlookGap.FetchFailed -> COULD_NOT_REACH_FORECAST
         OutlookGap.NoLocation -> NO_LOCATION_SET
         OutlookGap.NoReadings -> NO_FORECAST_FOR_LOCATION
 
-        // Nothing has come back yet, here or before the first state was computed. Both are
-        // waiting rather than failing, and neither is worth a diagnosis.
+        // Still waiting, not failing — no diagnosis needed.
         OutlookGap.Loading, null -> LOADING_FORECAST
     }
 
@@ -512,8 +466,7 @@ private fun SymptomFreeCard(streak: SymptomFreeStreak?) {
                 )
                 return@Column
             }
-            // Both halves date-stamp a past day, so they share one reading of "this year"
-            // rather than each deciding separately whether a year is worth spelling out.
+            // Shared so both date labels below agree on whether "this year" needs spelling out.
             val currentYear = remember { LocalDate.now().year }
 
             CurrentStreak(streak = streak, currentYear = currentYear)
@@ -532,9 +485,7 @@ private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
         "Last: ${streak.lastEvent.severity.label} on $date"
     }
 
-    // The count and the date read as one sentence, so they are announced as one node. Left
-    // unmerged, the figure, its unit and the date below it are each their own node and the
-    // date ends up spoken twice.
+    // Merged into one semantics node so screen readers don't announce the date twice.
     Column(
         modifier = Modifier.clearAndSetSemantics {
             contentDescription = "${dayCount(streak.currentDays)} symptom-free. $lastEventLabel"
@@ -557,7 +508,7 @@ private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
 
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // The swatch ties the date back to the colour the day already wears in the calendar.
+            // Matches the color this day already has in the calendar.
             Box(
                 modifier = Modifier
                     .size(STREAK_SEVERITY_DOT_SIZE)
@@ -574,18 +525,13 @@ private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
     }
 }
 
-/**
- * Spells the year out only once this year is the wrong thing to assume — a long streak dates its
- * last event years back, and "Saturday 15 August" would read as a recent one.
- */
+/** Spells out the year only when it isn't this year, so an old date doesn't read as recent. */
 private fun dateFormatterFor(date: LocalDate, currentYear: Int): DateTimeFormatter =
     if (date.year == currentYear) AppDateFormats.DAY_AND_MONTH else AppDateFormats.DAY_MONTH_AND_YEAR
 
 @Composable
 private fun LongestStreak(longest: SymptomFreeStreak.Run?, currentYear: Int) {
-    // Label and figure sit side by side rather than spread across the row: the log FAB floats
-    // over the bottom-right corner of this card, so anything right-aligned here disappears
-    // under it on a narrow screen.
+    // Kept side by side, not right-aligned: the log FAB covers the bottom-right corner on narrow screens.
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             "Longest streak",
@@ -593,8 +539,7 @@ private fun LongestStreak(longest: SymptomFreeStreak.Run?, currentYear: Int) {
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = SUBDUED_ALPHA)
         )
         Spacer(Modifier.width(8.dp))
-        // A second event is what creates the first gap to measure, so until then there is
-        // genuinely nothing to report rather than a streak of zero.
+        // Needs a second event to form a gap to measure; until then there's nothing to report.
         Text(
             longest?.let { dayCount(it.days) } ?: NOT_ENOUGH_DATA,
             style = MaterialTheme.typography.bodyMedium,
@@ -602,7 +547,7 @@ private fun LongestStreak(longest: SymptomFreeStreak.Run?, currentYear: Int) {
         )
     }
 
-    // A run of zero days spans no days at all, so there is no range to name.
+    // A zero-day run has no range to name.
     if (longest == null || longest.days == 0L) return
 
     val rangeLabel = remember(longest, currentYear) { longest.rangeLabel(currentYear) }
@@ -614,10 +559,7 @@ private fun LongestStreak(longest: SymptomFreeStreak.Run?, currentYear: Int) {
     )
 }
 
-/**
- * "12 May – 3 Jun", carrying the year on the same terms as [dateFormatterFor] — a record set
- * years ago would otherwise read as a recent one.
- */
+/** "12 May – 3 Jun", carrying the year the same way [dateFormatterFor] does. */
 private fun SymptomFreeStreak.Run.rangeLabel(currentYear: Int): String {
     val formatter = if (to.year == currentYear) {
         AppDateFormats.SHORT_DAY_AND_MONTH

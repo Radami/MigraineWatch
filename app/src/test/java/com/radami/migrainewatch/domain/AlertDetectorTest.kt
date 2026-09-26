@@ -42,10 +42,8 @@ class AlertDetectorTest {
     }
 
     /**
-     * [AlertDetector.daysTouched] is tested directly as well as through `eventDays`, because
-     * the outlook asks it a different question: `eventDays` walks the range, while
-     * `date in daysTouched(...)` leans on its endpoints. A range whose endpoints were wrong in
-     * a way the walk happened to absorb would pass one and fail the other.
+     * Tested directly, not only through `eventDays`: that function walks the range, while
+     * `date in daysTouched(...)` leans on endpoints, so a bad endpoint could pass one and fail the other.
      */
     @Test
     fun `daysTouched spans an alert from its first day to its last`() {
@@ -215,11 +213,8 @@ class AlertDetectorTest {
 
     @Test
     fun `detect collapses noisy overlapping windows into distinct alerts`() {
-        // Regression test for a crash on the alert screen: historical rows persist across
-        // refreshes while the mock pattern is re-anchored to "now", stitching two series
-        // together. On such data, neighbouring sliding windows used to flip direction label,
-        // escape the merge step, and get pinned to the same pressure extremes — producing
-        // duplicate alerts (identical start times) that crashed the LazyColumn keyed on them.
+        // Regression test: stitching old historical rows to a re-anchored mock series used to
+        // produce duplicate alerts with identical start times, crashing the LazyColumn keyed on them.
         val seed = 128.242
         val base = 1013f + (seed % 5.0).toFloat()
         fun eventOffset(j: Int): Float = when {

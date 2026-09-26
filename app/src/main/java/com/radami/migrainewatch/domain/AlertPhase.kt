@@ -3,12 +3,9 @@ package com.radami.migrainewatch.domain
 import java.time.Instant
 
 /**
- * Where an event sits relative to now, which decides what a notification about it can honestly
- * claim.
- *
- * Kept explicit rather than left to fall out of a time comparison at each call site: the two
- * cases want different copy and different scheduling, and folding them together is what once
- * let a warning headed "Starts Monday 22:00" arrive on Wednesday afternoon.
+ * Where an event sits relative to now, deciding what a notification can honestly claim. Kept
+ * explicit rather than a per-call-site time comparison, since the two cases need different
+ * copy and scheduling.
  */
 enum class AlertPhase {
 

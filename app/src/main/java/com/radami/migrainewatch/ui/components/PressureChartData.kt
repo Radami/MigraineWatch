@@ -12,18 +12,12 @@ private const val MIN_READINGS_FOR_RANGE = 2
 /** And two steps that span something, before a band is a band rather than a lone upright. */
 private const val MIN_STEPS_FOR_BAND = 2
 
-// What the chart works out before anything is drawn. Kept apart from the drawing because none of
-// it needs a canvas: every function here is pure and covered by PressureChartTest.
+// What the chart works out before anything is drawn. Kept apart from drawing: every function
+// here is pure and covered by PressureChartTest.
 
 /**
- * [items] split wherever their indices stop running consecutively.
- *
- * A gap in the data has to break the lines where it falls rather than be bridged by a segment
- * describing no step at all: the chart drops a point it has no readings for, so a hole in the
- * series arrives here as a jump in the indices and nothing else.
- *
- * Generic over what it is splitting so it can be exercised without a draw context — the points
- * it runs on in the chart only exist part-way through a frame.
+ * [items] split wherever their indices stop running consecutively, so a gap in the data
+ * breaks the lines rather than being bridged. Generic so it can be tested without a draw context.
  */
 internal fun <T> consecutiveRuns(items: List<T>, indexOf: (T) -> Int): List<List<T>> = buildList {
     var current = mutableListOf<T>()
@@ -39,52 +33,36 @@ internal fun <T> consecutiveRuns(items: List<T>, indexOf: (T) -> Int): List<List
 }
 
 /**
- * How the chart draws the readings each of its points stands for.
- *
- * Separate from [ChartStep] because the two are independent: a step decides how much time a
- * point covers, this decides what is drawn for it. They were one thing while only the daily
- * step drew a band, which is what made a band at any other step impossible to ask for.
- *
- * A caller picks one per range, and the chart falls back to [Line] regardless when a step
- * holds too little data to have a range at all — so what a caller passes is a request, and
- * [renderingFor] settles what is actually drawn.
+ * How the chart draws the readings each of its points stands for. Independent of [ChartStep]
+ * (which decides how much time a point covers). A caller requests one per range, but
+ * [renderingFor] can fall back to [Line] when a step has too little data for a range.
  */
 enum class ChartRendering {
 
     /** A single line through the pressure sampled at each point. */
     Line,
 
-    /**
-     * The lowest and highest pressure within each point's step, as two lines with a wash
-     * between them. Says how far pressure moved inside a step rather than where it happened
-     * to be at the instant the step was sampled.
-     */
+    /** Lowest and highest pressure within each point's step, as two lines with a wash
+     * between them, showing how far pressure moved during the step. */
     MinMaxBand
 }
 
 /**
- * What the chart plots at x = [index]: the lowest and highest pressure within that step, or
- * for a [ChartRendering.Line] the one sampled pressure given as both. Carrying the pair
- * whichever is drawn lets the overlays treat a line as the band whose edges coincide, the
- * same equivalence [SeriesEdges] rests on.
+ * What the chart plots at x = [index]: the step's low and high, or for [ChartRendering.Line]
+ * the one sampled value given as both, so a line can be treated as a degenerate band.
  */
 internal data class RangeEntry(val index: Int, val minY: Float, val maxY: Float)
 
 /**
- * The two edges the chart plots, in chart x-order.
- *
- * Both renderings produce a pair, because a pair is what lets one turn into the other: a line
- * is the degenerate band whose edges coincide. Vico tweens a model into the next one, so
- * keeping the shape of the model the same across renderings is what makes switching range a
- * movement rather than a swap.
+ * The two edges the chart plots, in chart x-order. Always a pair, even for a line (whose
+ * edges coincide), so Vico can tween the same model shape across renderings.
  */
 internal data class SeriesEdges(val lower: List<FloatEntry>, val upper: List<FloatEntry>)
 
 /**
- * Pressure at exactly [epoch], linearly interpolated between the two surrounding readings
- * ([readings] must be sorted by time). Returns null outside the data range, so a missing
- * stretch of data drops the chart point instead of silently reusing a reading from a
- * different time.
+ * Pressure at exactly [epoch], interpolated between the surrounding readings ([readings] must
+ * be sorted by time). Null outside the data range, so a gap drops the point rather than
+ * reusing a reading from elsewhere.
  */
 internal fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
     val after = readings.firstOrNull { it.dateTime.epochSecond >= epoch } ?: return null
@@ -97,13 +75,9 @@ internal fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
 }
 
 /**
- * The lowest and highest pressure within each of the window's steps.
- *
- * A step's readings are the ones within half a step either side of the instant it is sampled
- * at, so the range is centred on the point its label names rather than trailing behind it. A
- * step holding fewer than two readings is left out: one reading is a value, not a range.
- *
- * Empty for a [ChartRendering.Line], which has no use for it.
+ * Lowest and highest pressure within each of the window's steps, using readings within half
+ * a step either side so the range centres on its labelled point. Steps with fewer than two
+ * readings are dropped. Empty for [ChartRendering.Line], which has no use for it.
  */
 internal fun stepRanges(
     readings: List<PressureReading>,
@@ -122,12 +96,9 @@ internal fun stepRanges(
 }
 
 /**
- * What the chart can actually draw, which is not always what the caller asked for.
- *
- * A band needs at least two steps with a range to be a band at all; a series too sparse for
- * that would leave the plot empty, so it falls back to the line. Resolved before the marks are
- * built, so the marks, the line colour and the legend all agree on which of the two is on
- * screen.
+ * What the chart can actually draw, which may not be what was requested: a band needs at
+ * least two ranged steps or it falls back to the line. Resolved once so marks, line colour
+ * and legend all agree on what is shown.
  */
 internal fun renderingFor(
     requested: ChartRendering,
@@ -136,11 +107,8 @@ internal fun renderingFor(
     if (stepRanges.size >= MIN_STEPS_FOR_BAND) requested else ChartRendering.Line
 
 /**
- * The two edges to plot, for whichever rendering [rendering] settled on.
- *
- * A line is the band whose edges coincide, so it is built as a pair too rather than as one
- * series: switching range then moves the edges apart or together instead of swapping one
- * drawing for another, which is the whole reason the transition animates.
+ * The two edges to plot, for whichever [rendering] was settled on. A line is built as a pair
+ * too, so switching rendering moves the edges apart or together instead of swapping drawings.
  */
 internal fun seriesEdges(
     readings: List<PressureReading>,
@@ -163,16 +131,9 @@ internal fun seriesEdges(
 
 /**
  * How far the series moves from the point at `endIndex` out to the plot edge at chart x
- * `edgeX`, in hPa.
- *
- * An offset rather than a value, so the overhang is hinged on wherever that point currently
- * is and rides Vico's tween with it. An absolute value would be the one thing on the chart
- * standing still while everything around it moved.
- *
- * A line is sampled out there like anywhere else: the strip is real time — an hourly plot
- * reserves it so its extreme labels clear the axis — and [readings] covers it. A band does not
- * move at all: its edges are one step's extremes, which hold across the whole of that step's
- * cell, so following the curve out would draw a range no step actually had.
+ * `edgeX`, in hPa. An offset (not an absolute value) so the overhang stays hinged to the
+ * point and rides Vico's tween with it. A band returns no offset: its edges are one step's
+ * extremes and don't extend past it.
  */
 internal fun edgeOffsetSampler(
     readings: List<PressureReading>,
@@ -183,8 +144,8 @@ internal fun edgeOffsetSampler(
         val atEdge = pressureAt(readings, window.instantAt(edgeX).epochSecond)
         val atEnd = pressureAt(readings, window.epochSecondAt(endIndex))
 
-        // Nothing to carry unless both ends of the strip are covered; a gap at the plot edge
-        // is the truth, the same one that breaks the lines where readings are missing.
+        // Null unless both ends of the strip have data, matching how gaps break the lines
+        // elsewhere.
         if (atEdge == null || atEnd == null) null else atEdge - atEnd
     }
 

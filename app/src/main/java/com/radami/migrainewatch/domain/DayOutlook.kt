@@ -13,19 +13,15 @@ enum class OutlookRisk {
     /** At least one qualifying pressure event touches the day. */
     Elevated,
 
-    /**
-     * The forecast does not reach the end of the day, so the day cannot be called clear —
-     * an event could still be hiding in the hours we have no readings for.
-     */
+    /** The forecast doesn't reach the end of the day, so it can't be called clear yet. */
     Unknown
 }
 
 /**
  * One day of the outlook.
  *
- * @param peakDelta the largest swing among the events touching the day, and [direction] the way
- *   that event moved. Both are null unless [risk] is [OutlookRisk.Elevated]: the biggest event
- *   is what the day is worth summarising by, and on a clear day there is none.
+ * @param peakDelta the largest swing among events touching the day; [direction] is that event's
+ *   direction. Both null unless [risk] is [OutlookRisk.Elevated].
  */
 data class DayOutlook(
     val date: LocalDate,
@@ -42,12 +38,9 @@ data class DayOutlook(
          * The next [DAYS] days from [today], each marked with the events in [alerts] that touch
          * it.
          *
-         * @param coveredThrough the instant the readings stop describing, or null when there
-         *   are none. Not the last reading's timestamp: readings are samples, and the interval
-         *   one opens is covered by it, so the caller works this out — see
-         *   [PressureAlertUseCase.coverageEnd]. A day is only called clear once coverage
-         *   reaches its final midnight; past that point the days are [OutlookRisk.Unknown]
-         *   rather than quietly reported as safe.
+         * @param coveredThrough instant the readings stop describing, or null. See
+         *   [PressureAlertUseCase.coverageEnd]. A day is only "clear" once coverage reaches its
+         *   final midnight; otherwise it's [OutlookRisk.Unknown].
          */
         fun forecast(
             alerts: List<AlertWindow>,
@@ -58,13 +51,11 @@ data class DayOutlook(
             val date = today.plusDays(offset.toLong())
             val touching = alerts.filter { date in AlertDetector.daysTouched(it, zone) }
 
-            // The day is covered only once the readings describe it right through to its final
-            // midnight.
+            // Covered only once readings describe the day through to its final midnight.
             val dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant()
             val covered = coveredThrough != null && !coveredThrough.isBefore(dayEnd)
 
-            // A touched day is elevated whether or not the forecast reaches its end: the event
-            // is already known, and nothing later in the day can un-know it.
+            // A touched day is elevated regardless of coverage; the event is already known.
             val peak = touching.maxByOrNull { it.delta }
             when {
                 peak != null -> DayOutlook(date, OutlookRisk.Elevated, peak.delta, peak.direction)

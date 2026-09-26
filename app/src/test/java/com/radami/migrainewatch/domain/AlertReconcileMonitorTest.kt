@@ -17,12 +17,9 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * That a series which lands takes the queued warnings with it.
- *
- * The hourly worker reconciles after its own fetch, but it is not the only thing that fetches:
- * a change of location refetches everything from inside the repository, and nothing was
- * watching for it. The queued warnings went on describing the city the user had left until the
- * worker next happened to fire — up to an hour of notifications about the wrong continent.
+ * A landed series must rebuild queued warnings. The hourly worker reconciles after its own
+ * fetch, but a location change also refetches from inside the repository and needs to trigger
+ * reconcile too, or stale warnings for the old city could linger up to an hour.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AlertReconcileMonitorTest {
@@ -83,11 +80,7 @@ class AlertReconcileMonitorTest {
         coVerify(exactly = 0) { scheduler.reconcile(any()) }
     }
 
-    /**
-     * Every landing, not only the first. Two fetches in a session — the hourly worker, then a
-     * move — are two different series, and the second has as much claim on the queue as the
-     * first.
-     */
+    /** Every landing must reconcile, not just the first — a later fetch has equal claim on the queue. */
     @Test
     fun `each new series rebuilds them again`() = runTest {
         refreshState.value = RefreshState.Updated

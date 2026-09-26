@@ -27,10 +27,8 @@ import com.radami.migrainewatch.ui.screens.pressure.PressureScreen
 import com.radami.migrainewatch.ui.screens.settings.SettingsScreen
 import com.radami.migrainewatch.ui.screens.today.TodayScreen
 
-/**
- * @param openTab a tab to show on top of [startDestination] once, for a notification that
- *   opens the app on a screen other than the one it normally starts on.
- */
+/** @param openTab a tab to show on top of [startDestination] once, for a notification that
+ *   opens the app on a different screen than usual. */
 @Composable
 fun AppNavigation(startDestination: String, openTab: Screen? = null) {
     val navController = rememberNavController()
@@ -97,9 +95,8 @@ fun AppNavigation(startDestination: String, openTab: Screen? = null) {
             }
             composable(Screen.Today.route) {
                 TodayScreen(
-                    // Both the banner and the outlook days lead here: they name an event or a
-                    // day, and the Pressure tab is where every one of them is listed and shaded
-                    // on the chart.
+                    // The banner and outlook days both lead here: Pressure lists and shades
+                    // every event and day on the chart.
                     onViewPressure = { navController.navigateToTab(Screen.Pressure) },
                     onChangeLocation = { navController.navigate(Screen.Onboarding.route) }
                 )

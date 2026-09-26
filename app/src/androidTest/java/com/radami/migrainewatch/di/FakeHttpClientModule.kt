@@ -9,10 +9,9 @@ import okhttp3.OkHttpClient
 import javax.inject.Singleton
 
 /**
- * The instrumented counterpart of the unit tests' fake client. NavigationTest picks a forecast
- * through [MockDataInterceptor.currentScenario], so it needs the interceptor installed however
- * the build flag is set. Duplicated rather than shared because test and androidTest are
- * separate source sets.
+ * Instrumented counterpart of the unit tests' fake client. NavigationTest picks a forecast via
+ * [MockDataInterceptor.currentScenario], so this must be installed regardless of build flag.
+ * Duplicated (not shared) because test and androidTest are separate source sets.
  */
 @Module
 @TestInstallIn(components = [SingletonComponent::class], replaces = [HttpClientModule::class])

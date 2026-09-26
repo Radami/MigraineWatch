@@ -20,11 +20,8 @@ import org.robolectric.annotation.Config
 import java.time.Instant
 
 /**
- * What the chart puts in its own place when it has nothing to plot.
- *
- * The decisions behind it are covered by PressureChartTest without a canvas; these two need one,
- * because what is being checked is that the stand-in is actually composed and actually laid out
- * where the chart would have been.
+ * Checks the empty-state stand-in is actually composed and laid out in the chart's place.
+ * The logic behind it is covered elsewhere without a canvas; this needs a real render.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -34,11 +31,7 @@ class PressureChartEmptyStateTest {
         const val EMPTY_MESSAGE = "No readings in this range"
         const val HOUR = 3600L
 
-        /**
-         * The chart is given less width than the surrounding card has, so a stand-in that
-         * ignored the modifier would be laid out by the card instead and come out wider. Equal
-         * widths would let a dropped modifier pass unnoticed.
-         */
+        /** Chart width < card width, so a stand-in ignoring its modifier would come out wider. */
         val CARD_WIDTH = 300.dp
         val CHART_WIDTH = 200.dp
 
@@ -62,18 +55,14 @@ class PressureChartEmptyStateTest {
                     window = ChartWindow.around(NOW, ChartStep.ThreeHours),
                     modifier = Modifier.width(CHART_WIDTH)
                 ) {
-                    // Fills whatever it is put inside, so its measured width reports which
-                    // container that turned out to be.
+                    // Fills its container, so measured width reveals which one it landed in.
                     Text(EMPTY_MESSAGE, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
     }
 
-    /**
-     * The card used to draw nothing here — chips over blank space, which reads as a chart that
-     * failed to render rather than as data that is missing.
-     */
+    /** Used to draw nothing here, which read as a broken chart rather than missing data. */
     @Test
     fun `readings that do not reach the window put the stand-in on screen`() {
         setChart(staleReadings())
@@ -81,11 +70,7 @@ class PressureChartEmptyStateTest {
         composeTestRule.onNodeWithText(EMPTY_MESSAGE).assertExists()
     }
 
-    /**
-     * And it takes the width the caller asked the chart for. A composable has to apply the
-     * modifier it was handed on every path it can leave by; dropping it on this one leaves the
-     * message sitting at its own intrinsic width rather than filling the card.
-     */
+    /** The stand-in must honor the modifier passed to the chart on every render path. */
     @Test
     fun `the stand-in is laid out under the modifier the chart was given`() {
         setChart(staleReadings())

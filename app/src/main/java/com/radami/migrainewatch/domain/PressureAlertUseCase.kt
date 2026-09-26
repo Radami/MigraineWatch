@@ -10,11 +10,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The single definition of "which pressure events count right now".
- *
- * The Today screen and the notification scheduler both go through here so they cannot drift
- * apart: a banner listing three events while a notification announces a fourth would be worse
- * than either being wrong on its own.
+ * The single definition of "which pressure events count right now". The Today screen and the
+ * notification scheduler both go through here so they can't drift apart.
  */
 @Singleton
 class PressureAlertUseCase @Inject constructor(
@@ -23,33 +20,17 @@ class PressureAlertUseCase @Inject constructor(
 ) {
     companion object {
         /**
-         * How recently an event must have finished to still count as current.
-         *
-         * A finished event is kept because the screens that show one are looking backwards as
-         * well as forwards. The Pressure screen's widest range draws three days of history
-         * against four of forecast, and an event that ended this morning is exactly what the
-         * history half is there to explain; dropping it at the moment it ends would leave that
-         * half shaded only while something happened to be under way. The Today outlook marks
-         * whole days, and a day an event passed through stays a day to watch until it is over.
-         *
-         * A day is the bound because both of those are day-shaped claims. Anything older is
-         * history, and belongs to the calendar rather than to today.
-         *
-         * What this does *not* license is a warning: [alertsIn] returns finished events, so a
-         * caller announcing something to the user filters them out — see the Today banner and
-         * [AlertNotificationDecider.decide].
+         * How recently an event must have finished to still count as current. Kept because
+         * screens look backwards as well as forwards (chart history, day-outlook). Does not
+         * license a warning: callers announcing to the user filter finished events out
+         * themselves (see [AlertNotificationDecider.decide]).
          */
         const val RELEVANCE_HOURS = 24L
 
         /**
-         * How far back detection reads, which is deliberately further than [RELEVANCE_HOURS].
-         *
-         * An event that is already underway has its peak behind us. Detecting inside a window
-         * that begins at `now - RELEVANCE_HOURS` pins the start to the window edge instead of
-         * to the real peak, so the reported start walks forward an hour on every refresh and
-         * one continuous event looks like a new event each time — new work name, new
-         * notification id, nothing matching the delivered history. Reaching back three days is
-         * what gives an in-progress event one stable identity.
+         * How far back detection reads; deliberately further than [RELEVANCE_HOURS]. A shorter
+         * window would pin an underway event's start to the window edge instead of its real
+         * peak, making it look like a new event on every refresh.
          */
         const val DETECTION_HISTORY_HOURS = 72L
 
@@ -57,28 +38,23 @@ class PressureAlertUseCase @Inject constructor(
         const val FORECAST_DAYS = 7L
 
         /**
-         * The cadence Open-Meteo publishes at. A reading stands for the hour it opens rather
-         * than for an instant, which is what separates the last reading from the last moment
-         * the readings describe — see [coverageEnd].
+         * The cadence Open-Meteo publishes at. A reading stands for the hour it opens, not an
+         * instant — see [coverageEnd].
          */
         const val READING_INTERVAL_HOURS = 1L
     }
 
     /**
-     * The instant [readings] stop describing, or null when there are none.
-     *
-     * Deliberately not the last reading's timestamp. An hourly series for [FORECAST_DAYS] ends
-     * at 23:00 on its final day, so a caller that treated that timestamp as the horizon would
-     * find the last day of its own seven-day forecast short of data and refuse to call it
-     * clear. The hour that reading opens is covered too.
+     * The instant [readings] stop describing, or null when there are none. Deliberately not the
+     * last reading's timestamp: the hour that reading opens is covered too, or the final day of
+     * the forecast would look short of data.
      */
     fun coverageEnd(readings: List<PressureReading>): Instant? =
         readings.maxOfOrNull { it.dateTime }?.plus(READING_INTERVAL_HOURS, ChronoUnit.HOURS)
 
     /**
-     * Alerts within [readings], which the caller has already collected. Callers that hold a
-     * flow of readings for other reasons (the Today screen holds them for its chart) use this
-     * rather than re-reading the database.
+     * Alerts within [readings], which the caller has already collected (e.g. the Today screen's
+     * chart data), avoiding a re-read of the database.
      */
     fun alertsIn(
         readings: List<PressureReading>,
@@ -88,8 +64,7 @@ class PressureAlertUseCase @Inject constructor(
         val detectFrom = now.minus(DETECTION_HISTORY_HOURS, ChronoUnit.HOURS)
         val window = readings.filter { !it.dateTime.isBefore(detectFrom) }
 
-        // The extra history exists only to find true starts, not to widen the result: an event
-        // that finished before the relevance window is reported to nobody.
+        // Extra history is only to find true starts, not to widen the result.
         val relevantFrom = now.minus(RELEVANCE_HOURS, ChronoUnit.HOURS)
         return AlertDetector.detect(window, thresholdHpa).filter { it.end.isAfter(relevantFrom) }
     }

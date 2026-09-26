@@ -48,20 +48,14 @@ private enum class RefreshMode {
 }
 
 /**
- * How the last fetch ended, or that one is still under way.
- *
- * A screen with no readings to draw cannot tell on its own why it has none, and the difference
- * matters to the reader: a fetch still running is worth waiting for, a failed one is worth
- * saying something about, and an empty table behind a fetch that succeeded is neither. The
- * repository is the only thing that knows, so it says so rather than leaving each screen to
- * guess from the shape of its own data.
+ * How the last fetch ended, or that one is still running.
+ * Lets a screen with no readings explain why, instead of guessing.
  */
 enum class RefreshState {
 
     /**
-     * A fetch is running, or none has finished yet. Also what a caller is told when the fetch
-     * it joined was superseded by one for a new location: that replacement is still running,
-     * so nothing can be said about the result yet.
+     * A fetch is running, or none has finished yet. Also returned when the joined
+     * fetch was superseded by one for a new location that is still running.
      */
     InFlight,
 
@@ -69,11 +63,9 @@ enum class RefreshState {
     Updated,
 
     /**
-     * The fetch worked and carried no readings, so nothing was stored and nothing ever will be
-     * for this location. Distinct from [Updated] because a screen with an empty table cannot
-     * tell the two apart on its own, and only one of them means the wait is over: a stored
-     * series reaches a screen through Room, several hops after the fetch that stored it
-     * returned, so an empty table behind an [Updated] is a first load still in progress.
+     * The fetch worked but carried no readings, so nothing was stored.
+     * Distinct from [Updated] because Room delivers stored rows later, so an
+     * empty table right after [Updated] can still just be a load in progress.
      */
     NoReadings,
 
@@ -85,17 +77,16 @@ enum class RefreshState {
 }
 
 /**
- * What the stored series depends on. The name a location carries is a label for the user, so
- * two spellings of one place are not a reason to refetch; move any of these and the readings
- * describe somewhere else.
+ * What the stored series depends on. The location name is just a display label,
+ * so renaming it alone shouldn't trigger a refetch; lat/lon/timezone should.
  */
 private data class SeriesLocation(val lat: Double, val lon: Double, val timezone: String)
 
 private const val TAG = "PressureRepo"
 
 /**
- * How far back the forecast endpoint returns history of its own (`past_days=30`). The line
- * between what an ordinary refresh already covers and what the archive has to be asked for.
+ * How far back the forecast endpoint returns history on its own (`past_days=30`).
+ * Anything older has to come from the archive API instead.
  */
 private const val FORECAST_HISTORY_DAYS = 30L
 
@@ -106,13 +97,9 @@ private const val INITIAL_BACKFILL_DAYS = 60L
 private const val FORECAST_FRESHNESS_HOURS = 1L
 
 /**
- * [runCatching] with cancellation left alone.
- *
- * `runCatching` catches [Throwable], cancellation included, which would turn a fetch superseded
- * by a move into one that had merely failed: logged as an error, and — because the coroutine
- * carries on from the catch rather than unwinding — free to reach its own write afterwards,
- * over the readings that replaced it. Every part of a fetch runs where it can be cancelled, so
- * every catch here has to tell the two apart.
+ * [runCatching] but rethrows [CancellationException] instead of swallowing it.
+ * Otherwise a fetch cancelled by a location change would be logged as a failure
+ * and could keep running to write stale results over the replacement's.
  */
 private inline fun <T> catchingFailures(block: () -> T): Result<T> =
     try {
@@ -131,10 +118,8 @@ class PressureRepository @Inject constructor(
     private val prefs: UserPreferences,
     @ApplicationScope private val scope: CoroutineScope
 ) {
-    // Pinned to ROOT because these go into an Open-Meteo query string, not onto a screen.
-    // Without a locale they would follow the device, and a locale whose default numbering
-    // system is not Latin — Arabic (Egypt), for one — renders the digits in its own script,
-    // sending the API a date it cannot parse. The app is unusable on those devices.
+    // Pinned to ROOT: these go into an Open-Meteo query string, not onto a screen.
+    // A device locale with non-Latin digits would otherwise send a date the API can't parse.
     private val isoFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm", Locale.ROOT)
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ROOT)
 
@@ -148,11 +133,9 @@ class PressureRepository @Inject constructor(
     private val _refreshState = MutableStateFlow(RefreshState.InFlight)
 
     /**
-     * How the fetching is going, for screens that have to explain an empty series.
-     *
-     * Published rather than returned only, because the fetch a screen cares about is often not
-     * one it asked for: the hourly worker and a change of location both drive refreshes under
-     * a screen that is already up.
+     * How the fetching is going, for screens that need to explain an empty series.
+     * Published as a flow since refreshes are often triggered by something other
+     * than the screen observing them (the hourly worker, a location change).
      */
     val refreshState: StateFlow<RefreshState> = _refreshState.asStateFlow()
 
@@ -165,26 +148,15 @@ class PressureRepository @Inject constructor(
 
     /**
      * Fetches the current series and stores it, or joins the fetch already running.
-     *
-     * Callers overlap by design — the Today screen refreshes when it opens, the Pressure
-     * screen when its data is stale, and the hourly worker whenever it fires — and separate
-     * fetches racing each other write in whatever order they happen to finish, so the series
-     * that lands last is not necessarily the one fetched last. Joining collapses them into a
-     * single fetch with a single result, which is what every caller wanted anyway.
-     *
-     * The fetch runs in the repository's own [scope] rather than the caller's. A caller that
-     * goes away mid-flight — a ViewModel whose screen closed — must not take the result with
-     * it while the others are still waiting on it.
+     * Callers overlap by design, so joining avoids races between concurrent fetches.
+     * Runs in [scope], not the caller's, so a closed screen can't cancel others waiting on it.
      */
     suspend fun refresh(): RefreshState = fetch(RefreshMode.KeepHistory)
 
     private suspend fun fetch(mode: RefreshMode): RefreshState {
         val running = refreshMutex.withLock {
-            // A fetch for a place the user has left is not one to join, and it must not be
-            // left to write on top of the one replacing it. Waited out rather than merely
-            // cancelled: cancellation is only noticed at a suspension point, so a fetch let go
-            // of here could still reach its own write — with the old city's readings — after
-            // the replacement had made its.
+            // On a location change, wait for the old fetch to fully cancel rather than just
+            // signal it, so it can't sneak in a write with stale readings afterwards.
             if (mode == RefreshMode.ReplaceEverything) {
                 inFlight?.cancelAndJoin()
                 inFlight = null
@@ -195,27 +167,17 @@ class PressureRepository @Inject constructor(
         return try {
             running.await()
         } catch (e: CancellationException) {
-            // The shared fetch was superseded by one for a new location, which is now running.
-            // That is not this caller failing, so rethrow only if the caller is the one that
-            // has been cancelled.
+            // The shared fetch was superseded by a new one; only rethrow if this
+            // caller itself was cancelled, not because the fetch it joined was.
             currentCoroutineContext().ensureActive()
             RefreshState.InFlight
         }
     }
 
     /**
-     * Starts a fetch and publishes what becomes of it. Recording it as the one in flight is
-     * left to the caller, where a reader of [fetch] can see it happen.
-     *
-     * Called under [refreshMutex], so the two writes to [_refreshState] here cannot interleave
-     * with another fetch's.
-     *
-     * [RefreshState.InFlight] is published before the coroutine is dispatched rather than from
-     * inside it, so a caller that starts a refresh and then reads the state cannot catch the
-     * result of the previous one still standing.
-     *
-     * A cancelled fetch publishes nothing: [fetchAndStore] unwinds instead of returning, so the
-     * fetch replacing it keeps the state it has just set.
+     * Starts a fetch and publishes what becomes of it; caller records it as the one in flight.
+     * Publishes [RefreshState.InFlight] before dispatching so a state read right after can't
+     * see a previous fetch's stale result. A cancelled fetch publishes nothing.
      */
     private fun startFetch(mode: RefreshMode): Deferred<RefreshState> {
         _refreshState.value = RefreshState.InFlight
@@ -223,40 +185,28 @@ class PressureRepository @Inject constructor(
     }
 
     /**
-     * Refetches when the user moves, because everything stored describes where they were.
-     *
-     * Observed here rather than done by whoever writes the location: the stored series belongs
-     * to a place, so noticing that the place changed is this class's job, and a screen that
-     * happens to save a location should not have to remember to say so. Onboarding is covered
-     * by the same collector — the move from no location to the first one is a change like any
-     * other.
+     * Refetches whenever the stored location changes, including the first one at onboarding.
+     * Lives here rather than in whoever writes the location, since owning the stored
+     * series means owning the reaction to it changing.
      */
     private fun observeLocationChanges() {
         scope.launch {
             prefs.settings
                 .map { SeriesLocation(it.location.lat, it.location.lon, it.location.timezone) }
                 .distinctUntilChanged()
-                // The location in force when the app starts is where the data already is.
+                // The location active at startup is where the stored data already is.
                 .drop(1)
-                // A settings read that failed arrives here as the defaults, which describe no
-                // location at all. That is nowhere the user has gone, so it is not a move —
-                // acted on, it would fetch for a place that does not exist. Placed after the
-                // drop so that onboarding, where the first location genuinely does arrive after
-                // an empty one, still counts as a change like any other.
+                // Filters out the zero/zero default (a failed settings read, not a real move).
+                // Placed after drop(1) so onboarding's first real location still counts.
                 .filter { it.lat != 0.0 || it.lon != 0.0 }
                 .collect { fetch(RefreshMode.ReplaceEverything) }
         }
     }
 
     /**
-     * No dispatcher of its own: [scope] is the one this always runs in, and wrapping it again
-     * would only hide which thread the work is on and put a second dispatch between the tests
-     * and the code they are driving.
-     *
-     * Reports failure rather than throwing it. One of the callers waiting on this is the
-     * location collector, and a throw reaching it would end the collector for the rest of the
-     * process: the app would go on running, quietly never noticing that the user had moved
-     * again. Cancellation is the one thing still allowed through — see [catchingFailures].
+     * Runs in [scope] with no dispatcher of its own; wrapping would only hide the thread.
+     * Reports failure instead of throwing: a throw here would kill the location collector,
+     * silently breaking future refreshes. Cancellation still propagates; see [catchingFailures].
      */
     private suspend fun fetchAndStore(mode: RefreshMode): RefreshState {
         val loc = catchingFailures { prefs.settings.first().location }
@@ -272,9 +222,8 @@ class PressureRepository @Inject constructor(
         val now = Instant.now()
         Log.d(TAG, "Refreshing data for ${loc.name} at ${loc.lat},${loc.lon} in $timezone")
 
-        // Its own catch, and not part of the outcome: the forecast endpoint returns 30 days of
-        // history by itself, so failing to reach further back than that is a thinner chart
-        // rather than a refresh that failed.
+        // Own catch, not part of the outcome: the forecast endpoint already covers 30 days,
+        // so failing to backfill further just thins the chart, it isn't a refresh failure.
         if (mode == RefreshMode.KeepHistory) {
             catchingFailures { gapFillIfNeeded(loc, timezone, now) }
                 .onFailure { Log.e(TAG, "Archive fetch failed", it) }
@@ -286,12 +235,9 @@ class PressureRepository @Inject constructor(
     }
 
     /**
-     * Fetches the stretch of history the forecast endpoint does not reach back to, when the
-     * newest stored reading is old enough for there to be one.
-     *
-     * Never called on a move: the stored history is then the old city's, so it says nothing
-     * about what is missing for the new one — and the replacement in [storeForecast] would
-     * delete it regardless. The new location keeps the 30 days the forecast endpoint returns.
+     * Fetches history older than the forecast endpoint covers, when a gap exists.
+     * Never called on a location move: old history belongs to the old place and
+     * gets replaced anyway, so the new location just keeps its 30 forecast days.
      */
     private suspend fun gapFillIfNeeded(loc: LocationData, timezone: String, now: Instant) {
         val lastHistorical = dao.getLatestHistorical(now)
@@ -332,10 +278,8 @@ class PressureRepository @Inject constructor(
         val fetchedAt = Instant.now()
         val readings = parseResponse(response, fetchedAt, response.timezone.ifBlank { timezone })
 
-        // Not written, because writing it would take away rather than add: both writes clear
-        // what they are about to replace, so an empty response would delete the forecast on
-        // screen — or, on a move, the whole table — and leave the app with less than it had
-        // before it asked.
+        // Not written: both write paths clear what they replace first, so an empty response
+        // would wipe the forecast (or the whole table on a move) instead of just updating it.
         if (readings.isEmpty()) {
             Log.w(TAG, "Forecast response carried no readings; leaving the stored series alone")
             return RefreshState.NoReadings
@@ -346,9 +290,8 @@ class PressureRepository @Inject constructor(
 
         Log.d(TAG, "Inserting ${historical.size} historical and ${forecast.size} forecast readings")
 
-        // The last chance to drop a superseded fetch before it writes. Everything above this
-        // point suspends on the network, where a cancellation is noticed immediately; the
-        // writes below need not reach a check of their own before the rows are in.
+        // Last chance to drop a superseded fetch before it writes; the DB writes below
+        // don't suspend, so they wouldn't otherwise notice a cancellation in time.
         currentCoroutineContext().ensureActive()
 
         // One transaction either way: the screens observe this table, and a series briefly
@@ -364,10 +307,7 @@ class PressureRepository @Inject constructor(
         return RefreshState.Updated
     }
 
-    /**
-     * No dispatcher of its own, as nothing else here has one: Room runs a suspending query on
-     * its own executor, so wrapping this only hid which thread the work was really on.
-     */
+    /** No dispatcher of its own: Room already runs suspending queries on its own executor. */
     suspend fun isForecastStale(): Boolean {
         val now = Instant.now()
         val fetchedAt = dao.getLatestForecastFetchTime(now) ?: return true

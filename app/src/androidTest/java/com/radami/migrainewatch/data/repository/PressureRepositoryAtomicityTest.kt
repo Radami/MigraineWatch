@@ -38,34 +38,22 @@ import java.util.Collections
 import java.util.Locale
 
 /**
- * Guards the one invariant the Today screen leans on: a refresh publishes a whole forecast or
- * none of it, never a series that has been stripped of its forecast and not yet refilled.
- *
- * The screen reads an all-[com.radami.migrainewatch.domain.OutlookRisk.Unknown] outlook as a
- * failed load and says so, so an observer that catches the gap between clearing the old
- * forecast and writing the new one renders "unable to load" over data that arrived intact —
- * the flicker this test exists to keep out.
+ * A refresh must publish a whole forecast or none of it, never a series stripped of its
+ * forecast mid-write. An observer catching that gap would render "unable to load" over data
+ * that arrived fine.
  */
 @RunWith(AndroidJUnit4::class)
 class PressureRepositoryAtomicityTest {
 
     private companion object {
-        /**
-         * How many refreshes run under the collector. Room coalesces invalidations that land
-         * close together, so a torn write is a race an observer can lose: a single refresh may
-         * well publish nothing in between. Repetition is what turns "can tear" into "does".
-         */
+        /** Room coalesces close invalidations, so one refresh may miss a torn write; repeat to catch it. */
         const val REFRESH_ATTEMPTS = 30
 
 
         /** How far the fake forecast reaches, and how far back its history runs. */
         const val SERIES_HOURS = 48L
 
-        /**
-          * The point an emission is judged against. It sits inside the forecast half rather
-          * than at its edge, so a series that still holds its forecast clears the bar however
-          * far the clock has drifted since the readings were generated.
-          */
+        /** Sits inside the forecast half, not at its edge, to tolerate clock drift since generation. */
         const val FORECAST_PROBE_HOURS = 24L
 
         /** Long enough for the invalidation tracker to deliver whatever it is still holding. */
@@ -120,8 +108,7 @@ class PressureRepositoryAtomicityTest {
         preferences = UserPreferences(dataStore)
         runBlocking { preferences.saveLocation(LOCATION) }
 
-        // The repository's own scope, which is where its fetches run. Cancelled with the
-        // preferences scope in tearDown.
+        // The repository's own scope for its fetches; cancelled alongside preferencesScope.
         repository = PressureRepository(
             dao, FakeForecastApi(start), EmptyArchiveApi, preferences, refreshScope
         )
@@ -137,12 +124,8 @@ class PressureRepositoryAtomicityTest {
 
 
     /**
-     * Fails when any emission shows a series mid-write.
-     *
-     * Two shapes count, because a write split into statements is visible at each of them: a
-     * table momentarily emptied, and one holding history whose forecast has been cleared and
-     * not yet replaced. The second is the one a live screen actually catches — it is wider
-     * than the first and it is what the Today card reads as a failed load.
+     * Fails on any mid-write emission: a momentarily empty table, or history with its forecast
+     * cleared but not yet replaced. The second is wider and is what the Today card sees as failed.
      */
     private fun assertNoneTorn(emissions: List<List<PressureReading>>) {
         val probe = start.plus(FORECAST_PROBE_HOURS, ChronoUnit.HOURS)
@@ -160,8 +143,7 @@ class PressureRepositoryAtomicityTest {
 
     @Test
     fun refreshNeverPublishesASeriesStrippedOfItsForecast() = runBlocking {
-        // Seed before anything is watching, so every emission the collector sees is one a live
-        // screen would have rendered rather than the empty state before the first fetch.
+        // Seed before watching starts, so the collector never sees the pre-fetch empty state.
         repository.refresh()
 
         val emissions = Collections.synchronizedList(mutableListOf<List<PressureReading>>())
@@ -176,8 +158,7 @@ class PressureRepositoryAtomicityTest {
         delay(SETTLE_MILLIS)
         collector.cancelAndJoin()
 
-        // Nothing the fake serves can produce a partial series legitimately: every response
-        // it returns reaches SERIES_HOURS ahead of the probe.
+        // Every fake response reaches SERIES_HOURS ahead of the probe, so no legitimate partial series.
         assertNoneTorn(emissions)
     }
 
@@ -227,15 +208,9 @@ class PressureRepositoryAtomicityTest {
     }
 
     /**
-     * The same guarantee across a move, which takes the other write path: everything stored
-     * describes the old city, so the replacement clears the table first. That delete is the
-     * one this test exists for — run apart from its insert it would strip the series under a
-     * live screen exactly as the forecast delete once did.
-     *
-     * One move is enough here, where [refreshNeverPublishesASeriesStrippedOfItsForecast] needs
-     * many refreshes, because clearing the whole table opens a far wider window than clearing
-     * only the forecast: measured against a deliberately split transaction, a single move was
-     * caught in three runs out of three.
+     * Same guarantee for a move: the replacement clears the whole table first, so a torn write
+     * here strips the series under a live screen. One move is enough (unlike the refresh test)
+     * since this window is far wider — a broken transaction was caught 3/3 runs.
      */
     @Test
     fun movingNeverPublishesAnEmptySeries() = runBlocking {

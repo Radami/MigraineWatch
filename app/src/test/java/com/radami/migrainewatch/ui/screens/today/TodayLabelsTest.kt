@@ -9,9 +9,8 @@ import org.junit.Test
 import java.time.LocalDate
 
 /**
- * The Today screen's copy. Worth its own tests because every one of these is a pile of
- * branches over risk, coverage and plurals, and a card that reports six clear days as five —
- * or calls a day quiet that nothing is known about — is wrong in a way no screenshot catches.
+ * Today screen copy has many branches over risk, coverage, and plurals. A wrong day count or
+ * "quiet" label for unknown days is wrong in a way no screenshot catches.
  */
 class TodayLabelsTest {
 
@@ -43,9 +42,8 @@ class TodayLabelsTest {
 
     @Test
     fun `a clear week counts every day after today`() {
-        // Six days follow today, so six is what a fully covered week reports. This pins the
-        // label's own arithmetic; that the days arrive Clear rather than Unknown in the first
-        // place is TodayViewModelTest's 23:00 case.
+        // Pins the label's own arithmetic (6 days follow today); coverage timing is
+        // TodayViewModelTest's concern.
         assertEquals(
             "Clear for the next 6 days",
             weekAheadLabel(weekOf(OutlookRisk.Clear, OutlookRisk.Clear))

@@ -16,16 +16,9 @@ import androidx.compose.ui.text.font.FontWeight
 import com.radami.migrainewatch.ui.theme.Motion
 
 /**
- * A line of text that crosses over to its new value instead of switching to it.
- *
- * Every caller is a line that gets rewritten while the reader is looking at it — a timestamp a
- * refresh moves on, a headline the forecast changes, a figure that means something different
- * once another period is selected. The outgoing value leaves before the incoming one arrives,
- * so the two are never legible at once, and the size change is left unclipped so a line that
- * reflows does not clip itself mid-transition.
- *
- * Shared rather than written per screen for the same reason the day marker is: two screens
- * animating the same kind of change on different curves reads as two different apps.
+ * A line of text that crosses over to its new value instead of switching to it, for text
+ * rewritten while the reader is looking at it (a timestamp, a headline, a changing figure).
+ * The outgoing value fully leaves before the incoming one arrives; unclipped so reflow works.
  *
  * @param label names the transition for tooling and animation inspection.
  */

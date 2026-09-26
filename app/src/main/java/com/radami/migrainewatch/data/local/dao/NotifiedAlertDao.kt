@@ -14,10 +14,8 @@ interface NotifiedAlertDao {
     suspend fun insert(alert: NotifiedAlert)
 
     /**
-     * Warnings *delivered* from [since] onwards. The filter is on the delivery time, not on
-     * the event's start: an event that is already underway is recorded with a start that is
-     * hours old the moment it is written, so a start-based lookback drops the record almost
-     * immediately and the event is announced again on the next refresh.
+     * Warnings *delivered* from [since] onwards. Filters on delivery time, not event start,
+     * since an already-underway event's start could be hours old and drop out too soon.
      */
     @Query("SELECT * FROM notified_alerts WHERE notifiedDateTime >= :since ORDER BY notifiedDateTime")
     suspend fun getNotifiedSince(since: Instant): List<NotifiedAlert>
