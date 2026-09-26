@@ -18,6 +18,65 @@ for fixes alone, the minor number for anything users would notice.
 
 ## [Unreleased]
 
+### Added
+- Switching the Pressure chart between 24 hrs, 48 hrs and 7 days animates, the line moving
+  into its new shape while the risk shading fades back in behind it.
+- The Calendar slides between months in the direction you moved, and its statistics settle
+  onto the new figures when you change period.
+- The Today screen settles onto a new forecast rather than switching to it, and a day that
+  becomes one to watch rounds into its circle.
+- The Alerts card crosses over when the events it lists change, and an event's "not in view"
+  line fades in when you change range.
+
+### Changed
+- Changing your location fetches pressure for the new place straight away, and the alerts
+  waiting to be sent are rebuilt for it at the same time.
+- The 24- and 48-hour charts draw pressure in the same blue as the 7-day chart, so the line
+  can no longer be mistaken for the orange of a risk window.
+- The chart line runs out to both edges of the plot instead of stopping short of them.
+- The Today headline is coloured in the app's terracotta, not error red, when the day is one
+  to watch.
+- When the Today outlook has no forecast to show it says why: still loading, the connection
+  failed, no location is set, nothing is available for the place, or the forecast it has is
+  out of date.
+- The Pressure chart explains an empty plot in the same way, where it used to show nothing.
+- Pressure alert notifications carry the app's own mark instead of a generic chat bubble.
+- The themed icon on Android 13 and later is drawn as a clean outline of the mark.
+- The app is named "MigraineWatch" on the home screen and in Settings, where it was
+  "Migraine Watch".
+
+### Fixed
+- After a change of location, the chart could show readings from the old and new places
+  mixed together.
+- Alerts already queued for your old location could still arrive for up to an hour after
+  you moved.
+- The Today screen could briefly report that it was unable to load while a forecast was
+  arriving.
+- A background update that failed to reach the forecast waited an hour before trying again.
+
+### Internal
+- Every refresh goes through one shared fetch that concurrent callers join, running in an
+  application-wide scope, and each fetch writes its readings in a single transaction.
+- A change of location is detected by the repository itself, and `AlertReconcileMonitor`
+  rebuilds the pending alerts after any fetch that stores a series.
+- The settings store falls back to defaults on a read error and keeps retrying.
+- `PressureChart` is split into data, legend, overlay and style files, and both edges are now
+  model series so Vico tweens them between ranges.
+- Shared alpha values live in `ui/theme/Alpha.kt` and motion timings in `ui/theme/Motion.kt`,
+  and `SettlingText` is a shared component.
+- The launcher icon is a vector traced from the old PNG, the per-density bitmaps are gone,
+  and the store icon is rendered from the same file.
+- The sandbox build type gets the Compose test manifest so UI tests can run against it.
+- Comments across the codebase are trimmed and several methods renamed for clarity.
+
+### Play "What's new"
+
+```
+The Pressure chart now animates as you switch between 24 hours, 48 hours and 7 days, drawn in one blue line throughout. The calendar slides between months, and Today settles onto each new forecast.
+
+Changing your location now fetches pressure for the new place straight away and updates any alerts waiting to be sent. When there is no forecast to show, the app says why, and notifications carry the app's own icon.
+```
+
 ## [1.2] — 2026-08-27 · versionCode 3
 
 ### Added
