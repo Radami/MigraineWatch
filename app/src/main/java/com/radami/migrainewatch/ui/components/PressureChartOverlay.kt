@@ -22,11 +22,12 @@ import kotlin.math.roundToInt
 
 /**
  * The risk shading can't travel with the tweening edges like the rest of the overlay does,
- * since its windows snap straight to their new position in one frame. So it fades out on a
- * range change and back in as the edges settle, overlapping the tween so it keeps redrawing.
+ * since its windows snap straight to their new position in one frame. So the old windows
+ * fade out over the first half of a range change and the new ones fade in over the second,
+ * overlapping the tween so it keeps redrawing.
  */
-internal const val RISK_FADE_DELAY_MILLIS = Animation.DIFF_DURATION / 2
-internal const val RISK_FADE_MILLIS = Animation.DIFF_DURATION - RISK_FADE_DELAY_MILLIS
+internal const val RISK_FADE_OUT_MILLIS = Animation.DIFF_DURATION / 2
+internal const val RISK_FADE_IN_MILLIS = Animation.DIFF_DURATION - RISK_FADE_OUT_MILLIS
 
 /** The dashed "now" line, in dp: stroke, then the on and off lengths of its dashes. */
 private const val NOW_LINE_WIDTH_DP = 2f
@@ -37,6 +38,10 @@ private const val NOW_DASH_OFF_DP = 6f
  * zero-length segment would still lay down a stroke of its own width. */
 private const val MIN_OVERHANG_PX = 1f
 
+/** Gap between the drawn edges, in px, below which they coincide and enclose no wash: a
+ * settled line, or a band that has finished tweening into one. */
+private const val COLLAPSED_EDGE_PX = 0.5f
+
 /** Whether a traced run opens a new path contour or continues the one in progress. */
 private enum class RunStart { MoveTo, LineTo }
 
@@ -44,7 +49,9 @@ private enum class RunStart { MoveTo, LineTo }
  * A point of the chart as it is on screen: x index and two edges in pixels. The pixel twin
  * of [RangeEntry] — what the chart plots vs. where it has landed this frame, mid-tween.
  */
-private data class DrawnEntry(val index: Int, val minPx: Float, val maxPx: Float)
+private data class DrawnEntry(val index: Int, val minPx: Float, val maxPx: Float) {
+    val isCollapsed: Boolean get() = abs(minPx - maxPx) < COLLAPSED_EDGE_PX
+}
 
 /** One alert's risk window, in chart x-values, in the colour of the row describing it. */
 internal data class AlertBand(val startX: Float, val endX: Float, val color: Color)
@@ -86,7 +93,7 @@ internal class ChartOverlayDecoration(
     private val positions: DrawnPositions,
     private val seriesColor: Color,
     /** Risk-shading fade progress, read fresh each draw rather than fixed at build time, so
-     * the decoration need not be rebuilt every frame. See [RISK_FADE_DELAY_MILLIS]. */
+     * the decoration need not be rebuilt every frame. See [RISK_FADE_OUT_MILLIS]. */
     private val riskAlpha: () -> Float,
     private val nowX: Float,
     private val nowLineColorArgb: Int,
@@ -200,11 +207,22 @@ internal class ChartOverlayDecoration(
         }
     }
 
+    /**
+     * Washes wherever the drawn edges are apart, not just when [rendering] is a band: on a
+     * switch to a line the edges take the whole tween to meet, and the wash has to shrink
+     * with them rather than vanish on the first frame.
+     */
     private fun drawRangeBand(context: ChartDrawContext, bounds: RectF, series: List<DrawnEntry>) {
-        if (rendering != ChartRendering.MinMaxBand || series.isEmpty()) return
+        if (series.isEmpty()) return
 
         val path = Path()
         for (run in consecutiveRuns(series) { it.index }) {
+            // Edges already met along the whole run: a line, with nothing between to wash.
+            if (run.all { it.isCollapsed }) {
+                drawCollapsedRun(context, bounds, run)
+                continue
+            }
+
             // A lone step has no neighbour to fill towards, so draw it as a vertical instead.
             if (run.size == 1) {
                 drawIsolatedStep(context, bounds, run.first())
@@ -214,6 +232,13 @@ internal class ChartOverlayDecoration(
             // Only the fill; the edges themselves are drawn by Vico on top, so they can tween.
             drawBand(context, bounds, path, run)
         }
+    }
+
+    // A band day whose min and max match still gets its mark, as a dot; a line has none.
+    private fun drawCollapsedRun(context: ChartDrawContext, bounds: RectF, run: List<DrawnEntry>) {
+        if (rendering != ChartRendering.MinMaxBand || run.size != 1) return
+
+        drawIsolatedStep(context, bounds, run.first())
     }
 
     // Traces down the max edge, back along the min edge, closing over the run's end verticals.
@@ -287,8 +312,9 @@ internal class ChartOverlayDecoration(
         val toMax = from.maxPx - rise
         val toMin = from.minPx - rise
 
-        // Wash first, so the edges sit on top of it as they do over the run.
-        if (rendering == ChartRendering.MinMaxBand) {
+        // Wash first, so the edges sit on top of it as they do over the run. Keyed on the
+        // drawn gap for the same reason as drawRangeBand.
+        if (!from.isCollapsed) {
             val path = Path().apply {
                 moveTo(fromPx, fromMax)
                 lineTo(edgePx, toMax)
