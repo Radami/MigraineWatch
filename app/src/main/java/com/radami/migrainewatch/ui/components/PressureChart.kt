@@ -14,7 +14,10 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -43,6 +46,7 @@ import com.patrykandpatrick.vico.core.chart.values.AxisValuesOverrider
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /** Headroom above and below the data so the line doesn't run along the frame: a fraction of
@@ -120,15 +124,25 @@ fun PressureChart(
         }
     }
 
-    // See RISK_FADE_DELAY_MILLIS. Keyed on edges and bands since either can change without
-    // the other. Rebuilt at zero during composition rather than reset in an effect, which
-    // would flash the old shading in for a frame before fading it back out.
-    val riskAlpha = remember(edges, alertBands) { Animatable(0f) }
-    LaunchedEffect(riskAlpha) {
-        riskAlpha.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(RISK_FADE_MILLIS, delayMillis = RISK_FADE_DELAY_MILLIS)
-        )
+    // See RISK_FADE_OUT_MILLIS. The shading on screen lags the requested bands, so the old
+    // windows can fade out where they were before the new ones fade in.
+    val riskAlpha = remember { Animatable(0f) }
+    var shownBands by remember { mutableStateOf(alertBands) }
+
+    // Keyed on edges and bands since either can change without the other. A change landing
+    // mid-fade restarts from wherever the shading has got to, so it never jumps.
+    LaunchedEffect(edges, alertBands) {
+        // Nothing visible to fade out on first draw; wait instead, so the fade-in still
+        // lines up with the second half of the tween.
+        if (riskAlpha.value > 0f) {
+            riskAlpha.animateTo(targetValue = 0f, animationSpec = tween(RISK_FADE_OUT_MILLIS))
+        } else {
+            delay(RISK_FADE_OUT_MILLIS.toLong())
+        }
+
+        // Swapped only while invisible, so the new windows never appear at full strength.
+        shownBands = alertBands
+        riskAlpha.animateTo(targetValue = 1f, animationSpec = tween(RISK_FADE_IN_MILLIS))
     }
 
     // Straight off the edges, already the extremes whichever way they were built; the guard
@@ -186,10 +200,10 @@ fun PressureChart(
 
     // Deliberately not keyed on the fade: see ChartOverlayDecoration.riskAlpha.
     val decoration = remember(
-        alertBands, rendering, edgeOffsetAt, positions, seriesColor, nowX, nowLineColor
+        shownBands, rendering, edgeOffsetAt, positions, seriesColor, nowX, nowLineColor
     ) {
         ChartOverlayDecoration(
-            alertBands = alertBands,
+            alertBands = shownBands,
             rendering = rendering,
             edgeOffsetAt = edgeOffsetAt,
             positions = positions,
