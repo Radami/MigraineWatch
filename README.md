@@ -32,7 +32,7 @@ sdk.dir=/path/to/Android/Sdk
 ./gradlew assembleDebug
 ```
 
-Then launch **Migraine Watch** from the launcher, or:
+Then launch **MigraineWatch** from the launcher, or:
 
 ```bash
 adb shell am start -n com.radami.migrainewatch/.MainActivity
