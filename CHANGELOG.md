@@ -18,6 +18,8 @@ for fixes alone, the minor number for anything users would notice.
 
 ## [Unreleased]
 
+## [1.3] — 2026-09-27 · versionCode 4
+
 ### Added
 - Switching the Pressure chart between 24 hrs, 48 hrs and 7 days animates, the line moving
   into its new shape while the risk shading fades back in behind it.
@@ -53,21 +55,6 @@ for fixes alone, the minor number for anything users would notice.
 - The Today screen could briefly report that it was unable to load while a forecast was
   arriving.
 - A background update that failed to reach the forecast waited an hour before trying again.
-
-### Internal
-- Every refresh goes through one shared fetch that concurrent callers join, running in an
-  application-wide scope, and each fetch writes its readings in a single transaction.
-- A change of location is detected by the repository itself, and `AlertReconcileMonitor`
-  rebuilds the pending alerts after any fetch that stores a series.
-- The settings store falls back to defaults on a read error and keeps retrying.
-- `PressureChart` is split into data, legend, overlay and style files, and both edges are now
-  model series so Vico tweens them between ranges.
-- Shared alpha values live in `ui/theme/Alpha.kt` and motion timings in `ui/theme/Motion.kt`,
-  and `SettlingText` is a shared component.
-- The launcher icon is a vector traced from the old PNG, the per-density bitmaps are gone,
-  and the store icon is rendered from the same file.
-- The sandbox build type gets the Compose test manifest so UI tests can run against it.
-- Comments across the codebase are trimmed and several methods renamed for clarity.
 
 ### Play "What's new"
 
@@ -162,7 +149,8 @@ First public release.
 - Notifications ahead of a pressure alert, at one of three sensitivity settings.
 - Onboarding that asks for a location and notification permission on first run.
 
-[Unreleased]: https://github.com/Radami/MigraineWatch/compare/v1.2...HEAD
+[Unreleased]: https://github.com/Radami/MigraineWatch/compare/v1.3...HEAD
+[1.3]: https://github.com/Radami/MigraineWatch/compare/v1.2...v1.3
 [1.2]: https://github.com/Radami/MigraineWatch/compare/v1.1...v1.2
 [1.1]: https://github.com/Radami/MigraineWatch/compare/v1.0...v1.1
 [1.0]: https://github.com/Radami/MigraineWatch/releases/tag/v1.0
