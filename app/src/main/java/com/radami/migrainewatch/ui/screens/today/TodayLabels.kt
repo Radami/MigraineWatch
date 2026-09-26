@@ -8,10 +8,8 @@ import com.radami.migrainewatch.format.formatAlertSummary
 /**
  * Every string the Today screen says about a day or a stretch of days.
  *
- * Separated from the composables that show them because they are the part worth testing: each
- * one is a small pile of branches over risk, coverage and plurals, and none of it needs a
- * screen to check. `internal` rather than private for the same reason — the tests read them
- * directly instead of going through a rendered card.
+ * Kept separate so the branching logic can be unit tested without a screen.
+ * `internal` so tests can call these directly.
  */
 
 internal fun todayLabel(today: DayOutlook): String = when (today.risk) {
@@ -21,17 +19,9 @@ internal fun todayLabel(today: DayOutlook): String = when (today.risk) {
 }
 
 /**
- * What the days after today add up to.
- *
- * Only the days the forecast actually reached can be called clear, so a short forecast says
- * how far it got rather than reporting quiet days it knows nothing about. The count of days to
- * watch is deliberately not hedged the same way: a detected event is known whatever the
- * forecast does after it, and a day the readings never reached cannot add to the count anyway,
- * so "2 of the next 6 days" stays true where coverage runs out early.
- *
- * Today is dropped rather than counted, so the days counted here and the days circled in the
- * strip are deliberately different sets: the headline above already speaks for today, and
- * counting it twice would have the card say the same thing in two voices.
+ * What the days after today add up to. Only reports "clear" for days the forecast actually
+ * covered; an elevated-day count stays valid even if coverage runs out early. Today itself is
+ * excluded since the headline above already covers it.
  */
 internal fun weekAheadLabel(outlook: List<DayOutlook>): String {
     val ahead = outlook.drop(1)

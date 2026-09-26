@@ -17,10 +17,8 @@ import org.junit.Assert.assertEquals
 class ExampleInstrumentedTest {
     @Test
     fun useAppContext() {
-        // Context of the app under test. Compared against BuildConfig rather than a literal:
-        // tests run against the `sandbox` build type, whose id carries a suffix so that
-        // installing it cannot disturb the build being developed with. Taking the expected id
-        // from the build keeps the suffix the build's business, and still pins it exactly.
+        // Compared against BuildConfig, not a literal: the sandbox build type's id has a
+        // suffix, and this keeps that detail out of the test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
         assertEquals(BuildConfig.APPLICATION_ID, appContext.packageName)
     }

@@ -3,23 +3,9 @@ package com.radami.migrainewatch.format
 import java.time.format.DateTimeFormatter
 
 /**
- * The one place user-visible dates and times get their language.
- *
- * A [DateTimeFormatter] built without an explicit locale follows the *device*, not the app.
- * The app's own text is English and only English, so on a German phone that produced a screen
- * reading "Samstag, 1 August 2026" under an English heading — and, because roughly half the
- * formatters here already pinned English by hand, the app disagreed with itself: the chart
- * axis said "Sat" while the headline above it said "Samstag".
- *
- * Routing every display format through here means the language of a date can only ever be
- * changed for all of them at once.
- *
- * Zones are deliberately left off. Some callers want the device zone and some want the zone of
- * the event being shown, and a zone captured here would be fixed for the life of the process,
- * so each caller applies its own with [DateTimeFormatter.withZone].
- *
- * Machine-readable formats do not belong here — see the API request formats in
- * PressureRepository, which are pinned to Locale.ROOT for the opposite reason.
+ * The one place user-visible dates and times get their language, since an unqualified
+ * [DateTimeFormatter] follows the device locale, not the app's English-only text. Zones are
+ * left off; each caller applies its own with [DateTimeFormatter.withZone].
  */
 object AppDateFormats {
 

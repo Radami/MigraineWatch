@@ -30,18 +30,9 @@ import org.junit.Test
 import javax.inject.Inject
 
 /**
- * What the Today screen shows *while* a new forecast replaces the old one.
- *
- * The screen reads a week it knows nothing about as a failed load, so anything that briefly
- * empties the readings makes it flash "unable to load" over data that arrived perfectly well.
- * A settled-state assertion cannot see that: it samples after everything is over. This one
- * stops the Compose clock and walks the transition frame by frame instead, which is also what
- * keeps the assertions from synchronising past the animations they are meant to inspect.
- *
- * It catches a flash however it is caused — a torn write underneath, or a transition up here
- * that renders the empty branch on its way through. It is a race detector rather than a
- * proof, though, which is why [REFRESHES_ACROSS_WINDOW] is as large as it is, and why
- * PressureRepositoryTest guards the atomic write on its own terms as well.
+ * A briefly empty readings list reads as a failed load, so a fast forecast swap can flash
+ * "unable to load" over data that arrived fine. Stops the Compose clock and walks the
+ * transition frame by frame; a settled-state assertion samples too late to see this.
  */
 @HiltAndroidTest
 class TodayRefreshTransitionTest {
@@ -53,31 +44,19 @@ class TodayRefreshTransitionTest {
         /** Fetches go through OkHttp and Room, and screens animate in, so the UI settles late. */
         const val UI_TIMEOUT_MILLIS = 10_000L
 
-        /**
-         * How many frames the transition is watched for, and the real time allowed to pass per
-         * frame. The Compose clock is stopped, so stepping it costs no wall time — but the
-         * refresh it is watching runs on real threads, and has to be given the chance to land
-         * inside the window rather than after it.
-         */
+        /** The Compose clock is stopped, but the refresh runs on real threads and needs real time. */
         const val OBSERVED_FRAMES = 180
         const val FRAME_MILLIS = 16L
 
         /**
-         * How many refreshes are driven across the window. One is not enough to catch a
-         * forecast written in pieces: the gap between clearing the old one and writing the new
-         * is short, the screen only renders it if the emission survives long enough to
-         * recompose, and this test samples once a frame. Measured against a deliberately
-         * un-fixed repository, one refresh caught it in none of three runs and twelve in one
-         * of three; forty caught it in four of four, at frames 4 to 6 every time.
+         * One refresh rarely catches a torn write since the gap is short and sampling is once
+         * per frame. Against a deliberately broken repository, 40 caught it 4/4 runs; 1 caught it 0/3.
          */
         const val REFRESHES_ACROSS_WINDOW = 40
 
         /**
-         * The openings of every message the outlook card falls back to when it has no week to
-         * draw. Matched as substrings because one of them carries a timestamp, and asserted
-         * together because a flash of any of them is the same defect: a card giving up over
-         * data that is arriving. Which one would appear depends on what survived the moment —
-         * readings but no usable day, or nothing at all and whatever the fetch was doing.
+         * Fallback messages the outlook card shows with no week to draw. Matched as substrings
+         * since one carries a timestamp; any of them appearing mid-transition is the same defect.
          */
         val PLACEHOLDER_OPENINGS = listOf(
             "Forecast is out of date",
@@ -102,16 +81,15 @@ class TodayRefreshTransitionTest {
     @get:Rule(order = 0)
     val hiltRule = HiltAndroidRule(this)
 
-    // MainActivity is launched by the test rather than by the rule, so preferences and the
-    // mock scenario are already in place when its ViewModels start collecting.
+    // Launched by the test, not the rule, so prefs and the mock scenario are set before
+    // ViewModels start collecting.
     @get:Rule(order = 1)
     val composeTestRule = createEmptyComposeRule()
 
     @Inject lateinit var userPreferences: UserPreferences
 
-    // The same singleton the screen's ViewModel holds. TodayViewModel only refreshes in its
-    // init, so a forecast change has to be driven from here to land under a screen that is
-    // already up — which is exactly the case the flicker showed up in.
+    // Same singleton the ViewModel holds. TodayViewModel only refreshes in init, so a forecast
+    // change must be driven from here, against a screen already up — the flicker's actual case.
     @Inject lateinit var pressureRepository: PressureRepository
 
     private var scenario: ActivityScenario<MainActivity>? = null
@@ -125,8 +103,7 @@ class TodayRefreshTransitionTest {
     fun setup() {
         hiltRule.inject()
 
-        // HiltTestApplication replaces MigraineWatchApp, which is what normally calls
-        // WorkManager.initialize(); without this MainActivity fails on getInstance().
+        // HiltTestApplication skips the normal WorkManager.initialize() call, so do it here.
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
 
         runBlocking {
@@ -162,8 +139,7 @@ class TodayRefreshTransitionTest {
         scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java))
         awaitText(ELEVATED_HEADLINE)
 
-        // From here the clock only moves when this test moves it, so assertions read the tree
-        // mid-animation instead of waiting for it to settle first.
+        // Clock only moves when told, so assertions read the tree mid-animation.
         composeTestRule.mainClock.autoAdvance = false
 
         MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.NO_EVENTS
@@ -171,8 +147,7 @@ class TodayRefreshTransitionTest {
             repeat(REFRESHES_ACROSS_WINDOW) { pressureRepository.refresh() }
         }
 
-        // The frame the new forecast reached the screen. Recorded rather than assumed: without
-        // it a window the change landed *after* would pass this test having watched nothing.
+        // Recorded, not assumed: otherwise a change landing after the window still passes.
         var settledAtFrame = -1
 
         repeat(OBSERVED_FRAMES) { frame ->
@@ -198,9 +173,8 @@ class TodayRefreshTransitionTest {
     }
 
     /**
-     * The other half of the same guarantee: the animations finish. A transition keyed on
-     * something unstable re-triggers on every recomposition and never settles, which no
-     * assertion taken after `waitForIdle` can see — with animations running, it never returns.
+     * Checks the animation actually settles. A transition keyed on something unstable would
+     * re-trigger forever, which `waitForIdle` can't detect since it never returns.
      */
     @Test
     fun theTransitionSettlesOnTheNewForecast() {
@@ -212,8 +186,7 @@ class TodayRefreshTransitionTest {
 
         awaitText(CLEAR_HEADLINE)
 
-        // Exactly one headline, not the outgoing one left behind next to its replacement:
-        // both are in the tree while the crossover runs, and talk-back would read both.
+        // Must be exactly one headline; both are in the tree mid-crossover and talk-back would read both.
         assertTrue(
             "The outgoing headline was still in the tree after the transition settled",
             nodesWithText(ELEVATED_HEADLINE).isEmpty()

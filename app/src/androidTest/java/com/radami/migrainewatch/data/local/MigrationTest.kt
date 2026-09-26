@@ -10,14 +10,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Guards the database against silently losing a user's history.
- *
- * No build type has a destructive fallback (see DatabaseModule), so a schema change without a
- * migration fails the same way everywhere — on a developer's phone first, long before a user's.
- * These tests are where it should be caught earlier still.
- *
- * Adding a migration means: bump [DATABASE_VERSION], build once so Room exports the new schema
- * into app/schemas, commit that JSON, then add a `migrate(N, N+1)` case below.
+ * Guards against silently losing a user's history: no build type has a destructive fallback,
+ * so a missing migration crashes on launch. To add one: bump [DATABASE_VERSION], build once so
+ * Room exports the schema, commit it, then add a `migrate(N, N+1)` case below.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
@@ -32,19 +27,15 @@ class MigrationTest {
         AppDatabase::class.java
     )
 
-    /**
-     * Pins the current schema. Fails as soon as an entity changes without [DATABASE_VERSION]
-     * being bumped, which is the mistake that reaches a phone as a crash on launch.
-     */
+    /** Pins the current schema; fails if an entity changes without bumping [DATABASE_VERSION]. */
     @Test
     fun currentSchemaIsExported() {
         helper.createDatabase(TEST_DB, DATABASE_VERSION).close()
     }
 
     /**
-     * The column is added with a default of 0 because SQLite demands one, but a row left on it
-     * would sit at the epoch — before its own start — and never overlap anything again, so
-     * every past warning would fire a second time. The backfill is the point of the migration.
+     * SQLite requires a default (0/epoch) for the new column, but a row left there would never
+     * overlap anything again and every past warning would refire. Backfill is the actual point.
      */
     @Test
     fun migration2To3_backfillsEndDateTimeFromStart() {
@@ -59,7 +50,7 @@ class MigrationTest {
             )
         }
 
-        // Validates the migrated tables against the exported v3 schema as well as running it.
+        // Also validates the migrated tables against the exported v3 schema.
         val migrated = helper.runMigrationsAndValidate(TEST_DB, 3, true, MIGRATION_2_3)
 
         migrated.query("SELECT startDateTime, endDateTime FROM notified_alerts").use { row ->

@@ -346,12 +346,8 @@ private fun Step3Details(
 private val LABEL_TO_CHOICES_SPACING = 4.dp
 
 /**
- * A field label with its choices directly beneath it.
- *
- * The step's children are emitted straight into a Column that spaces them 16.dp apart, which
- * is right between one field and the next and far too much between a label and the thing it
- * labels. Grouping the pair into a single child makes that spacing apply once, around the
- * group, leaving the label free to sit close to its chips.
+ * A field label with its choices directly beneath it, grouped into one child so the parent
+ * Column's 16.dp spacing applies around the pair instead of between label and chips.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

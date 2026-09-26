@@ -45,32 +45,20 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlin.math.roundToInt
 
-/**
- * Headroom above and below the data, so the line does not run along the frame. A fraction of the
- * data's own spread, with a floor in hPa for the flat stretches — a day that barely moved would
- * otherwise be drawn as a line squeezed between its own two extremes.
- */
+/** Headroom above and below the data so the line doesn't run along the frame: a fraction of
+ * the spread, with a floor in hPa for flat stretches that barely moved. */
 private const val Y_PADDING_FRACTION = 0.2f
 private const val MIN_Y_PADDING_HPA = 2f
 
 /**
- * @param readings every reading the chart may draw from, sorted by time. The chart samples the
- *   eight instants [window] names out of these rather than plotting them one for one, so it is
- *   given the whole series and not the slice one range happens to need.
+ * @param readings the whole series, sorted by time; the chart samples only the instants
+ *   [window] names.
  * @param window which slice of time the chart draws, and at what resolution.
- * @param requestedRendering what to draw for each of its points — a sampled line, or the band
- *   each step's readings span. Independent of the step: any step can be drawn either way. A
- *   request rather than an instruction: a series too sparse to have a band falls back to the
- *   line, and everything below is drawn from what [renderingFor] settled on.
- * @param alerts risk windows to shade, in the order the caller lists them. Those
- *   [ChartWindow.covers] returns false for are left to the caller to account for — the chart
- *   cannot show them at this range — and only as many as the palette has colours are shaded,
- *   so no two bands on one chart can be the same colour.
- * @param emptyContent what to put in the chart's place when there is nothing to plot. Required,
- *   and a slot rather than a message: the chart is the only thing that knows whether the
- *   readings reach the window it was given, and the screen around it is the only thing that
- *   knows why they might not — so each says the half it can. Laid out under [modifier], as the
- *   chart itself is: it stands in the same place and has to take up the same width.
+ * @param requestedRendering sampled line or min/max band; a request, not a guarantee — a
+ *   sparse series falls back to [ChartRendering.Line] via [renderingFor].
+ * @param alerts risk windows to shade; only as many as the palette has colours are shown.
+ * @param emptyContent shown when nothing is plottable; required since only the chart knows
+ *   whether the data reaches [window]. Laid out under [modifier] like the chart itself.
  */
 @Composable
 fun PressureChart(
@@ -81,28 +69,22 @@ fun PressureChart(
     alerts: List<AlertWindow> = emptyList(),
     emptyContent: @Composable () -> Unit
 ) {
-    // Remembered unconditionally rather than inside the branch that needs it: switching
-    // rendering would otherwise change the shape of the composition.
+    // Remembered unconditionally, not inside a branch, so switching rendering doesn't change
+    // the shape of the composition.
     val rangeEntries = remember(readings, window, requestedRendering) {
         stepRanges(readings, window, requestedRendering)
     }
 
-    // What the chart can actually draw, which is not always what was asked for. The one value
-    // the marks, the line colour and the legend all key off from here on; the request is not
-    // read again.
+    // What can actually be drawn; marks, line colour and legend all key off this from here on.
     val rendering = renderingFor(requestedRendering, rangeEntries)
 
     val edges = remember(readings, window, rendering, rangeEntries) {
         seriesEdges(readings, window, rendering, rangeEntries)
     }
 
-    // Nothing to plot: not one of the eight instants this window names falls inside the
-    // readings. An empty table does it, and so does a cache that stopped a day ago with the
-    // 24-hour chip selected — the chart cannot reach back that far, though the data is there.
-    //
-    // The one place this is decided. Drawing every part of the chart from these edges means a
-    // series that cannot fill them cannot half-fill them either, and the axes, the overlays and
-    // the legend used to vanish together and leave the card blank without saying anything.
+    // Nothing to plot when none of the window's instants fall inside the readings (empty
+    // table, or stale cache too old for the selected range). The one place this is decided,
+    // since every part of the chart draws from these edges.
     if (edges.lower.isEmpty()) {
         Box(modifier) { emptyContent() }
         return
@@ -112,24 +94,20 @@ fun PressureChart(
         edgeOffsetSampler(readings, window, rendering)
     }
 
-    // Both edges go through the model, so Vico tweens them between ranges the way it already
-    // tweened the sampled line. The decoration reads that same model as it is interpolated, so
-    // the wash and the overhang travel with them — see drawnSeries in ChartOverlayDecoration.
+    // Both edges go through the model so Vico tweens them between ranges; the decoration
+    // reads the same interpolated model — see drawnSeries in ChartOverlayDecoration.
     val modelProducer = remember { ChartEntryModelProducer() }
     LaunchedEffect(edges) {
         modelProducer.setEntries(listOf(edges.lower, edges.upper))
     }
 
     val isDark = isSystemInDarkTheme()
-    // One colour for the data whichever way it is drawn, so changing range changes the shape
-    // on screen and nothing else.
+    // One colour whichever way the data is drawn, so changing range changes only the shape.
     val seriesColor = if (isDark) ChartSeriesDark else ChartSeriesLight
     val nowLineColor = if (isDark) ChartNowLineDark else ChartNowLineLight
 
-    // Alerts keep the colour of their position in the list, so a band and the row that
-    // describes it match even when the range leaves out the alerts in between. Taking no more
-    // than the palette holds is what makes that hold: wrapping round would give two events on
-    // one chart the same colour, which is exactly the reading the colours exist to prevent.
+    // Alerts keep the colour of their list position so a band matches its row even when the
+    // range skips alerts in between; capped to the palette size so colours never repeat.
     val palette = alertColorPalette()
     val alertBands = remember(alerts, window, palette) {
         alerts.take(palette.size).mapIndexedNotNull { index, alert ->
@@ -142,15 +120,9 @@ fun PressureChart(
         }
     }
 
-    // See RISK_FADE_DELAY_MILLIS. Keyed on the edges as well as the shading itself: a change of
-    // range moves the windows without rewriting them, and a change of alert sensitivity
-    // rewrites them without touching a single reading. Both land in one frame, so both need
-    // standing aside for.
-    // Rebuilt at zero rather than reset by an effect. Effects run after the frame they belong
-    // to is drawn, so resetting in one paints the new shading once at full strength over edges
-    // that have not started travelling yet, and only then takes it away: it flashes in,
-    // vanishes and fades in again. Recreating the Animatable happens during composition, so
-    // the very first frame is already at zero.
+    // See RISK_FADE_DELAY_MILLIS. Keyed on edges and bands since either can change without
+    // the other. Rebuilt at zero during composition rather than reset in an effect, which
+    // would flash the old shading in for a frame before fading it back out.
     val riskAlpha = remember(edges, alertBands) { Animatable(0f) }
     LaunchedEffect(riskAlpha) {
         riskAlpha.animateTo(
@@ -159,17 +131,15 @@ fun PressureChart(
         )
     }
 
-    // Straight off the edges, which already are the extremes whichever way they were built.
-    // Neither can be empty here: both renderings build the pair from one source, so the guard
-    // above covers them together.
+    // Straight off the edges, already the extremes whichever way they were built; the guard
+    // above ensures neither is empty here.
     val dataMin = edges.lower.minOf { it.y }
     val dataMax = edges.upper.maxOf { it.y }
     val yPadding = maxOf((dataMax - dataMin) * Y_PADDING_FRACTION, MIN_Y_PADDING_HPA)
     val yMin = dataMin - yPadding
     val yMax = dataMax + yPadding
 
-    // The step still decides how labels are written and how the axis lays out, which is a
-    // separate question from what the marks are: only the marks depend on the rendering.
+    // Step decides labels and axis layout; only the marks depend on the rendering.
     val isDaily = window.step == ChartStep.OneDay
 
     // Mon/Tue/… for the 7-day chip, "3PM"/"9AM" for the hourly steps
@@ -190,9 +160,8 @@ fun PressureChart(
             if (isDaily) {
                 label
             } else {
-                // Hourly windows can cross midnight, where bare hour labels turn ambiguous.
-                // Mark day transitions: the first label and any label on a new calendar day
-                // get the day name on a second line.
+                // Hourly windows can cross midnight; add the day name on a second line at
+                // the first label and any day transition, to disambiguate.
                 val day = Instant.ofEpochSecond(anchorEpoch).atZone(zone).toLocalDate()
                 val previousDay =
                     Instant.ofEpochSecond(anchorEpoch - stepSeconds).atZone(zone).toLocalDate()
@@ -208,14 +177,11 @@ fun PressureChart(
         AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ -> "${value.toInt()}" }
     }
 
-    // Dashed "now" line: the actual current time, which sits a fraction of a step past the
-    // anchor the chart snapped to. Read once per window rather than at every recomposition —
-    // the window is itself built around a reading of the clock, so this moves when that does,
-    // and an unremembered `now` would make the decoration below impossible to remember at all.
+    // Dashed "now" line position. Read once per window, not every recomposition, so the
+    // decoration below can be remembered too.
     val nowX = remember(window) { window.xOf(Instant.now()) }
 
-    // Written by the chart every frame and read by the decoration that draws alongside it, so
-    // it outlives both: the decoration is rebuilt whenever any of its inputs change.
+    // Written by the chart every frame, read by the decoration alongside it; outlives both.
     val positions = remember { DrawnPositions() }
 
     // Deliberately not keyed on the fade: see ChartOverlayDecoration.riskAlpha.
@@ -240,14 +206,13 @@ fun PressureChart(
                 .fillMaxWidth()
                 .height(200.dp)
         ) {
-            // Both edges are drawn by Vico, which is what lets them tween between ranges. A
-            // Line rendering draws the same edge twice, exactly on top of itself.
+            // Both edges are drawn by Vico so they can tween; a Line rendering draws the
+            // same edge twice, on top of itself.
             val lineSpec = LineChart.LineSpec(
                 lineColor = seriesColor.toArgb(),
                 lineThicknessDp = RANGE_LINE_WIDTH_DP
             )
-            // Hand-built rather than taken from Vico's lineChart(), which cannot return the
-            // subclass. It does the same thing: remember one chart and re-apply the settings.
+            // Hand-built since Vico's lineChart() can't return this subclass.
             val chart = remember(positions) { TweeningLineChart(positions) }.apply {
                 lines = listOf(lineSpec, lineSpec)
                 spacingDp = currentChartStyle.lineChart.spacing.value
@@ -260,8 +225,7 @@ fun PressureChart(
                 chartModelProducer = modelProducer,
                 startAxis = rememberStartAxis(valueFormatter = yFormatter),
                 bottomAxis = rememberBottomAxis(
-                    // Two lines so hourly labels can carry the day name at day transitions;
-                    // centred so the short day name sits under the middle of the hour.
+                    // Two lines for the day-name row; centred under the hour label.
                     label = axisLabelComponent(
                         lineCount = 2,
                         textAlignment = Layout.Alignment.ALIGN_CENTER
@@ -275,11 +239,8 @@ fun PressureChart(
                         )
                     }
                 ),
-                // Hourly labels mark exact instants, so they sit on the gridlines (FullWidth);
-                // day labels describe a whole day, so they sit centred between them (Segmented,
-                // whose cell edges fall on midnights because the daily points are noon-snapped
-                // — an hour off either side of a DST change, which moves no label onto another
-                // day; see ChartWindow.epochSecondAt).
+                // Hourly labels sit on gridlines (FullWidth); day labels sit centred in a
+                // cell (Segmented) since daily points are noon-snapped — see ChartWindow.epochSecondAt.
                 horizontalLayout = if (isDaily) HorizontalLayout.Segmented else HorizontalLayout.FullWidth(),
                 modifier = Modifier.fillMaxSize()
             )

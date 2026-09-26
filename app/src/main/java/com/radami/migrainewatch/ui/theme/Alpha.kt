@@ -1,11 +1,7 @@
 package com.radami.migrainewatch.ui.theme
 
-// How far something recedes from the thing next to it — a line of text, or the outline of a
-// control that is not the one in use.
-//
-// Shared because the same few steps are used on every screen, and screens each declaring their
-// own 0.6f is how screens drift apart. Named for how much emphasis a thing carries rather than
-// for what it happens to be, so a new caller picks a step off the scale rather than a number.
+// Shared alpha steps for how far something recedes (text, an unselected control), named by
+// emphasis level rather than by use, so callers pick a step off the scale, not a raw number.
 
 /** The thing a card is about: a figure, a headline, the value being reported. */
 const val FULL_ALPHA = 1f

@@ -12,11 +12,7 @@ import javax.inject.Singleton
 
 /**
  * A scope that outlives every screen, for work whose result is shared between them.
- *
- * The distinction that matters is cancellation. Work launched in a `viewModelScope` dies with
- * the screen that started it, which is right for anything only that screen wanted. It is wrong
- * for work several callers are waiting on: the first screen to close would take the result
- * away from the others.
+ * A `viewModelScope` dies with its screen, which would cancel work other screens still need.
  */
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
@@ -26,11 +22,7 @@ annotation class ApplicationScope
 @InstallIn(SingletonComponent::class)
 object CoroutinesModule {
 
-    /**
-     * [SupervisorJob] so one failed piece of shared work does not cancel the scope and take
-     * every later use of it down with it. Nothing cancels this scope: it lives as long as the
-     * process, which is the point of it.
-     */
+    /** [SupervisorJob] so one failed piece of shared work does not cancel the whole scope. */
     @Provides
     @Singleton
     @ApplicationScope

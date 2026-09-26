@@ -21,17 +21,9 @@ object DatabaseModule {
     private const val DATABASE_NAME = "migraine_watch.db"
 
     /**
-     * No destructive fallback, in any build type.
-     *
-     * A debug-only fallback would quietly absorb a missing migration on the one device that
-     * would otherwise catch it, and the first time anyone found out would be a crash on a
-     * user's phone. Without it, forgetting a migration breaks the app immediately during
-     * development, which is the cheapest possible place to learn.
-     *
-     * The cost is that a schema change now requires either a migration or clearing the app's
-     * data by hand:
-     *
-     *     adb shell pm clear com.radami.migrainewatch
+     * No destructive fallback, in any build type: a missing migration should crash in
+     * development, not silently wipe data on a user's phone. Clear local data by hand instead
+     * with `adb shell pm clear com.radami.migrainewatch`.
      */
     @Provides
     @Singleton

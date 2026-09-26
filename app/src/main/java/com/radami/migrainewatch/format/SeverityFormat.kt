@@ -3,13 +3,9 @@ package com.radami.migrainewatch.format
 import com.radami.migrainewatch.data.model.Severity
 
 /**
- * How a severity is spelled wherever the user sees one.
- *
- * Copy rather than a derivation of the enum constant names, so renaming a constant cannot
- * silently reword the app. It lives here and not on [Severity] for the same reason the alert
- * sensitivity presets get their labels in the settings screen: the data layer stays free of
- * user-facing wording. One mapping also means every screen showing a severity cannot drift
- * into different spellings of it.
+ * How a severity is spelled wherever the user sees one. Copy rather than a derivation of the
+ * enum constant names, so renaming a constant can't silently reword the app, and every screen
+ * shares one spelling.
  */
 val Severity.label: String
     get() = when (this) {
@@ -20,11 +16,8 @@ val Severity.label: String
     }
 
 /**
- * What each severity means, in the words the log entry picker offers them in.
- *
- * Only the picker spells a severity out this far — everywhere else a [label] and its colour are
- * enough. It sits beside [label] anyway so all severity wording is in one file: a reworded
- * severity is one edit, not a hunt through the screens.
+ * What each severity means, in the words the log entry picker offers them in. Sits beside
+ * [label] so all severity wording lives in one file.
  */
 val Severity.description: String
     get() = when (this) {

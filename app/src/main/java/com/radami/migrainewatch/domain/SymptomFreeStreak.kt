@@ -8,10 +8,8 @@ import java.time.temporal.ChronoUnit
 /**
  * How long the user has gone without a symptom event — right now, and at their best.
  *
- * A "streak" here is the run of days strictly between two events, so two events on consecutive
- * days leave a streak of zero and an event yesterday leaves a streak of one. Days with no entry
- * at all count towards a streak: the log is opt-in, and treating a day the user never opened the
- * app as a symptom day would punish them for not logging.
+ * A "streak" is the run of days strictly between two events (consecutive-day events give a
+ * streak of zero). Unlogged days count towards a streak, since logging is opt-in.
  */
 data class SymptomFreeStreak(
     val currentDays: Long,
@@ -23,8 +21,8 @@ data class SymptomFreeStreak(
     data class LastEvent(val date: LocalDate, val severity: Severity)
 
     /**
-     * A single symptom-free run. [from] and [to] are the first and last day *inside* it, so a run
-     * of zero days has no days to name and [from] lands after [to].
+     * A single symptom-free run. [from]/[to] are the first/last day inside it; a zero-day run
+     * has [from] after [to].
      */
     data class Run(val days: Long, val from: LocalDate, val to: LocalDate)
 
@@ -41,7 +39,7 @@ data class SymptomFreeStreak(
             val events = entries.filter { it.severity.isSymptomEvent }.sortedBy { it.date }
             val lastEvent = events.lastOrNull() ?: return null
 
-            // The days elapsed since that event are exactly the streak still running.
+            // Days elapsed since that event is the streak still running.
             val currentDays = ChronoUnit.DAYS.between(lastEvent.date, today).coerceAtLeast(0)
 
             return SymptomFreeStreak(
@@ -58,10 +56,8 @@ data class SymptomFreeStreak(
                 runBetween(earlier.date, later.date)
             }
 
-            // The run still in progress competes too, otherwise a record being set right now would
-            // stay invisible until the next event ended it. It is measured from the already
-            // clamped current count rather than from today, so a future-dated entry cannot put a
-            // negative run into the running.
+            // The in-progress run competes too, so a record being set right now isn't invisible
+            // until the next event ends it.
             val lastEventDate = events.last().date
             val running = Run(
                 days = currentDays,
@@ -69,8 +65,7 @@ data class SymptomFreeStreak(
                 to = lastEventDate.plusDays(currentDays)
             )
 
-            // maxByOrNull keeps the first of any tie, so a record stays credited to the run that
-            // first set it rather than jumping to a later run that merely matched it.
+            // maxByOrNull keeps the first tie, crediting the run that first set the record.
             return (completed + running).maxByOrNull { it.days }
         }
 

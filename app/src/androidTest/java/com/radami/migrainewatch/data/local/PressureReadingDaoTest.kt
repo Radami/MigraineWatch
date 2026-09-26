@@ -72,12 +72,9 @@ class PressureReadingDaoTest {
     }
 
     /**
-     * A move has to clear what is stored, not write over it.
-     *
-     * Readings are keyed by instant, and both Open-Meteo endpoints report hourly on the hour in
-     * *local* time, so two cities share a grid only when their offsets differ by whole hours.
-     * Berlin sits on :00 and Kathmandu on :15 — REPLACE collides with nothing, and the two
-     * cities' readings would interleave into one series describing neither.
+     * A location move must clear old rows, not overwrite them. Readings are keyed by instant,
+     * and Berlin/Kathmandu grids are 45 min apart, so REPLACE would collide with nothing and
+     * both cities' readings would interleave into one bogus series.
      */
     @Test
     fun replaceAllReadingsClearsRowsTheNewSeriesCannotOverwrite() = runBlocking {

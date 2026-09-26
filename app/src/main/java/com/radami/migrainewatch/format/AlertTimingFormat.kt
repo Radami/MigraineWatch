@@ -21,16 +21,9 @@ enum class AlertTimingDetail {
 }
 
 /**
- * When an event happens, as the user is told it — the notification's body and the Today
- * banner's second line.
- *
- * Shared for the reason [formatAlertSummary] is shared: the two describe the same event, often
- * within a minute of each other, and the banner had already drifted. It read "Next: from
- * Saturday 14:00" whatever the phase, so an event the user was standing in the middle of was
- * announced as the next thing coming, at a time that had already passed.
- *
- * An event still ahead is described by when it arrives. One already running is described by
- * when it started, because "starts" would be describing the past — the user is in it.
+ * When an event happens, for the notification body and the Today banner's second line.
+ * An event still ahead is described by when it arrives; one already running by when it
+ * started, since "starts" would wrongly describe something already past.
  */
 fun formatAlertTiming(
     alert: AlertWindow,

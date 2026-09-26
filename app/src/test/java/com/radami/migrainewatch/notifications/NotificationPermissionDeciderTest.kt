@@ -25,9 +25,8 @@ class NotificationPermissionDeciderTest {
     }
 
     /**
-     * The shape a fresh Android 13 install actually reports: areNotificationsEnabled() is false
-     * only because the permission has not been granted yet. Reading that as "switched off" is
-     * what stopped onboarding ever showing the dialog.
+     * A fresh Android 13 install reports areNotificationsEnabled() == false just because the
+     * permission isn't granted yet. Misreading that as "switched off" broke onboarding.
      */
     @Test
     fun `a fresh install is requestable even though the system reports notifications off`() {

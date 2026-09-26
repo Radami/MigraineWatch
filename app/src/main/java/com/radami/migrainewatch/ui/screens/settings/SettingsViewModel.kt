@@ -130,14 +130,11 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /**
-     * The dialog is only ever shown once by Android, so record that it happened before
-     * re-reading: a denial has to resolve to [NotificationPermissionState.BLOCKED], which is
-     * what sends the user to the system settings instead of a button that does nothing.
-     */
     /** Where a blocked app has to go to be re-enabled; the screen starts it. */
     fun notificationSettingsIntent(): Intent = permissionMonitor.appNotificationSettingsIntent()
 
+    // Android shows the permission dialog only once, so mark it requested before re-reading:
+    // a denial must resolve to BLOCKED, not a dead retry button.
     fun onPermissionRequestFinished() {
         viewModelScope.launch {
             permissionMonitor.markRequested()
@@ -150,28 +147,18 @@ class SettingsViewModel @Inject constructor(
 
     private val _debugMessages = MutableSharedFlow<String>(extraBufferCapacity = MESSAGE_BUFFER)
 
-    /**
-     * One line per action for the debug snackbar. Reconciles the user did not trigger — the
-     * hourly worker, a sensitivity change — report here too: seeing them is the point.
-     */
+    /** One line per action for the debug snackbar; includes reconciles triggered elsewhere too. */
     val debugMessages: Flow<String> = merge(
         _debugMessages,
         alertScheduler.results.map { it.describe() }
     )
 
-    /**
-     * Runs the production fetch-and-reconcile path immediately. The result arrives on
-     * [debugMessages] once the worker gets to it.
-     */
+    /** Runs the production fetch-and-reconcile path now; result arrives on [debugMessages]. */
     fun runAlertCheckNow() {
         PressureFetchWorker.runNow(workManager)
     }
 
-    /**
-     * Posts the next warning straight away, ignoring both the 12-hour lead time and the
-     * already-notified history. A preview rather than a delivery: it records nothing, so the
-     * real warning still arrives at its proper time.
-     */
+    /** Posts the next warning now, ignoring lead time and notified history. Records nothing, so the real alert still fires later. */
     fun previewNextAlert() {
         viewModelScope.launch {
             val now = Instant.now()
@@ -194,11 +181,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Forgets which events have been announced and reschedules from scratch. Without this an
-     * event can only be tested once: the decider suppresses anything already notified, which
-     * looks exactly like a broken alert.
-     */
+    /** Clears announced-event history so events can be re-tested; otherwise they look like a broken alert. */
     fun clearNotificationHistory() {
         viewModelScope.launch {
             notifiedAlertDao.deleteAll()

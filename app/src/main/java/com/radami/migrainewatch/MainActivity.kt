@@ -18,10 +18,8 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     /**
-     * A screen the app can be asked to open on top of Today, named by [EXTRA_OPEN_TAB].
-     *
-     * An enum and not a raw route, so the notification layer names a tab without reaching into
-     * the nav graph, and so a name that is not openable can never be handed to it.
+     * A screen the app can be asked to open on top of Today, named by [EXTRA_OPEN_TAB]. An
+     * enum, not a raw route, so a name that isn't openable can never reach the nav graph.
      */
     enum class Tab(internal val screen: Screen) {
         PRESSURE(Screen.Pressure)
@@ -29,9 +27,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         /**
-         * Which tab to open on top of Today, used by the alert notification to land on the
-         * Pressure screen. Holds a [Tab] name rather than a bar position, so reordering the
-         * bottom bar cannot silently repoint a pending notification.
+         * Which tab to open on top of Today. Holds a [Tab] name rather than a bar position, so
+         * reordering the bottom bar can't silently repoint a pending notification.
          */
         const val EXTRA_OPEN_TAB = "openTab"
     }
@@ -46,10 +43,8 @@ class MainActivity : ComponentActivity() {
         // the pending warnings now as well.
         PressureFetchWorker.runNow(workManager)
 
-        // Only on a fresh launch. The extra is a one-shot instruction and the intent outlives
-        // the activity, so an instance rebuilt by a rotation or after process death would
-        // otherwise replay it over the tab the user has since navigated to — which the nav
-        // controller has just restored.
+        // Only on a fresh launch: the extra is a one-shot instruction, but the intent outlives
+        // the activity and would otherwise replay over a tab the nav controller just restored.
         val requestedTab = if (savedInstanceState == null) requestedTab() else null
 
         enableEdgeToEdge()
@@ -69,9 +64,9 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * The tab named by [EXTRA_OPEN_TAB], if it names one. This is the launcher activity, so
-     * any app on the device can start it with any extras; a name that is not a [Tab] is
-     * ignored rather than handed to the nav graph, which would throw on an unknown destination.
+     * The tab named by [EXTRA_OPEN_TAB], if it names one. Any app can start this launcher
+     * activity with arbitrary extras, so an unrecognized name is ignored, not passed to the
+     * nav graph.
      */
     private fun requestedTab(): Screen? {
         val name = intent.getStringExtra(EXTRA_OPEN_TAB) ?: return null

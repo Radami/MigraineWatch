@@ -11,10 +11,8 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 /**
- * The relevance window, which decides how long a finished event goes on counting as current.
- * Pinned here because the answer is a product decision rather than a detection one: the
- * Pressure screen's history half and the Today outlook both want an event that has just
- * passed, while anything announcing to the user does not.
+ * Tests the relevance window: how long a finished event still counts as current. This is a
+ * product decision, not a detection one, so it is pinned here rather than in the detector.
  */
 class PressureAlertUseCaseTest {
 

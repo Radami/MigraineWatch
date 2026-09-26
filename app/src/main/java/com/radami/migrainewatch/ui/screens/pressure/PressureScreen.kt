@@ -72,12 +72,7 @@ import kotlin.math.roundToInt
 /** Whether the chart's selected range reaches the event a row describes. */
 private enum class ChartVisibility { InView, OutOfView }
 
-/**
- * Everything the Alerts card lists, as one value.
- *
- * Held together so the card crosses over once when the events change rather than animating the
- * rows and the count of the ones it is holding back on separate schedules.
- */
+/** Everything the Alerts card lists, held together so it animates as one crossfade, not per-row. */
 private data class AlertListing(val rows: List<AlertWindow>, val hidden: Int)
 
 @Composable
@@ -88,9 +83,8 @@ fun PressureScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val timeFormatter = remember { AppDateFormats.FULL_DATE_TIME.withZone(ZoneId.systemDefault()) }
 
-    // The chart and the alert list are two views of one window, so both are built from the
-    // same one: what the chart shades is exactly what the list does not have to explain.
-    // Snapping makes it a stable value across recompositions within the same step.
+    // Chart and alert list share one window so what the chart shades is what the list doesn't
+    // have to explain. Snapping keeps it stable across recompositions in the same step.
     val chartWindow = ChartWindow.around(Instant.now(), state.selectedRange.step)
 
     val listState = rememberLazyListState()
@@ -99,8 +93,7 @@ fun PressureScreen(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        // When everything fits on screen there is nothing to scroll to; disable dragging
-        // (and its overscroll stretch) so the screen feels as static as the Today screen.
+        // Disable dragging/overscroll when content fits, so it feels as static as the Today screen.
         userScrollEnabled = listState.canScrollForward || listState.canScrollBackward
     ) {
         item {
@@ -156,8 +149,7 @@ private fun PressureHistoryCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // The reading sits beside the heading, as it does on the Today screen: the chart
-            // below is about where pressure is going, and this is where it is now.
+            // Current reading beside the heading, as on the Today screen; the chart is the trend.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -166,9 +158,7 @@ private fun PressureHistoryCard(
                 Column(modifier = Modifier.weight(1f)) {
                     SectionHeading("Pressure")
                     Text(
-                        // What the chart shows: 8 points from −3 to +4 steps around now. Read
-                        // off the step rather than the chip, so two chips sharing a step cannot
-                        // end up describing different spans of it.
+                        // Keyed off the step, not the chip, so chips sharing a step describe the same span.
                         when (state.selectedRange.step) {
                             ChartStep.ThreeHours -> "9 hrs back · 12 hrs ahead"
                             ChartStep.SixHours -> "18 hrs back · 24 hrs ahead"
@@ -220,33 +210,22 @@ private fun PressureHistoryCard(
 }
 
 /**
- * What stands in for the chart when the readings do not reach the range selected above it.
- *
- * The card used to draw nothing at all here — chips over blank space, which reads as a chart
- * that failed to render rather than as data that is missing. Which of these it is cannot be
- * told from the readings alone once they are empty, so the fetch is asked, exactly as the
- * Today screen's outlook asks it.
+ * Stands in for the chart when readings don't reach the selected range, so blank space doesn't
+ * read as a render failure. Asks the fetch state to explain why, like the Today screen's outlook.
  */
 @Composable
 private fun EmptyChartMessage(state: PressureUiState) {
     val message = when {
-        // Something arrived; it just does not cover what this chip asks for. Nothing to do with
-        // the network, and the other chips may well have data.
-        //
-        // The range is not named here. A chip's label is not the span it draws — the 24 hrs
-        // chip covers nine hours back and twelve ahead — and the line directly above this one
-        // already says what the span is, so repeating it here could only contradict it.
+        // Data arrived, just not for this chip's range — unrelated to the network. Range isn't
+        // named here since a chip's label isn't its actual span; see the line above this one.
         state.readings.isNotEmpty() -> "No readings in this range"
 
         else -> when (state.refreshState) {
-            // A stored series reaches this screen through Room, several hops after the fetch
-            // that stored it returned, so a fetch that worked and an empty table is still the
-            // first load — see RefreshState.NoReadings.
+            // Room delivers writes a few hops after the fetch returns, so success + empty table
+            // still means first load in progress — see RefreshState.NoReadings.
             RefreshState.InFlight, RefreshState.Updated -> "Loading pressure readings…"
 
-            // Each line speaks in this screen's own terms rather than borrowing the Today
-            // card's: the two say the same things about the same fetch, and a message shared
-            // verbatim between them would be one nobody could reword without touching both.
+            // Worded independently of the Today card's equivalent messages.
             RefreshState.NoReadings -> "No pressure readings available for this location"
             RefreshState.Failed -> "Couldn't load pressure readings — check your connection"
             RefreshState.NoLocation -> "Set a location to see pressure"
@@ -277,22 +256,17 @@ private fun AlertsCard(state: PressureUiState, window: ChartWindow) {
             )
             Spacer(Modifier.height(12.dp))
 
-            // Colours follow the alert's position in the list, which is how the chart colours
-            // its bands too, so a row and its shading can be told apart from the pair below it.
-            // The palette bounds the list for that reason: a fourth row would have to reuse a
-            // colour, and two events wearing one colour is worse than a fourth row unlisted.
+            // Color follows list position, matching the chart's band colors. Palette size bounds
+            // the list since reusing a color would be worse than leaving a row unlisted.
             val palette = alertColorPalette()
             val shown = state.alertWindows.take(palette.size)
             val listing = AlertListing(
                 rows = shown,
-                // A truncated list must not read as the whole picture: a stretch of weather
-                // with five events in it would otherwise look like one with three.
+                // Must say "more" rather than silently truncating.
                 hidden = state.alertWindows.size - shown.size
             )
 
-            // Keyed on what is listed, not on the range. Switching range changes how a row is
-            // drawn rather than which rows exist, and animating that here would cross-fade
-            // three unchanged rows over themselves; it belongs inside the row instead.
+            // Keyed on the listing, not the range: range only changes how a row draws, handled inside the row.
             AnimatedContent(
                 targetState = listing,
                 transitionSpec = {
@@ -306,9 +280,7 @@ private fun AlertsCard(state: PressureUiState, window: ChartWindow) {
             ) { target ->
                 if (target.rows.isEmpty()) {
                     Text(
-                        // Both bounds, because the card holds neither only-past nor only-future
-                        // events: detection reaches forward to the end of the forecast and back
-                        // far enough to keep an event that has just finished.
+                        // Both bounds named: detection covers recently-finished events and forecast ones.
                         "No pressure events above " +
                             "${formatThreshold(state.alertThresholdHpa)} hPa " +
                             "in the last ${PressureAlertUseCase.RELEVANCE_HOURS} hours " +
@@ -357,10 +329,8 @@ private fun AlertRow(alert: AlertWindow, color: Color, visibility: ChartVisibili
     val isDrop = alert.direction == PressureDirection.DROP
     val directionLabel = alert.direction.label
 
-    // An event beyond the selected range is faded and says so: a row with no band on the
-    // chart above would otherwise read as shading that failed to draw. Animated because this
-    // is what a change of range does to a row — the row itself stays — so it settles alongside
-    // the chart rather than switching under it.
+    // Faded and labeled when out of range, so a missing chart band doesn't look like a draw
+    // failure. Animated so it settles alongside the chart's own range transition.
     val contentAlpha by animateFloatAsState(
         targetValue = when (visibility) {
             ChartVisibility.InView -> 1f
@@ -391,10 +361,8 @@ private fun AlertRow(alert: AlertWindow, color: Color, visibility: ChartVisibili
                 color = MaterialTheme.colorScheme.onSurface
                     .copy(alpha = SECONDARY_ALPHA * contentAlpha)
             )
-            // A line of its own, short and left-aligned: at the end of the row or of the
-            // times it would run under the log-symptoms button floating over this corner.
-            // Expands rather than appearing, so the row grows into the extra line instead of
-            // shunting everything below it down a step.
+            // Own line, left-aligned: appended to the row it would sit under the log-symptoms FAB.
+            // Expands rather than popping in, so the row grows into it smoothly.
             AnimatedVisibility(
                 visible = visibility == ChartVisibility.OutOfView,
                 enter = fadeIn(tween(Motion.EMPHASIS_MILLIS)) + expandVertically(),

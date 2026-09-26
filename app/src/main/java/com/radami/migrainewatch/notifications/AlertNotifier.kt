@@ -50,8 +50,7 @@ class AlertNotifier @Inject constructor(
 
     /**
      * Posts a warning for [alert], worded for its [phase]. Returns whether it reached the tray,
-     * so the caller only records an alert as delivered when it actually was — a notification
-     * lost to a revoked permission should be retried, not remembered as sent.
+     * so a notification lost to a revoked permission is retried, not marked as sent.
      */
     fun notify(alert: AlertWindow, phase: AlertPhase): Boolean {
         if (!permissionMonitor.canPost()) {
@@ -85,9 +84,8 @@ class AlertNotifier @Inject constructor(
     }
 
     /**
-     * Opens the Pressure screen, which lists the event and shades it on its chart. The alert
-     * itself is not passed along: that screen reads the same detection the notification came
-     * from, so handing it a copy could only ever disagree with what it works out for itself.
+     * Opens the Pressure screen, which shades the event on its chart. The alert itself is not
+     * passed along; the screen re-reads the same detection instead of trusting a stale copy.
      */
     private fun detailIntent(alert: AlertWindow): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -104,12 +102,8 @@ class AlertNotifier @Inject constructor(
 
     /**
      * Stable per event, so a re-posted warning replaces the old one instead of stacking up.
-     * Minutes are enough resolution to separate two events; direction separates a drop from a
-     * rise that start together.
-     *
-     * Hashed on the wire name and not the enum constant: an enum's hash code is its identity,
-     * which differs between processes, and an id that moved would leave the old notification
-     * in the tray beside the new one.
+     * Hashed on the wire name, not the enum constant, since the constant's hash code differs
+     * between processes and would strand the old notification in the tray.
      */
     private fun notificationId(alert: AlertWindow): Int =
         (alert.start.epochSecond / 60).toInt() * 31 + alert.direction.wireName.hashCode()
