@@ -63,7 +63,7 @@ android {
         applicationId = "com.radami.migrainewatch"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
+        versionCode = 4
         versionName = "1.3"
 
         testInstrumentationRunner = "com.radami.migrainewatch.HiltTestRunner"
