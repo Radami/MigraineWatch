@@ -207,7 +207,9 @@ class UserJourneyTest {
         assertEquals("drops shown", 2, countOf(hasContentDescription("pressure drop")))
         assertEquals("rises shown", 1, countOf(hasContentDescription("pressure rise")))
 
-        // 5. Card must disclose the one event it's hiding.
+        // 5. Card must disclose the one event it's hiding. Scrolled to on its own: it sits
+        //    below the rows, so reaching the heading doesn't guarantee it's on screen too.
+        scrollToInList(hasText("1 more event not shown"))
         composeTestRule.onNodeWithText("1 more event not shown").assertIsDisplayed()
     }
 
