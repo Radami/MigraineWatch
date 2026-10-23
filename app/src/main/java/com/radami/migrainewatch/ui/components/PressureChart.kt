@@ -1,6 +1,5 @@
 package com.radami.migrainewatch.ui.components
 
-import android.text.Layout
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,8 +19,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.ChartStep
@@ -31,19 +33,33 @@ import com.radami.migrainewatch.ui.theme.ChartNowLineDark
 import com.radami.migrainewatch.ui.theme.ChartNowLineLight
 import com.radami.migrainewatch.ui.theme.ChartSeriesDark
 import com.radami.migrainewatch.ui.theme.ChartSeriesLight
+import com.radami.migrainewatch.ui.theme.ChartAxisLineDark
+import com.radami.migrainewatch.ui.theme.ChartAxisLineLight
+import com.radami.migrainewatch.ui.theme.ChartGridlineDark
+import com.radami.migrainewatch.ui.theme.ChartGridlineLight
 import com.radami.migrainewatch.ui.theme.alertColorPalette
-import com.patrykandpatrick.vico.compose.axis.axisLabelComponent
-import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
-import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
-import com.patrykandpatrick.vico.compose.chart.Chart
-import com.patrykandpatrick.vico.compose.style.currentChartStyle
-import com.patrykandpatrick.vico.core.axis.AxisItemPlacer
-import com.patrykandpatrick.vico.core.axis.AxisPosition
-import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter
-import com.patrykandpatrick.vico.core.chart.layout.HorizontalLayout
-import com.patrykandpatrick.vico.core.chart.line.LineChart
-import com.patrykandpatrick.vico.core.chart.values.AxisValuesOverrider
-import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
+import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisGuidelineComponent
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisLabelComponent
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisLineComponent
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisTickComponent
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerDrawingModelInterpolator
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerDrawingModel
+import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
+import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerPadding
+import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
+import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
+import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
+import com.patrykandpatrick.vico.compose.common.Fill
+import com.patrykandpatrick.vico.compose.common.data.ExtraStore
+import com.patrykandpatrick.vico.compose.common.vicoTheme
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.delay
@@ -53,6 +69,19 @@ import kotlin.math.roundToInt
  * the spread, with a floor in hPa for flat stretches that barely moved. */
 private const val Y_PADDING_FRACTION = 0.2f
 private const val MIN_Y_PADDING_HPA = 2f
+
+/** Width of one cell before the chart stretches to fill its width. Only its ratio to
+ * [DAILY_CELL_INSET] matters, which is what keeps daily points centred in their cells. */
+private val POINT_SPACING = 32.dp
+
+/** Half a cell either side of the daily chart, so each day's point sits mid-cell under its
+ * label. Scales with the cells as the chart stretches. */
+private val DAILY_CELL_INSET = POINT_SPACING / 2
+
+private val AXIS_LABEL_SIZE = 12.sp
+
+/** Hourly labels take a second line for the day name where the day changes. */
+private const val AXIS_LABEL_LINES = 2
 
 /**
  * @param readings the whole series, sorted by time; the chart samples only the instants
@@ -100,9 +129,14 @@ fun PressureChart(
 
     // Both edges go through the model so Vico tweens them between ranges; the decoration
     // reads the same interpolated model — see drawnSeries in ChartOverlayDecoration.
-    val modelProducer = remember { ChartEntryModelProducer() }
+    val modelProducer = remember { CartesianChartModelProducer() }
     LaunchedEffect(edges) {
-        modelProducer.setEntries(listOf(edges.lower, edges.upper))
+        modelProducer.runTransaction {
+            lineModel {
+                series(x = edges.lower.map { it.x }, y = edges.lower.map { it.y })
+                series(x = edges.upper.map { it.x }, y = edges.upper.map { it.y })
+            }
+        }
     }
 
     val isDark = isSystemInDarkTheme()
@@ -167,7 +201,7 @@ fun PressureChart(
     val xFormatter = remember(window, labelFormatter, dayFormatter) {
         val zone = ZoneId.systemDefault()
         val stepSeconds = window.step.seconds
-        AxisValueFormatter<AxisPosition.Horizontal.Bottom> { value, _ ->
+        CartesianValueFormatter { _, value, _ ->
             val index = value.roundToInt()
             val anchorEpoch = window.epochSecondAt(index)
             val label = labelFormatter.format(Instant.ofEpochSecond(anchorEpoch))
@@ -188,29 +222,31 @@ fun PressureChart(
         }
     }
     val yFormatter = remember {
-        AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ -> "${value.toInt()}" }
+        CartesianValueFormatter { _, value, _ -> "${value.toInt()}" }
     }
 
     // Dashed "now" line position. Read once per window, not every recomposition, so the
     // decoration below can be remembered too.
     val nowX = remember(window) { window.xOf(Instant.now()) }
 
-    // Written by the chart every frame, read by the decoration alongside it; outlives both.
-    val positions = remember { DrawnPositions() }
+    // Shared by the line layer and the decoration, and kept across every rebuild of either:
+    // the layer tweens through it, the decoration reads each frame of that tween back from it.
+    val tweenKey = remember { ExtraStore.Key<LineCartesianLayerDrawingModel>() }
+    val drawingModelInterpolator = remember { CartesianLayerDrawingModelInterpolator.line() }
 
     // Deliberately not keyed on the fade: see ChartOverlayDecoration.riskAlpha.
     val decoration = remember(
-        shownBands, rendering, edgeOffsetAt, positions, seriesColor, nowX, nowLineColor
+        shownBands, rendering, edgeOffsetAt, tweenKey, seriesColor, nowX, nowLineColor
     ) {
         ChartOverlayDecoration(
             alertBands = shownBands,
             rendering = rendering,
             edgeOffsetAt = edgeOffsetAt,
-            positions = positions,
+            tweenKey = tweenKey,
             seriesColor = seriesColor,
             riskAlpha = riskAlpha::value,
             nowX = nowX,
-            nowLineColorArgb = nowLineColor.copy(alpha = NOW_LINE_ALPHA).toArgb(),
+            nowLineColor = nowLineColor.copy(alpha = NOW_LINE_ALPHA),
         )
     }
 
@@ -222,40 +258,108 @@ fun PressureChart(
         ) {
             // Both edges are drawn by Vico so they can tween; a Line rendering draws the
             // same edge twice, on top of itself.
-            val lineSpec = LineChart.LineSpec(
-                lineColor = seriesColor.toArgb(),
-                lineThicknessDp = RANGE_LINE_WIDTH_DP
+            val line = LineCartesianLayer.rememberLine(
+                fill = remember(seriesColor) { LineCartesianLayer.LineFill.single(Fill(seriesColor)) },
+                stroke = remember {
+                    LineCartesianLayer.LineStroke.Continuous(thickness = RANGE_LINE_WIDTH_DP.dp)
+                },
+                interpolator = SERIES_INTERPOLATOR
             )
-            // Hand-built since Vico's lineChart() can't return this subclass.
-            val chart = remember(positions) { TweeningLineChart(positions) }.apply {
-                lines = listOf(lineSpec, lineSpec)
-                spacingDp = currentChartStyle.lineChart.spacing.value
-                axisValuesOverrider = AxisValuesOverrider.fixed(minY = yMin, maxY = yMax)
-                setDecorations(listOf(decoration))
+            val rangeProvider = remember(yMin, yMax) {
+                CartesianLayerRangeProvider.fixed(minY = yMin.toDouble(), maxY = yMax.toDouble())
+            }
+            val layer = remember(line, rangeProvider, decoration) {
+                TweenSharingLineLayer(
+                    lineProvider = LineCartesianLayer.LineProvider.series(line, line),
+                    pointSpacing = POINT_SPACING,
+                    rangeProvider = rangeProvider,
+                    drawingModelInterpolator = drawingModelInterpolator,
+                    tweenKey = tweenKey,
+                    overlay = decoration
+                )
             }
 
-            Chart(
-                chart = chart,
-                chartModelProducer = modelProducer,
-                startAxis = rememberStartAxis(valueFormatter = yFormatter),
-                bottomAxis = rememberBottomAxis(
+            // Hourly labels sit on gridlines; day labels sit centred in a cell, between
+            // gridlines, since daily points are noon-snapped — see ChartWindow.epochSecondAt.
+            val itemPlacer = remember(isDaily) {
+                if (isDaily) {
+                    HorizontalAxis.ItemPlacer.segmented(shiftExtremeLines = false)
+                } else {
+                    HorizontalAxis.ItemPlacer.aligned(
+                        shiftExtremeLines = false,
+                        addExtremeLabelPadding = true
+                    )
+                }
+            }
+            val layerPadding: (ExtraStore) -> CartesianLayerPadding = remember(isDaily) {
+                val padding = if (isDaily) {
+                    CartesianLayerPadding(scalableStart = DAILY_CELL_INSET, scalableEnd = DAILY_CELL_INSET)
+                } else {
+                    CartesianLayerPadding()
+                }
+                { padding }
+            }
+
+            // The app's body font rather than Vico's own default, so the axes read like the
+            // legend beneath them and follow any change to the app's typography.
+            val bodyText = MaterialTheme.typography.bodyLarge
+            val axisLabelStyle = TextStyle(
+                color = vicoTheme.textColor,
+                fontFamily = bodyText.fontFamily,
+                fontWeight = bodyText.fontWeight,
+                fontSize = AXIS_LABEL_SIZE,
+                textAlign = TextAlign.Center
+            )
+
+            // Vico 3 draws gridlines, axis lines and ticks in one opaque light grey that
+            // disappears into the risk shading; these keep Vico 1's colours instead.
+            val gridlineFill = remember(isDark) {
+                Fill(if (isDark) ChartGridlineDark else ChartGridlineLight)
+            }
+            val axisLineFill = remember(isDark) {
+                Fill(if (isDark) ChartAxisLineDark else ChartAxisLineLight)
+            }
+            val axisLine = rememberAxisLineComponent(fill = axisLineFill)
+            val axisTick = rememberAxisTickComponent(fill = axisLineFill)
+            val gridline = rememberAxisGuidelineComponent(fill = gridlineFill)
+
+            val chart = rememberCartesianChart(
+                layer,
+                startAxis = VerticalAxis.rememberStart(
+                    line = axisLine,
+                    label = rememberAxisLabelComponent(style = axisLabelStyle),
+                    tick = axisTick,
+                    guideline = gridline,
+                    valueFormatter = yFormatter,
+                    // As many evenly spaced labels as fit. The default steps in round values,
+                    // which the padded, non-round y-range leaves room for only one of.
+                    itemPlacer = remember { VerticalAxis.ItemPlacer.count() }
+                ),
+                bottomAxis = HorizontalAxis.rememberBottom(
+                    line = axisLine,
+                    tick = axisTick,
+                    guideline = gridline,
                     // Two lines for the day-name row; centred under the hour label.
-                    label = axisLabelComponent(
-                        lineCount = 2,
-                        textAlignment = Layout.Alignment.ALIGN_CENTER
+                    label = rememberAxisLabelComponent(
+                        style = axisLabelStyle,
+                        lineCount = AXIS_LABEL_LINES
                     ),
                     valueFormatter = xFormatter,
-                    itemPlacer = remember(window.step) {
-                        AxisItemPlacer.Horizontal.default(
-                            spacing = 1,
-                            shiftExtremeTicks = false,
-                            addExtremeLabelPadding = !isDaily
-                        )
-                    }
+                    itemPlacer = itemPlacer
                 ),
-                // Hourly labels sit on gridlines (FullWidth); day labels sit centred in a
-                // cell (Segmented) since daily points are noon-snapped — see ChartWindow.epochSecondAt.
-                horizontalLayout = if (isDaily) HorizontalLayout.Segmented else HorizontalLayout.FullWidth(),
+                layerPadding = layerPadding,
+                decorations = listOf(decoration)
+            )
+
+            // A fixed window that always fits its width: nothing to scroll to or zoom into.
+            CartesianChartHost(
+                chart = chart,
+                modelProducer = modelProducer,
+                scrollState = rememberVicoScrollState(scrollEnabled = false),
+                zoomState = rememberVicoZoomState(zoomEnabled = false),
+                animationSpec = tween(SERIES_TWEEN_MILLIS),
+                // The overlay can't follow Vico's sweep-in, so the chart appears settled.
+                initialAnimationSpec = null,
                 modifier = Modifier.fillMaxSize()
             )
         }

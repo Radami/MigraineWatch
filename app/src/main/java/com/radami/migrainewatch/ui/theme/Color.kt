@@ -35,6 +35,14 @@ val ChartNowLineDark = Color(0xFFFFFFFF)
 val ChartSeriesLight = Color(0xFF5B8DC8)
 val ChartSeriesDark = Color(0xFF8FB9E8)
 
+// Gridlines, and the axis lines and ticks, as Vico 1 drew them. Light mode's are translucent
+// black rather than Vico 3's opaque light grey, so they darken whatever they cross and stay
+// visible over the risk shading instead of sinking into it.
+val ChartGridlineLight = Color(0x47000000)
+val ChartGridlineDark = Color(0xFF424242)
+val ChartAxisLineLight = Color(0x47000000)
+val ChartAxisLineDark = Color(0xFF555555)
+
 // Alert colours — fixed palette shared by the chart's risk shading and the alert rows,
 // independent of dynamic theming. One hue per alert, light and dark variant.
 val Alert1Light = Color(0xFFD32F2F)
