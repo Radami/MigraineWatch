@@ -26,7 +26,7 @@ coroutines = "1.10.1"
 mockk = "1.13.13"
 robolectric = "4.14.1"
 playServicesLocation = "21.3.0"
-vico = "1.14.0"
+vico = "3.3.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -95,8 +95,7 @@ androidx-arch-core-testing = { group = "androidx.arch.core", name = "core-testin
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 
 # Vico Charts
-vico-compose-m3 = { group = "com.patrykandpatrick.vico", name = "compose-m3", version.ref = "vico" }
-vico-core = { group = "com.patrykandpatrick.vico", name = "core", version.ref = "vico" }
+vico-compose = { group = "com.patrykandpatrick.vico", name = "compose", version.ref = "vico" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

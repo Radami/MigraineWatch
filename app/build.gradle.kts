@@ -247,8 +247,7 @@ dependencies {
     implementation(libs.play.services.location)
 
     // Charts
-    implementation(libs.vico.compose.m3)
-    implementation(libs.vico.core)
+    implementation(libs.vico.compose)
 
     // Testing
     testImplementation(libs.junit)

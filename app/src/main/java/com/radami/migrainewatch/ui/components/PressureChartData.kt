@@ -3,7 +3,6 @@ package com.radami.migrainewatch.ui.components
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
-import com.patrykandpatrick.vico.core.entry.FloatEntry
 import kotlin.math.abs
 
 /** One reading in a step is a value, not a range: it takes two for the step to span anything. */
@@ -53,11 +52,14 @@ enum class ChartRendering {
  */
 internal data class RangeEntry(val index: Int, val minY: Float, val maxY: Float)
 
+/** One plotted point of an edge: chart x-value and pressure in hPa. */
+internal data class EdgePoint(val x: Float, val y: Float)
+
 /**
  * The two edges the chart plots, in chart x-order. Always a pair, even for a line (whose
  * edges coincide), so Vico can tween the same model shape across renderings.
  */
-internal data class SeriesEdges(val lower: List<FloatEntry>, val upper: List<FloatEntry>)
+internal data class SeriesEdges(val lower: List<EdgePoint>, val upper: List<EdgePoint>)
 
 /**
  * Pressure at exactly [epoch], interpolated between the surrounding readings ([readings] must
@@ -118,14 +120,14 @@ internal fun seriesEdges(
 ): SeriesEdges = when (rendering) {
     ChartRendering.Line -> {
         val sampled = ChartWindow.POINT_INDICES.mapNotNull { i ->
-            pressureAt(readings, window.epochSecondAt(i))?.let { FloatEntry(i.toFloat(), it) }
+            pressureAt(readings, window.epochSecondAt(i))?.let { EdgePoint(i.toFloat(), it) }
         }
         SeriesEdges(lower = sampled, upper = sampled)
     }
 
     ChartRendering.MinMaxBand -> SeriesEdges(
-        lower = stepRanges.map { FloatEntry(it.index.toFloat(), it.minY) },
-        upper = stepRanges.map { FloatEntry(it.index.toFloat(), it.maxY) }
+        lower = stepRanges.map { EdgePoint(it.index.toFloat(), it.minY) },
+        upper = stepRanges.map { EdgePoint(it.index.toFloat(), it.maxY) }
     )
 }
 
