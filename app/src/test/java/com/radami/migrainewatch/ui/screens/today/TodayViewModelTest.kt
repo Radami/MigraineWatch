@@ -2,6 +2,7 @@ package com.radami.migrainewatch.ui.screens.today
 
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.AppSettings
+import com.radami.migrainewatch.data.preferences.LocationData
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.RefreshState
@@ -41,6 +42,22 @@ class TodayViewModelTest {
     private companion object {
         /** Readings per day in the hourly series Open-Meteo returns. */
         const val HOURS_PER_DAY = 24
+
+        const val THRESHOLD_HPA = 5f
+
+        /** UTC+14 and UTC-11: 25 hours apart, so never on the same calendar date. */
+        val FAR_EAST: ZoneId = ZoneId.of("Pacific/Kiritimati")
+        val FAR_WEST: ZoneId = ZoneId.of("Pacific/Pago_Pago")
+
+        /** Where the zone-placement series peaks and bottoms out; a 12 hPa drop between. */
+        const val PEAK_HPA = 1020f
+        const val TROUGH_HPA = 1008f
+
+        /** Slow enough drift either side of the drop that it never qualifies as an event. */
+        const val DRIFT_HPA_PER_HOUR = 0.01f
+
+        const val DROP_START_HOUR = 1
+        const val DROP_HOURS = 4
     }
 
     private val pressureRepository = mockk<PressureRepository>(relaxed = true)
@@ -348,5 +365,79 @@ class TodayViewModelTest {
         assertEquals(OutlookRisk.Clear, outlook.last().risk)
         assertTrue(outlook.none { it.risk == OutlookRisk.Unknown })
         assertNull(state.outlookGap)
+    }
+
+    /**
+     * A location zone whose date differs from the device's right now. [FAR_EAST] and
+     * [FAR_WEST] are never on the same date, so one of them always disagrees with the device,
+     * which makes counting days in the device's zone fail wherever the test runs.
+     */
+    private fun zoneOnAnotherDate(): ZoneId =
+        listOf(FAR_EAST, FAR_WEST).first { LocalDate.now(it) != LocalDate.now() }
+
+    private fun showLocationIn(zone: ZoneId) {
+        val settings = AppSettings(
+            alertThresholdHpa = THRESHOLD_HPA,
+            location = LocationData(timezone = zone.id)
+        )
+        every { userPreferences.settings } returns flowOf(settings)
+    }
+
+    /**
+     * An hourly week in [zone] from today's midnight with one drop, from [dropStart] over
+     * [DROP_HOURS]. The drift either side keeps the peak and trough unique, so the detected
+     * event starts and ends exactly on the drop.
+     */
+    private fun weekWithDrop(zone: ZoneId, dropStart: Instant): List<PressureReading> {
+        val now = Instant.now()
+        val midnight = LocalDate.now(zone).atStartOfDay(zone).toInstant()
+        val dropEnd = dropStart.plus(DROP_HOURS.toLong(), ChronoUnit.HOURS)
+
+        return (0 until DayOutlook.DAYS * HOURS_PER_DAY).map { hour ->
+            val at = midnight.plus(hour.toLong(), ChronoUnit.HOURS)
+            val pressure = when {
+                at.isBefore(dropStart) ->
+                    PEAK_HPA - DRIFT_HPA_PER_HOUR * ChronoUnit.HOURS.between(at, dropStart)
+                at.isAfter(dropEnd) ->
+                    TROUGH_HPA + DRIFT_HPA_PER_HOUR * ChronoUnit.HOURS.between(dropEnd, at)
+                else ->
+                    PEAK_HPA - (PEAK_HPA - TROUGH_HPA) * ChronoUnit.HOURS.between(dropStart, at) / DROP_HOURS
+            }
+            PressureReading(at, pressure, pressure, now)
+        }
+    }
+
+    @Test
+    fun `the outlook starts on the location's today, not the device's`() = runTest {
+        val zone = zoneOnAnotherDate()
+        showLocationIn(zone)
+        val farFuture = LocalDate.now(zone).plusDays(DayOutlook.DAYS.toLong()).atStartOfDay(zone).toInstant()
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns
+            flowOf(weekWithDrop(zone, dropStart = farFuture))
+
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
+
+        assertEquals(LocalDate.now(zone), state.outlook.first().date)
+    }
+
+    @Test
+    fun `an event is placed on the day it falls on at the location`() = runTest {
+        val zone = zoneOnAnotherDate()
+        showLocationIn(zone)
+
+        // 01:00 to 05:00 tomorrow at the location: on the device, a different day entirely.
+        val tomorrow = LocalDate.now(zone).plusDays(1)
+        val dropStart = tomorrow.atTime(DROP_START_HOUR, 0).atZone(zone).toInstant()
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns
+            flowOf(weekWithDrop(zone, dropStart))
+
+        val outlook = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            .loadedState()
+            .outlook
+
+        assertEquals(OutlookRisk.Clear, outlook[0].risk)
+        assertEquals(OutlookRisk.Elevated, outlook[1].risk)
+        assertEquals(OutlookRisk.Clear, outlook[2].risk)
     }
 }
