@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -257,11 +258,15 @@ fun PressureChart(
                 .height(200.dp)
         ) {
             // Both edges are drawn by Vico so they can tween; a Line rendering draws the
-            // same edge twice, on top of itself.
+            // same edge twice, on top of itself. Round-capped as in Vico 1, whose caps cover
+            // the joint where a line meets its butt-capped overhang at the plot edge.
             val line = LineCartesianLayer.rememberLine(
                 fill = remember(seriesColor) { LineCartesianLayer.LineFill.single(Fill(seriesColor)) },
                 stroke = remember {
-                    LineCartesianLayer.LineStroke.Continuous(thickness = RANGE_LINE_WIDTH_DP.dp)
+                    LineCartesianLayer.LineStroke.Continuous(
+                        thickness = RANGE_LINE_WIDTH_DP.dp,
+                        cap = StrokeCap.Round
+                    )
                 },
                 interpolator = SERIES_INTERPOLATOR
             )

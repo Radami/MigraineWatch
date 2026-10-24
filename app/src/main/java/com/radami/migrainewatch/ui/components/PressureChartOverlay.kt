@@ -111,6 +111,14 @@ internal class TweenSharingLineLayer(
         overlay.drawUnderlay(context)
         super.drawInternal(context, model)
     }
+
+    // Vico's equality covers only the line setup, and rememberCartesianChart keys on it. The
+    // overlay is part of what this layer draws, so a different one must not count as unchanged.
+    override fun equals(other: Any?): Boolean =
+        this === other ||
+            other is TweenSharingLineLayer && overlay == other.overlay && super.equals(other)
+
+    override fun hashCode(): Int = 31 * super.hashCode() + overlay.hashCode()
 }
 
 /**
@@ -169,12 +177,20 @@ internal class ChartOverlayDecoration(
         color = nowLineColor
     }
 
+    // Density the now line's dash effect was last built for; 0 until the first draw.
+    private var dashDensity = 0f
+
     // Stroke widths and dashes are in dp, so they are resolved against the context's density
     // on every draw rather than fixed at construction.
     private fun CartesianDrawingContext.applyDensity() {
         rangePaint.strokeWidth = RANGE_LINE_WIDTH_DP.dp.pixels
         overhangPaint.strokeWidth = RANGE_LINE_WIDTH_DP.dp.pixels
         nowPaint.strokeWidth = NOW_LINE_WIDTH.pixels
+
+        // The dash effect is an allocation, so it is rebuilt only when the density changes,
+        // not on every frame of a tween.
+        if (density.density == dashDensity) return
+        dashDensity = density.density
         nowPaint.pathEffect =
             PathEffect.dashPathEffect(floatArrayOf(NOW_DASH_ON.pixels, NOW_DASH_OFF.pixels), 0f)
     }
