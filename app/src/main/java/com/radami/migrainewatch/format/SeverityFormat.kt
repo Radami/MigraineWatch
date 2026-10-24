@@ -1,6 +1,6 @@
 package com.radami.migrainewatch.format
 
-import com.radami.migrainewatch.data.model.Severity
+import com.radami.migrainewatch.domain.Severity
 
 /**
  * How a severity is spelled wherever the user sees one. Copy rather than a derivation of the

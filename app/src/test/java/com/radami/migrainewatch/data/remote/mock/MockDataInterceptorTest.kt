@@ -1,12 +1,14 @@
 package com.radami.migrainewatch.data.remote.mock
 
 import com.radami.migrainewatch.data.model.PressureReading
+import com.radami.migrainewatch.data.model.toPressureSample
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.data.remote.dto.OpenMeteoResponse
 import com.radami.migrainewatch.domain.AlertDetector
 import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
 import com.radami.migrainewatch.domain.PressureDirection
+import com.radami.migrainewatch.domain.PressureSample
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -42,7 +44,7 @@ class MockDataInterceptorTest {
     }
 
     /** Runs the interceptor over a forecast request; it answers without touching the network. */
-    private fun alertInputReadings(): List<PressureReading> {
+    private fun alertInputSamples(): List<PressureSample> {
         val client = OkHttpClient.Builder().addInterceptor(MockDataInterceptor()).build()
         val request = Request.Builder()
             .url("https://api.open-meteo.com/v1/forecast?latitude=$LATITUDE&longitude=$LONGITUDE")
@@ -62,11 +64,11 @@ class MockDataInterceptorTest {
 
         // TodayViewModel detects over the last 24 h plus the forecast, so mirror that window.
         val from = fetchedAt.minus(24, ChronoUnit.HOURS)
-        return readings.filter { !it.dateTime.isBefore(from) }
+        return readings.filter { !it.dateTime.isBefore(from) }.map { it.toPressureSample() }
     }
 
     private fun alertCount(sensitivity: AlertSensitivity): Int =
-        AlertDetector.detect(alertInputReadings(), sensitivity.thresholdHpa).size
+        AlertDetector.detect(alertInputSamples(), sensitivity.thresholdHpa).size
 
     @Test
     fun `three-event scenario sheds one alert per step down in sensitivity`() {
@@ -81,7 +83,7 @@ class MockDataInterceptorTest {
     fun `three-event scenario alternates direction so events stay separate`() {
         MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.THREE_EVENTS
 
-        val alerts = AlertDetector.detect(alertInputReadings(), AlertSensitivity.HIGH.thresholdHpa)
+        val alerts = AlertDetector.detect(alertInputSamples(), AlertSensitivity.HIGH.thresholdHpa)
 
         assertEquals(
             listOf(PressureDirection.DROP, PressureDirection.RISE, PressureDirection.DROP),
@@ -98,7 +100,7 @@ class MockDataInterceptorTest {
     fun `three-event scenario keeps every event inside the widest chart range`() {
         MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.THREE_EVENTS
 
-        val alerts = AlertDetector.detect(alertInputReadings(), AlertSensitivity.HIGH.thresholdHpa)
+        val alerts = AlertDetector.detect(alertInputSamples(), AlertSensitivity.HIGH.thresholdHpa)
 
         // An event the chart cannot reach is listed as "not in view" instead of being shaded,
         // which is a poor fixture for a screenshot: every mock event has to fit the range that
@@ -127,7 +129,7 @@ class MockDataInterceptorTest {
         assertEquals("Medium", 4, alertCount(AlertSensitivity.MEDIUM))
         assertEquals("Low", 4, alertCount(AlertSensitivity.LOW))
 
-        val alerts = AlertDetector.detect(alertInputReadings(), AlertSensitivity.HIGH.thresholdHpa)
+        val alerts = AlertDetector.detect(alertInputSamples(), AlertSensitivity.HIGH.thresholdHpa)
         assertEquals(
             listOf(
                 PressureDirection.DROP,
@@ -147,7 +149,7 @@ class MockDataInterceptorTest {
     fun `four-event scenario keeps every event inside the widest chart range`() {
         MockDataInterceptor.currentScenario = MockDataInterceptor.Scenario.FOUR_EVENTS
 
-        val alerts = AlertDetector.detect(alertInputReadings(), AlertSensitivity.HIGH.thresholdHpa)
+        val alerts = AlertDetector.detect(alertInputSamples(), AlertSensitivity.HIGH.thresholdHpa)
 
         // The fourth event goes unshaded because the card stops at three, and that has to be
         // the only reason: an event the chart could not reach anyway would prove nothing.
@@ -169,7 +171,7 @@ class MockDataInterceptorTest {
         assertEquals("Medium", 2, alertCount(AlertSensitivity.MEDIUM))
         assertEquals("Low", 0, alertCount(AlertSensitivity.LOW))
 
-        val alerts = AlertDetector.detect(alertInputReadings(), AlertSensitivity.HIGH.thresholdHpa)
+        val alerts = AlertDetector.detect(alertInputSamples(), AlertSensitivity.HIGH.thresholdHpa)
         assertEquals(
             listOf(PressureDirection.DROP, PressureDirection.RISE),
             alerts.map { it.direction }

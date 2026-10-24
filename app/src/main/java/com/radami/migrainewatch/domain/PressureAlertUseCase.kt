@@ -8,6 +8,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.radami.migrainewatch.data.model.toPressureSample
 
 /**
  * The single definition of "which pressure events count right now". The Today screen and the
@@ -66,7 +67,8 @@ class PressureAlertUseCase @Inject constructor(
 
         // Extra history is only to find true starts, not to widen the result.
         val relevantFrom = now.minus(RELEVANCE_HOURS, ChronoUnit.HOURS)
-        return AlertDetector.detect(window, thresholdHpa).filter { it.end.isAfter(relevantFrom) }
+        return AlertDetector.detect(window.map { it.toPressureSample() }, thresholdHpa)
+            .filter { it.end.isAfter(relevantFrom) }
     }
 
     /** Alerts for the user's current sensitivity, read straight from storage. */

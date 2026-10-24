@@ -1,7 +1,7 @@
 package com.radami.migrainewatch.data.repository
 
 import com.radami.migrainewatch.data.local.dao.SymptomEntryDao
-import com.radami.migrainewatch.data.model.Severity
+import com.radami.migrainewatch.domain.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
 import io.mockk.coVerify
 import io.mockk.mockk

@@ -3,7 +3,7 @@ package com.radami.migrainewatch.ui.screens.calendar
 import androidx.lifecycle.ViewModel
 import android.util.Log
 import androidx.lifecycle.viewModelScope
-import com.radami.migrainewatch.data.model.Severity
+import com.radami.migrainewatch.domain.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.data.preferences.LocationData
 import com.radami.migrainewatch.data.preferences.UserPreferences
@@ -24,6 +24,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
+import com.radami.migrainewatch.data.model.toPressureSample
 
 data class CalendarUiState(
     val currentMonth: YearMonth = YearMonth.now(LocationData().zone),
@@ -116,7 +117,10 @@ class CalendarViewModel @Inject constructor(
                         val entriesMap = entries.associateBy { it.date }
 
                         val highRiskDays = withContext(Dispatchers.Default) {
-                            val alerts = AlertDetector.detect(readings, settings.alertThresholdHpa)
+                            val alerts = AlertDetector.detect(
+                                readings.map { it.toPressureSample() },
+                                settings.alertThresholdHpa
+                            )
                             AlertDetector.eventDays(alerts, zone)
                         }
 

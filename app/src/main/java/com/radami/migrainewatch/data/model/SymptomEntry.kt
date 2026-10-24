@@ -2,6 +2,8 @@ package com.radami.migrainewatch.data.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.radami.migrainewatch.domain.Severity
+import com.radami.migrainewatch.domain.SymptomDay
 import java.time.Instant
 import java.time.LocalDate
 
@@ -17,3 +19,6 @@ data class SymptomEntry(
     val createdAt: Instant,
     val updatedAt: Instant
 )
+
+/** What streak counting needs from a logged day. */
+fun SymptomEntry.toSymptomDay(): SymptomDay = SymptomDay(date, severity)

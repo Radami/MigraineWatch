@@ -1,6 +1,5 @@
 package com.radami.migrainewatch.domain
 
-import com.radami.migrainewatch.data.model.PressureReading
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,8 +17,8 @@ class AlertDetectorTest {
     @Test
     fun `detect returns alert when pressure drops more than threshold`() {
         val readings = listOf(
-            PressureReading(now, 1020f, 1010f, now),
-            PressureReading(now.plus(12, ChronoUnit.HOURS), 1010f, 1000f, now)
+            PressureSample(now, 1020f),
+            PressureSample(now.plus(12, ChronoUnit.HOURS), 1010f)
         )
         
         val alerts = AlertDetector.detect(readings, 5f)
@@ -32,8 +31,8 @@ class AlertDetectorTest {
     @Test
     fun `detect returns empty list when pressure change is below threshold`() {
         val readings = listOf(
-            PressureReading(now, 1020f, 1010f, now),
-            PressureReading(now.plus(12, ChronoUnit.HOURS), 1018f, 1008f, now)
+            PressureSample(now, 1020f),
+            PressureSample(now.plus(12, ChronoUnit.HOURS), 1018f)
         )
         
         val alerts = AlertDetector.detect(readings, 5f)
@@ -230,7 +229,7 @@ class AlertDetectorTest {
             // The historical half comes from a fetch 8 h earlier, so its pattern is shifted.
             val j = if (i < 0) i + 8 else i
             val pressure = base + 2f * sin(j / 10.0 + seed).toFloat() + eventOffset(j)
-            PressureReading(now.plus(i.toLong(), ChronoUnit.HOURS), pressure, pressure, now)
+            PressureSample(now.plus(i.toLong(), ChronoUnit.HOURS), pressure)
         }
 
         val alerts = AlertDetector.detect(readings, 10f)

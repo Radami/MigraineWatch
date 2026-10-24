@@ -18,6 +18,7 @@ import java.time.Duration
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.radami.migrainewatch.data.model.toDeliveredWarning
 
 /** What one reconcile did, so a caller can report it instead of leaving it to logcat. */
 sealed interface ReconcileResult {
@@ -66,9 +67,9 @@ class AlertNotificationScheduler @Inject constructor(
         val result = runCatching {
             val settings = userPreferences.settings.first()
             val alerts = alertUseCase.currentAlerts(now)
-            val alreadyNotified = notifiedAlertDao.getNotifiedSince(
-                now.minus(AlertNotificationDecider.NOTIFICATION_LOOKBACK)
-            )
+            val alreadyNotified = notifiedAlertDao
+                .getNotifiedSince(now.minus(AlertNotificationDecider.NOTIFICATION_LOOKBACK))
+                .mapNotNull { it.toDeliveredWarning() }
 
             val pending = AlertNotificationDecider.decide(
                 alerts = alerts,
