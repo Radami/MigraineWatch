@@ -4,6 +4,7 @@ import com.radami.migrainewatch.data.local.dao.PressureReadingDao
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.AppSettings
 import com.radami.migrainewatch.data.preferences.LocationData
+import com.radami.migrainewatch.data.preferences.UNKNOWN_TIMEZONE
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.remote.OpenMeteoApi
 import com.radami.migrainewatch.data.remote.OpenMeteoArchiveApi
@@ -11,7 +12,9 @@ import com.radami.migrainewatch.data.remote.dto.HourlyData
 import com.radami.migrainewatch.data.remote.dto.OpenMeteoResponse
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.Runs
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -40,6 +43,18 @@ class PressureRepositoryTest {
     private companion object {
         const val BERLIN_LAT = 52.52
         const val BERLIN_LON = 13.41
+
+        /** A searched-for city, which arrives with its zone. */
+        val BERLIN = LocationData(
+            source = "manual",
+            lat = BERLIN_LAT,
+            lon = BERLIN_LON,
+            name = "Berlin",
+            timezone = "Europe/Berlin"
+        )
+
+        /** The same place from GPS, which arrives without a zone. */
+        val BERLIN_GPS_FIX = BERLIN.copy(source = "gps", name = "Current location", timezone = UNKNOWN_TIMEZONE)
 
         /** 45 min off Berlin's hourly grid, so REPLACE would collide with nothing. */
         val KATHMANDU = LocationData(
@@ -74,7 +89,7 @@ class PressureRepositoryTest {
 
     /** Mutable so a test can move the user; stubbed before construction since the watch starts then. */
     private val settings = MutableStateFlow(
-        AppSettings(location = LocationData(lat = BERLIN_LAT, lon = BERLIN_LON, name = "Berlin"))
+        AppSettings(location = BERLIN)
     )
 
     private lateinit var repository: PressureRepository
@@ -82,6 +97,7 @@ class PressureRepositoryTest {
     @Before
     fun setup() {
         every { prefs.settings } returns settings
+        coEvery { prefs.adoptTimezone(any(), any()) } just Runs
         repository = PressureRepository(dao, forecastApi, archiveApi, prefs, refreshScope)
     }
 
@@ -120,8 +136,56 @@ class PressureRepositoryTest {
 
         repository.refresh()
 
-        coVerify { forecastApi.getForecast(BERLIN_LAT, BERLIN_LON, timezone = "UTC") }
+        coVerify { forecastApi.getForecast(BERLIN_LAT, BERLIN_LON, timezone = BERLIN.timezone) }
         coVerify { dao.replaceSeries(any(), any(), any()) }
+    }
+
+    /** A location whose zone is already known keeps it; nothing is looked up or rewritten. */
+    @Test
+    fun `refresh keeps the zone of a location that has one`() = runTest {
+        coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns response()
+        stubRecentHistory()
+
+        repository.refresh()
+
+        coVerify(exactly = 0) { prefs.adoptTimezone(any(), any()) }
+    }
+
+    /**
+     * A GPS fix carries no zone. The fetch asks Open-Meteo to resolve it from the coordinates
+     * and stores the answer, so every screen can count the location's days in it.
+     */
+    @Test
+    fun `refresh resolves and stores the zone of a location saved without one`() = runTest {
+        coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns
+            response().copy(timezone = BERLIN.timezone)
+        stubRecentHistory()
+
+        // Its own settings, so the shared repository doesn't see a move and fetch as well.
+        every { prefs.settings } returns MutableStateFlow(AppSettings(location = BERLIN_GPS_FIX))
+        val gpsRepository = PressureRepository(dao, forecastApi, archiveApi, prefs, refreshScope)
+
+        gpsRepository.refresh()
+
+        coVerify { forecastApi.getForecast(BERLIN_LAT, BERLIN_LON, timezone = "auto") }
+        coVerify { prefs.adoptTimezone(BERLIN_GPS_FIX, BERLIN.timezone) }
+    }
+
+    /** Installs from before the lookup stored "UTC" for every GPS fix; they're repaired too. */
+    @Test
+    fun `refresh treats the legacy UTC placeholder as an unknown zone`() = runTest {
+        val legacyFix = BERLIN_GPS_FIX.copy(timezone = "UTC")
+        coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns
+            response().copy(timezone = BERLIN.timezone)
+        stubRecentHistory()
+
+        every { prefs.settings } returns MutableStateFlow(AppSettings(location = legacyFix))
+        val legacyRepository = PressureRepository(dao, forecastApi, archiveApi, prefs, refreshScope)
+
+        legacyRepository.refresh()
+
+        coVerify { forecastApi.getForecast(BERLIN_LAT, BERLIN_LON, timezone = "auto") }
+        coVerify { prefs.adoptTimezone(legacyFix, BERLIN.timezone) }
     }
 
     /**
@@ -231,14 +295,7 @@ class PressureRepositoryTest {
         coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns response()
         stubRecentHistory()
 
-        settings.value = AppSettings(
-            location = LocationData(
-                source = "gps",
-                lat = BERLIN_LAT,
-                lon = BERLIN_LON,
-                name = "Berlin, State of Berlin, Germany"
-            )
-        )
+        settings.value = AppSettings(location = BERLIN.copy(name = "Berlin, State of Berlin, Germany"))
         advanceUntilIdle()
 
         coVerify(exactly = 0) { forecastApi.getForecast(any(), any(), timezone = any()) }

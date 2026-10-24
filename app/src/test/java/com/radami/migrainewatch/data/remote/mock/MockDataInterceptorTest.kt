@@ -103,7 +103,8 @@ class MockDataInterceptorTest {
         // An event the chart cannot reach is listed as "not in view" instead of being shaded,
         // which is a poor fixture for a screenshot: every mock event has to fit the range that
         // shows the most, whatever the chart is anchored on when it is looked at.
-        val chart = ChartWindow.around(Instant.now(), ChartStep.OneDay)
+        // The mock reports the device's zone, so that is the zone its location adopts.
+        val chart = ChartWindow.around(Instant.now(), ChartStep.OneDay, ZoneId.systemDefault())
         alerts.forEach { alert ->
             assertTrue("$alert starts before the chart", !alert.start.isBefore(chart.firstVisible))
             assertTrue("$alert ends after the chart", !alert.end.isAfter(chart.lastVisible))
@@ -150,7 +151,8 @@ class MockDataInterceptorTest {
 
         // The fourth event goes unshaded because the card stops at three, and that has to be
         // the only reason: an event the chart could not reach anyway would prove nothing.
-        val chart = ChartWindow.around(Instant.now(), ChartStep.OneDay)
+        // The mock reports the device's zone, so that is the zone its location adopts.
+        val chart = ChartWindow.around(Instant.now(), ChartStep.OneDay, ZoneId.systemDefault())
         alerts.forEach { alert ->
             assertTrue("$alert starts before the chart", !alert.start.isBefore(chart.firstVisible))
             assertTrue("$alert ends after the chart", !alert.end.isAfter(chart.lastVisible))
