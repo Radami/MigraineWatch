@@ -88,6 +88,7 @@ private const val AXIS_LABEL_LINES = 2
  * @param readings the whole series, sorted by time; the chart samples only the instants
  *   [window] names.
  * @param window which slice of time the chart draws, and at what resolution.
+ * @param zone the zone [window] was snapped in, so the labels name the same hours and days.
  * @param requestedRendering sampled line or min/max band; a request, not a guarantee — a
  *   sparse series falls back to [ChartRendering.Line] via [renderingFor].
  * @param alerts risk windows to shade; only as many as the palette has colours are shown.
@@ -98,6 +99,7 @@ private const val AXIS_LABEL_LINES = 2
 fun PressureChart(
     readings: List<PressureReading>,
     window: ChartWindow,
+    zone: ZoneId,
     modifier: Modifier = Modifier,
     requestedRendering: ChartRendering = ChartRendering.Line,
     alerts: List<AlertWindow> = emptyList(),
@@ -192,15 +194,14 @@ fun PressureChart(
     val isDaily = window.step == ChartStep.OneDay
 
     // Mon/Tue/… for the 7-day chip, "3PM"/"9AM" for the hourly steps
-    val labelFormatter = remember(window.step) {
+    val labelFormatter = remember(window.step, zone) {
         val base = if (isDaily) AppDateFormats.WEEKDAY else AppDateFormats.HOUR
-        base.withZone(ZoneId.systemDefault())
+        base.withZone(zone)
     }
-    val dayFormatter = remember {
-        AppDateFormats.WEEKDAY.withZone(ZoneId.systemDefault())
+    val dayFormatter = remember(zone) {
+        AppDateFormats.WEEKDAY.withZone(zone)
     }
-    val xFormatter = remember(window, labelFormatter, dayFormatter) {
-        val zone = ZoneId.systemDefault()
+    val xFormatter = remember(window, zone, labelFormatter, dayFormatter) {
         val stepSeconds = window.step.seconds
         CartesianValueFormatter { _, value, _ ->
             val index = value.roundToInt()

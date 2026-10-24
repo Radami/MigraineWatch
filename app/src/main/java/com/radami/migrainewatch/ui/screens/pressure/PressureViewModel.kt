@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.data.preferences.AppSettings
+import com.radami.migrainewatch.data.preferences.LocationData
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.RefreshState
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
@@ -55,6 +57,8 @@ data class PressureUiState(
     val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
     val selectedRange: TimeRange = TimeRange.Days7,
     val locationName: String = "",
+    /** The location's zone, which the chart and every time on the screen are shown in. */
+    val zone: ZoneId = LocationData().zone,
     val lastUpdated: Instant? = null,
     /** How the fetch is going. An empty table alone can't tell in-flight from failed from empty. */
     val refreshState: RefreshState = RefreshState.InFlight,
@@ -124,6 +128,7 @@ class PressureViewModel @Inject constructor(
                             alertWindows = alerts,
                             alertThresholdHpa = settings.alertThresholdHpa,
                             locationName = settings.location.name,
+                            zone = settings.location.zone,
                             lastUpdated = readings.maxOfOrNull { it.fetchedDateTime },
                             refreshState = refreshState,
                             isLoading = false

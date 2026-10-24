@@ -152,7 +152,7 @@ class PressureViewModelTest {
         TimeRange.entries.forEach { range ->
             assertFalse(
                 "$range should not reach an event six days out",
-                ChartWindow.around(now, range.step).covers(alert)
+                ChartWindow.around(now, range.step, state.zone).covers(alert)
             )
         }
     }

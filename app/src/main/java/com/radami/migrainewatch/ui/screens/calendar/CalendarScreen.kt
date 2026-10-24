@@ -96,7 +96,6 @@ fun CalendarScreen(
     viewModel: CalendarViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val today = remember { LocalDate.now() }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val listState = rememberLazyListState()
@@ -118,14 +117,14 @@ fun CalendarScreen(
                         month = state.currentMonth,
                         entries = state.entriesInMonth,
                         highRiskDays = state.highRiskDays,
-                        today = today,
+                        today = state.today,
                         onPrevMonth = viewModel::previousMonth,
                         onNextMonth = viewModel::nextMonth,
                         onDayTap = { date, entry ->
                             when {
                                 entry != null -> viewModel.showDayDetail(entry)
                                 // Symptoms can't be logged ahead of time.
-                                !date.isAfter(today) -> onLogEntry(date)
+                                !date.isAfter(state.today) -> onLogEntry(date)
                             }
                         }
                     )

@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.radami.migrainewatch.data.model.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
+import com.radami.migrainewatch.data.preferences.LocationData
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.SymptomRepository
@@ -21,12 +22,13 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 data class CalendarUiState(
-    val currentMonth: YearMonth = YearMonth.now(),
+    val currentMonth: YearMonth = YearMonth.now(LocationData().zone),
+    /** Today at the location, which the grid marks and the statistics count back from. */
+    val today: LocalDate = LocalDate.now(LocationData().zone),
     val entriesInMonth: Map<LocalDate, SymptomEntry> = emptyMap(),
     // Days touched by a pressure event that crossed the user's alert threshold. The calendar
     // marks these as high risk; which way the pressure moved is not shown.
@@ -50,18 +52,23 @@ class CalendarViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(CalendarUiState())
     val uiState: StateFlow<CalendarUiState> = _uiState.asStateFlow()
 
-    private val currentMonth = MutableStateFlow(YearMonth.now())
+    /**
+     * Months back (negative) or ahead of the location's current month, rather than a month
+     * itself: which month is current depends on the location's zone, unknown until settings
+     * load.
+     */
+    private val monthOffset = MutableStateFlow(0L)
 
     init {
         observeData()
     }
 
     fun previousMonth() {
-        currentMonth.value = currentMonth.value.minusMonths(1)
+        monthOffset.value -= 1
     }
 
     fun nextMonth() {
-        currentMonth.value = currentMonth.value.plusMonths(1)
+        monthOffset.value += 1
     }
 
     fun showDayDetail(entry: SymptomEntry) {
@@ -84,15 +91,20 @@ class CalendarViewModel @Inject constructor(
 
     private fun observeData() {
         viewModelScope.launch {
-            combine(currentMonth, userPreferences.settings) { month, settings ->
-                Pair(month, settings)
-            }.collectLatest { (month, settings) ->
+            combine(monthOffset, userPreferences.settings) { offset, settings ->
+                Pair(offset, settings)
+            }.collectLatest { (offset, settings) ->
+                // Days, months and the readings' bounds all counted at the location.
+                val zone = settings.location.zone
+                val today = LocalDate.now(zone)
+                val thisMonth = YearMonth.from(today)
+                val month = thisMonth.plusMonths(offset)
+
                 val from = month.atDay(1)
                 val to = month.atEndOfMonth()
-                val fromInstant = from.atStartOfDay(ZoneId.systemDefault()).toInstant()
-                val toInstant = to.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant()
+                val fromInstant = from.atStartOfDay(zone).toInstant()
+                val toInstant = to.plusDays(1).atStartOfDay(zone).toInstant()
 
-                val today = LocalDate.now()
                 val statsFrom = today.minusMonths(12)
 
                 combine(
@@ -105,10 +117,9 @@ class CalendarViewModel @Inject constructor(
 
                         val highRiskDays = withContext(Dispatchers.Default) {
                             val alerts = AlertDetector.detect(readings, settings.alertThresholdHpa)
-                            AlertDetector.eventDays(alerts, ZoneId.systemDefault())
+                            AlertDetector.eventDays(alerts, zone)
                         }
 
-                        val thisMonth = YearMonth.now()
                         val lastMonth = thisMonth.minusMonths(1)
                         val monthLogCounts = statsEntries
                             .filter { YearMonth.from(it.date) == thisMonth }
@@ -121,6 +132,7 @@ class CalendarViewModel @Inject constructor(
 
                         _uiState.value = CalendarUiState(
                             currentMonth = month,
+                            today = today,
                             entriesInMonth = entriesMap,
                             highRiskDays = highRiskDays,
                             monthLogCounts = monthLogCounts,

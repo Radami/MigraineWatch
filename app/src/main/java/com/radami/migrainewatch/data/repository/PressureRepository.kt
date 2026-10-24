@@ -96,6 +96,9 @@ private const val INITIAL_BACKFILL_DAYS = 60L
 /** A forecast older than this is worth refetching. Open-Meteo publishes hourly. */
 private const val FORECAST_FRESHNESS_HOURS = 1L
 
+/** Asks Open-Meteo to resolve the zone from the coordinates; the response names the result. */
+private const val AUTO_TIMEZONE = "auto"
+
 /**
  * [runCatching] but rethrows [CancellationException] instead of swallowing it.
  * Otherwise a fetch cancelled by a location change would be logged as a failure
@@ -218,18 +221,19 @@ class PressureRepository @Inject constructor(
             return RefreshState.NoLocation
         }
 
-        val timezone = loc.timezone.ifBlank { ZoneId.systemDefault().id }
+        // An unknown zone is requested as "auto"; storeForecast keeps the one that comes back.
+        val requestZone = loc.knownZone?.id ?: AUTO_TIMEZONE
         val now = Instant.now()
-        Log.d(TAG, "Refreshing data for ${loc.name} at ${loc.lat},${loc.lon} in $timezone")
+        Log.d(TAG, "Refreshing data for ${loc.name} at ${loc.lat},${loc.lon} in $requestZone")
 
         // Own catch, not part of the outcome: the forecast endpoint already covers 30 days,
         // so failing to backfill further just thins the chart, it isn't a refresh failure.
         if (mode == RefreshMode.KeepHistory) {
-            catchingFailures { gapFillIfNeeded(loc, timezone, now) }
+            catchingFailures { gapFillIfNeeded(loc, requestZone, now) }
                 .onFailure { Log.e(TAG, "Archive fetch failed", it) }
         }
 
-        return catchingFailures { storeForecast(mode, loc, timezone, now) }
+        return catchingFailures { storeForecast(mode, loc, requestZone, now) }
             .onFailure { Log.e(TAG, "Forecast fetch failed", it) }
             .getOrElse { RefreshState.Failed }
     }
@@ -239,23 +243,26 @@ class PressureRepository @Inject constructor(
      * Never called on a location move: old history belongs to the old place and
      * gets replaced anyway, so the new location just keeps its 30 forecast days.
      */
-    private suspend fun gapFillIfNeeded(loc: LocationData, timezone: String, now: Instant) {
+    private suspend fun gapFillIfNeeded(loc: LocationData, requestZone: String, now: Instant) {
         val lastHistorical = dao.getLatestHistorical(now)
         val historyStart = now.minus(FORECAST_HISTORY_DAYS, ChronoUnit.DAYS)
         if (lastHistorical != null && !lastHistorical.dateTime.isBefore(historyStart)) return
 
         val gapStart = lastHistorical?.dateTime ?: now.minus(INITIAL_BACKFILL_DAYS, ChronoUnit.DAYS)
-        Log.d(TAG, "Fetching archive from ${formatDate(gapStart, timezone)} to ${formatDate(historyStart, timezone)}")
+        // Dates only bound the request, so the fallback zone is close enough while it's unknown.
+        val startDate = formatDate(gapStart, loc.zone)
+        val endDate = formatDate(historyStart, loc.zone)
+        Log.d(TAG, "Fetching archive from $startDate to $endDate")
 
         val response = archiveApi.getArchive(
             latitude = loc.lat,
             longitude = loc.lon,
-            startDate = formatDate(gapStart, timezone),
-            endDate = formatDate(historyStart, timezone),
-            timezone = timezone
+            startDate = startDate,
+            endDate = endDate,
+            timezone = requestZone
         )
         val fetchedAt = Instant.now()
-        val historical = parseResponse(response, fetchedAt, timezone)
+        val historical = parseResponse(response, fetchedAt, response.timezone.ifBlank { loc.zone.id })
             .filter { it.dateTime.isBefore(now) }
 
         Log.d(TAG, "Inserting ${historical.size} historical readings from archive")
@@ -266,17 +273,17 @@ class PressureRepository @Inject constructor(
     private suspend fun storeForecast(
         mode: RefreshMode,
         loc: LocationData,
-        timezone: String,
+        requestZone: String,
         now: Instant
     ): RefreshState {
-        Log.d(TAG, "Fetching forecast for timezone $timezone")
+        Log.d(TAG, "Fetching forecast for timezone $requestZone")
         val response = forecastApi.getForecast(
             latitude = loc.lat,
             longitude = loc.lon,
-            timezone = timezone
+            timezone = requestZone
         )
         val fetchedAt = Instant.now()
-        val readings = parseResponse(response, fetchedAt, response.timezone.ifBlank { timezone })
+        val readings = parseResponse(response, fetchedAt, response.timezone.ifBlank { loc.zone.id })
 
         // Not written: both write paths clear what they replace first, so an empty response
         // would wipe the forecast (or the whole table on a move) instead of just updating it.
@@ -302,6 +309,16 @@ class PressureRepository @Inject constructor(
 
             RefreshMode.ReplaceEverything ->
                 dao.replaceAllReadings(historical = historical, forecast = forecast)
+        }
+
+        // A location saved without a zone takes the one Open-Meteo resolved for it. That
+        // changes the stored location, so the move-watcher refetches once from scratch: rows
+        // fetched under the old "UTC" request sit on another hour grid wherever the offset
+        // isn't whole hours, and would otherwise interleave with these for good. Own catch, as
+        // for the archive: the series is stored either way, and the next refresh tries again.
+        if (loc.knownZone == null && response.timezone.isNotBlank()) {
+            catchingFailures { prefs.adoptTimezone(loc, response.timezone) }
+                .onFailure { Log.e(TAG, "Could not store the resolved timezone", it) }
         }
 
         return RefreshState.Updated
@@ -330,6 +347,6 @@ class PressureRepository @Inject constructor(
         }
     }
 
-    private fun formatDate(instant: Instant, timezone: String): String =
-        instant.atZone(ZoneId.of(timezone)).toLocalDate().format(dateFormatter)
+    private fun formatDate(instant: Instant, zone: ZoneId): String =
+        instant.atZone(zone).toLocalDate().format(dateFormatter)
 }

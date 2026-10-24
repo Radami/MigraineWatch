@@ -37,7 +37,8 @@ class AlertNotificationWorker @AssistedInject constructor(
         val alert = inputData.toAlertWindow() ?: return Result.failure()
 
         // The switch may have been turned off after this was scheduled.
-        if (!userPreferences.settings.first().notificationsEnabled) return Result.success()
+        val settings = userPreferences.settings.first()
+        if (!settings.notificationsEnabled) return Result.success()
 
         // The scheduler cancels events that leave the forecast, but up to an hour can pass
         // between reconciles, so confirm the event is still there before waking the user.
@@ -56,14 +57,14 @@ class AlertNotificationWorker @AssistedInject constructor(
         // Read now rather than carried from the scheduler: work can run hours after its delay
         // expires, by which time an event that was still ahead has started.
         val phase = AlertPhase.of(alert, now)
-        if (!notifier.notify(alert, phase)) return Result.retry()
+        if (!notifier.notify(alert, phase, settings.location.zone)) return Result.retry()
 
         notifiedAlertDao.insert(
             NotifiedAlert(
                 startDateTime = alert.start,
                 endDateTime = alert.end,
                 direction = alert.direction.wireName,
-                thresholdHpa = userPreferences.settings.first().alertThresholdHpa,
+                thresholdHpa = settings.alertThresholdHpa,
                 notifiedDateTime = now
             )
         )
