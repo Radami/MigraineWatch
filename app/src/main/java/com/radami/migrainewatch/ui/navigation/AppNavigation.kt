@@ -26,11 +26,16 @@ import com.radami.migrainewatch.ui.screens.onboarding.OnboardingScreen
 import com.radami.migrainewatch.ui.screens.pressure.PressureScreen
 import com.radami.migrainewatch.ui.screens.settings.SettingsScreen
 import com.radami.migrainewatch.ui.screens.today.TodayScreen
+import java.time.LocalDate
+import java.time.ZoneId
 
-/** @param openTab a tab to show on top of [startDestination] once, for a notification that
- *   opens the app on a different screen than usual. */
+/**
+ * @param locationZone the location's zone, so "today" for a new log entry means today there.
+ * @param openTab a tab to show on top of [startDestination] once, for a notification that
+ *   opens the app on a different screen than usual.
+ */
 @Composable
-fun AppNavigation(startDestination: String, openTab: Screen? = null) {
+fun AppNavigation(startDestination: String, locationZone: ZoneId, openTab: Screen? = null) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -51,7 +56,7 @@ fun AppNavigation(startDestination: String, openTab: Screen? = null) {
                 FloatingActionButton(
                     onClick = {
                         navController.navigate(
-                            Screen.LogEntry.withDate(java.time.LocalDate.now().toString())
+                            Screen.LogEntry.withDate(LocalDate.now(locationZone).toString())
                         )
                     }
                 ) {

@@ -50,11 +50,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val onboardingComplete by viewModel.onboardingComplete.collectAsStateWithLifecycle()
+            val locationZone by viewModel.locationZone.collectAsStateWithLifecycle()
             onboardingComplete ?: return@setContent
             val startDestination = if (onboardingComplete == true) Screen.Today.route else Screen.Onboarding.route
             MigraineWatchTheme {
                 AppNavigation(
                     startDestination = startDestination,
+                    locationZone = locationZone,
                     // A tab asked for mid-onboarding would land on a screen with no location
                     // to draw, so it waits until there is an app to open.
                     openTab = requestedTab.takeIf { onboardingComplete == true }

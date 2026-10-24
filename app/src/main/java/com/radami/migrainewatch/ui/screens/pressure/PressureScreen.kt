@@ -81,11 +81,11 @@ fun PressureScreen(
     viewModel: PressureViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val timeFormatter = remember { AppDateFormats.FULL_DATE_TIME.withZone(ZoneId.systemDefault()) }
+    val timeFormatter = remember(state.zone) { AppDateFormats.FULL_DATE_TIME.withZone(state.zone) }
 
     // Chart and alert list share one window so what the chart shades is what the list doesn't
     // have to explain. Snapping keeps it stable across recompositions in the same step.
-    val chartWindow = ChartWindow.around(Instant.now(), state.selectedRange.step)
+    val chartWindow = ChartWindow.around(Instant.now(), state.selectedRange.step, state.zone)
 
     val listState = rememberLazyListState()
     LazyColumn(
@@ -199,6 +199,7 @@ private fun PressureHistoryCard(
             PressureChart(
                 readings = state.readings,
                 window = window,
+                zone = state.zone,
                 requestedRendering = state.selectedRange.rendering,
                 alerts = state.alertWindows,
                 modifier = Modifier.fillMaxWidth()
@@ -299,6 +300,7 @@ private fun AlertsCard(state: PressureUiState, window: ChartWindow) {
                         AlertRow(
                             alert = alert,
                             color = palette[index],
+                            zone = state.zone,
                             visibility = if (window.covers(alert)) ChartVisibility.InView
                             else ChartVisibility.OutOfView
                         )
@@ -324,8 +326,13 @@ private fun formatThreshold(threshold: Float): String =
     else formatHpa(threshold)
 
 @Composable
-private fun AlertRow(alert: AlertWindow, color: Color, visibility: ChartVisibility) {
-    val formatter = remember { AppDateFormats.DAY_AND_TIME.withZone(ZoneId.systemDefault()) }
+private fun AlertRow(
+    alert: AlertWindow,
+    color: Color,
+    zone: ZoneId,
+    visibility: ChartVisibility
+) {
+    val formatter = remember(zone) { AppDateFormats.DAY_AND_TIME.withZone(zone) }
     val isDrop = alert.direction == PressureDirection.DROP
     val directionLabel = alert.direction.label
 

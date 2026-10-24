@@ -6,6 +6,7 @@ import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.data.preferences.AppSettings
+import com.radami.migrainewatch.data.preferences.LocationData
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.RefreshState
@@ -72,6 +73,8 @@ data class TodayUiState(
     val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
     val symptomFreeStreak: SymptomFreeStreak? = null,
     val locationName: String = "",
+    /** The location's zone, which every date and time on the screen is shown in. */
+    val zone: ZoneId = LocationData().zone,
     val lastUpdated: Instant? = null,
     /**
      * Why [outlook] has nothing to show, null when it does. Non-null only when every day is
@@ -120,6 +123,7 @@ class TodayViewModel @Inject constructor(
             }.collectLatest { (readings, entries, settings, refreshState) ->
                 // Re-evaluated per emission so relevance doesn't go stale while the screen stays open.
                 val now = Instant.now()
+                val zone = settings.location.zone
 
                 // Shared use case keeps the banner and scheduled notifications in sync. Streak
                 // walks the full history, so both run off the main thread.
@@ -127,7 +131,7 @@ class TodayViewModel @Inject constructor(
                     val detected = alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now)
 
                     // Re-read per emission so it can't go stale across midnight while nothing else emits.
-                    val today = LocalDate.now()
+                    val today = LocalDate.now(zone)
 
                     // Outlook can only call a day clear as far as readings reach, not the last
                     // reading itself — the use case knows actual coverage.
@@ -135,7 +139,7 @@ class TodayViewModel @Inject constructor(
                         alerts = detected,
                         coveredThrough = alertUseCase.coverageEnd(readings),
                         today = today,
-                        zone = ZoneId.systemDefault()
+                        zone = zone
                     )
 
                     Triple(detected, SymptomFreeStreak.from(entries, today), days)
@@ -170,6 +174,7 @@ class TodayViewModel @Inject constructor(
                     alertThresholdHpa = settings.alertThresholdHpa,
                     symptomFreeStreak = streak,
                     locationName = settings.location.name,
+                    zone = zone,
                     lastUpdated = readings.maxOfOrNull { it.fetchedDateTime },
                     outlookGap = gap,
                     isLoading = false

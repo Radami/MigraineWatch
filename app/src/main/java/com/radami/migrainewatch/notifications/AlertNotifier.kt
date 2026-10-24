@@ -20,6 +20,7 @@ import com.radami.migrainewatch.format.AlertTimingDetail
 import com.radami.migrainewatch.format.formatAlertTiming
 import com.radami.migrainewatch.ui.theme.BrandTerracottaLight
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -49,10 +50,11 @@ class AlertNotifier @Inject constructor(
     }
 
     /**
-     * Posts a warning for [alert], worded for its [phase]. Returns whether it reached the tray,
-     * so a notification lost to a revoked permission is retried, not marked as sent.
+     * Posts a warning for [alert], worded for its [phase] with times in [zone]. Returns whether
+     * it reached the tray, so a notification lost to a revoked permission is retried, not
+     * marked as sent.
      */
-    fun notify(alert: AlertWindow, phase: AlertPhase): Boolean {
+    fun notify(alert: AlertWindow, phase: AlertPhase, zone: ZoneId): Boolean {
         if (!permissionMonitor.canPost()) {
             Log.w(TAG, "Notifications not permitted; skipping alert at ${alert.start}")
             return false
@@ -66,7 +68,7 @@ class AlertNotifier @Inject constructor(
             // so this is the one place the notification can carry the app's own colour.
             .setColor(BrandTerracottaLight.toArgb())
             .setContentTitle(formatAlertHeadline(alert.delta, alert.direction))
-            .setContentText(formatAlertTiming(alert, phase, AlertTimingDetail.WithEnd))
+            .setContentText(formatAlertTiming(alert, phase, AlertTimingDetail.WithEnd, zone))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)

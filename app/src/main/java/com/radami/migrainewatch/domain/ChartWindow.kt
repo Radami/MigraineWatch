@@ -35,12 +35,12 @@ data class ChartWindow(
 
         /**
          * The window around [now]. Sub-day steps floor to the step boundary; the daily step
-         * snaps to local noon so the "now" line stays near the current day's label.
+         * snaps to noon in [zone] so the "now" line stays near the current day's label.
          */
         fun around(
             now: Instant,
             step: ChartStep,
-            zone: ZoneId = ZoneId.systemDefault()
+            zone: ZoneId
         ): ChartWindow {
             val anchor = when (step) {
                 ChartStep.OneDay -> now.atZone(zone)

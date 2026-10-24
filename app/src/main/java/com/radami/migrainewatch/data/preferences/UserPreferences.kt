@@ -15,16 +15,50 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.retryWhen
 import java.io.IOException
+import java.time.DateTimeException
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** Stored when a location's zone hasn't been looked up yet; see [LocationData.knownZone]. */
+const val UNKNOWN_TIMEZONE = ""
+
+/**
+ * What GPS locations stored before the zone was looked up at all. Not a real lookup result,
+ * so it counts as unknown too, and those installs repair it on their next refresh.
+ */
+private const val LEGACY_UNKNOWN_TIMEZONE = "UTC"
 
 data class LocationData(
     val source: String = "",       // "gps" | "manual"
     val lat: Double = 0.0,
     val lon: Double = 0.0,
     val name: String = "",
-    val timezone: String = "UTC"
-)
+    val timezone: String = UNKNOWN_TIMEZONE
+) {
+    /**
+     * The location's own zone, or null until it's known. Unknown for a GPS fix, which comes
+     * without one, and for a city the geocoder gave none for; the next forecast fetch looks
+     * it up from the coordinates. An unparseable id counts as unknown so that lookup
+     * replaces it.
+     */
+    val knownZone: ZoneId?
+        get() {
+            if (timezone == UNKNOWN_TIMEZONE || timezone == LEGACY_UNKNOWN_TIMEZONE) return null
+
+            return try {
+                ZoneId.of(timezone)
+            } catch (e: DateTimeException) {
+                null
+            }
+        }
+
+    /**
+     * The zone the app counts this location's days and times in. Until the location's own is
+     * known, the device's: an unknown zone is almost always a GPS fix, so the user is there.
+     */
+    val zone: ZoneId get() = knownZone ?: ZoneId.systemDefault()
+}
 
 data class AppSettings(
     val alertThresholdHpa: Float = AlertSensitivity.Default.thresholdHpa,
@@ -88,7 +122,7 @@ class UserPreferences @Inject constructor(
                 lat = prefs[Keys.LOCATION_LAT] ?: 0.0,
                 lon = prefs[Keys.LOCATION_LON] ?: 0.0,
                 name = prefs[Keys.LOCATION_NAME] ?: "",
-                timezone = prefs[Keys.LOCATION_TIMEZONE] ?: "UTC"
+                timezone = prefs[Keys.LOCATION_TIMEZONE] ?: UNKNOWN_TIMEZONE
             )
         )
     }
@@ -100,6 +134,20 @@ class UserPreferences @Inject constructor(
             prefs[Keys.LOCATION_LON] = data.lon
             prefs[Keys.LOCATION_NAME] = data.name
             prefs[Keys.LOCATION_TIMEZONE] = data.timezone
+        }
+    }
+
+    /**
+     * Records [timezone] as [location]'s zone, unless the stored location has moved on since:
+     * a lookup that finishes after the user picked somewhere else must not relabel it.
+     */
+    suspend fun adoptTimezone(location: LocationData, timezone: String) {
+        dataStore.edit { prefs ->
+            val sameLocation = prefs[Keys.LOCATION_LAT] == location.lat &&
+                prefs[Keys.LOCATION_LON] == location.lon
+            if (!sameLocation) return@edit
+
+            prefs[Keys.LOCATION_TIMEZONE] = timezone
         }
     }
 

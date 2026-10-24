@@ -21,7 +21,8 @@ enum class AlertTimingDetail {
 }
 
 /**
- * When an event happens, for the notification body and the Today banner's second line.
+ * When an event happens, for the notification body and the Today banner's second line, in
+ * [zone]: the location's, like every other time the app shows.
  * An event still ahead is described by when it arrives; one already running by when it
  * started, since "starts" would wrongly describe something already past.
  */
@@ -29,7 +30,7 @@ fun formatAlertTiming(
     alert: AlertWindow,
     phase: AlertPhase,
     detail: AlertTimingDetail,
-    zone: ZoneId = ZoneId.systemDefault()
+    zone: ZoneId
 ): String {
     val formatter = AppDateFormats.WEEKDAY_AND_TIME
     val startLabel = formatter.format(alert.start.atZone(zone))

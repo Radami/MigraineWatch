@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
@@ -172,8 +173,9 @@ class SettingsViewModel @Inject constructor(
             }
 
             val phase = AlertPhase.of(next, now)
+            val zone = userPreferences.settings.first().location.zone
             val message = when {
-                notifier.notify(next, phase) ->
+                notifier.notify(next, phase, zone) ->
                     "Sent: ${formatHpa(next.delta)} hPa ${next.direction.wireName} ($phase)"
                 else -> "Blocked — notifications are not permitted"
             }

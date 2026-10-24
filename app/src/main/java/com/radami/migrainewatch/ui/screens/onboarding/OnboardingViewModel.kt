@@ -3,6 +3,7 @@ package com.radami.migrainewatch.ui.screens.onboarding
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.radami.migrainewatch.data.preferences.LocationData
+import com.radami.migrainewatch.data.preferences.UNKNOWN_TIMEZONE
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.remote.GeocodingApi
 import com.radami.migrainewatch.data.remote.dto.GeocodingResult
@@ -65,11 +66,12 @@ class OnboardingViewModel @Inject constructor(
         }
     }
 
-    fun saveGpsLocation(lat: Double, lon: Double, name: String, timezone: String = "UTC") {
+    fun saveGpsLocation(lat: Double, lon: Double, name: String) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSaving = true)
             runCatching {
-                userPreferences.saveLocation(LocationData("gps", lat, lon, name, timezone))
+                // A GPS fix carries no zone; the first forecast fetch looks it up from the coordinates.
+                userPreferences.saveLocation(LocationData("gps", lat, lon, name, UNKNOWN_TIMEZONE))
                 userPreferences.setOnboardingComplete(true)
             }.onSuccess {
                 finishSetup()
@@ -89,7 +91,7 @@ class OnboardingViewModel @Inject constructor(
                         lat = result.latitude,
                         lon = result.longitude,
                         name = result.displayName,
-                        timezone = result.timezone ?: "UTC"
+                        timezone = result.timezone ?: UNKNOWN_TIMEZONE
                     )
                 )
                 userPreferences.setOnboardingComplete(true)

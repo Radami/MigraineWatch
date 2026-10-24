@@ -101,8 +101,8 @@ fun TodayScreen(
     viewModel: TodayViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val timeFormatter = remember {
-        AppDateFormats.FULL_DATE_TIME.withZone(ZoneId.systemDefault())
+    val timeFormatter = remember(state.zone) {
+        AppDateFormats.FULL_DATE_TIME.withZone(state.zone)
     }
 
     LazyColumn(
@@ -150,7 +150,7 @@ fun TodayScreen(
                 val alerts = state.pendingAlerts
                 val phase = state.leadAlertPhase
                 if (alerts.isNotEmpty() && phase != null) {
-                    AlertBanner(alerts = alerts, phase = phase, onClick = onViewPressure)
+                    AlertBanner(alerts = alerts, phase = phase, zone = state.zone, onClick = onViewPressure)
                 }
             }
         }
@@ -160,7 +160,7 @@ fun TodayScreen(
         }
 
         item {
-            SymptomFreeCard(streak = state.symptomFreeStreak)
+            SymptomFreeCard(streak = state.symptomFreeStreak, zone = state.zone)
         }
     }
 }
@@ -168,11 +168,16 @@ fun TodayScreen(
 /**
  * @param alerts events under way or upcoming, earliest first, never empty. First is headlined, rest counted.
  * @param phase where the first event sits relative to now; comes from the ViewModel, which has the clock.
+ * @param zone the location's, which the event's times are given in.
  */
 @Composable
-private fun AlertBanner(alerts: List<AlertWindow>, phase: AlertPhase, onClick: () -> Unit) {
+private fun AlertBanner(
+    alerts: List<AlertWindow>,
+    phase: AlertPhase,
+    zone: ZoneId,
+    onClick: () -> Unit
+) {
     val first = alerts.first()
-    val zone = remember { ZoneId.systemDefault() }
 
     // Only direction and timing here; magnitude belongs on the detail screen. Wording matches
     // the notification's own so the two never describe the same event differently.
@@ -266,7 +271,7 @@ private fun OutlookCard(state: TodayUiState, onDayClick: () -> Unit) {
                 // Re-checked, not trusted: this lambda also runs for the outgoing branch during
                 // a transition, by which point `today` may be stale.
                 if (!forecastArrived || today == null) {
-                    OutlookPlaceholder(gap = state.outlookGap, lastUpdated = state.lastUpdated)
+                    OutlookPlaceholder(gap = state.outlookGap, lastUpdated = state.lastUpdated, zone = state.zone)
                     return@AnimatedContent
                 }
 
@@ -413,9 +418,9 @@ private fun LegendItem(swatch: @Composable () -> Unit, label: String) {
  * an actual failed fetch is blamed on the network.
  */
 @Composable
-private fun OutlookPlaceholder(gap: OutlookGap?, lastUpdated: Instant?) {
-    val timeFormatter = remember {
-        AppDateFormats.FULL_DATE_TIME.withZone(ZoneId.systemDefault())
+private fun OutlookPlaceholder(gap: OutlookGap?, lastUpdated: Instant?, zone: ZoneId) {
+    val timeFormatter = remember(zone) {
+        AppDateFormats.FULL_DATE_TIME.withZone(zone)
     }
 
     val message = when (gap) {
@@ -452,7 +457,7 @@ private const val NO_FORECAST_FOR_LOCATION = "No forecast available for this loc
 private val STREAK_SEVERITY_DOT_SIZE = 10.dp
 
 @Composable
-private fun SymptomFreeCard(streak: SymptomFreeStreak?) {
+private fun SymptomFreeCard(streak: SymptomFreeStreak?, zone: ZoneId) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -467,7 +472,7 @@ private fun SymptomFreeCard(streak: SymptomFreeStreak?) {
                 return@Column
             }
             // Shared so both date labels below agree on whether "this year" needs spelling out.
-            val currentYear = remember { LocalDate.now().year }
+            val currentYear = remember(zone) { LocalDate.now(zone).year }
 
             CurrentStreak(streak = streak, currentYear = currentYear)
             Spacer(Modifier.height(12.dp))

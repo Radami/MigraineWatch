@@ -18,6 +18,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
+import java.time.ZoneOffset
 
 /**
  * Checks the empty-state stand-in is actually composed and laid out in the chart's place.
@@ -36,6 +37,9 @@ class PressureChartEmptyStateTest {
         val CHART_WIDTH = 200.dp
 
         val NOW: Instant = Instant.parse("2026-08-22T14:37:00Z")
+
+        /** Fixed, so the window snaps the same wherever the tests run. */
+        val ZONE: ZoneOffset = ZoneOffset.UTC
     }
 
     @get:Rule
@@ -52,7 +56,8 @@ class PressureChartEmptyStateTest {
             Box(Modifier.width(CARD_WIDTH)) {
                 PressureChart(
                     readings = readings,
-                    window = ChartWindow.around(NOW, ChartStep.ThreeHours),
+                    window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE),
+                    zone = ZONE,
                     modifier = Modifier.width(CHART_WIDTH)
                 ) {
                     // Fills its container, so measured width reveals which one it landed in.
