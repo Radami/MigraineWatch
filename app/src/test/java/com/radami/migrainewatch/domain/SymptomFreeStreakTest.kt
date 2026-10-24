@@ -1,11 +1,9 @@
 package com.radami.migrainewatch.domain
 
-import com.radami.migrainewatch.data.model.Severity
-import com.radami.migrainewatch.data.model.SymptomEntry
+import com.radami.migrainewatch.domain.Severity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
-import java.time.Instant
 import java.time.LocalDate
 
 class SymptomFreeStreakTest {
@@ -131,15 +129,5 @@ class SymptomFreeStreakTest {
         assertEquals(9L, streak.longest!!.days)
     }
 
-    private fun entry(date: LocalDate, severity: Severity) = SymptomEntry(
-        date = date,
-        severity = severity,
-        triggers = emptyList(),
-        durationBucket = null,
-        reliefPercent = null,
-        medication = null,
-        notes = null,
-        createdAt = Instant.EPOCH,
-        updatedAt = Instant.EPOCH
-    )
+    private fun entry(date: LocalDate, severity: Severity) = SymptomDay(date = date, severity = severity)
 }

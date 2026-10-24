@@ -45,7 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.radami.migrainewatch.data.model.Severity
+import com.radami.migrainewatch.domain.Severity
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.description
 import com.radami.migrainewatch.format.label

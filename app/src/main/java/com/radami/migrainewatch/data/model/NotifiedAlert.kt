@@ -2,6 +2,8 @@ package com.radami.migrainewatch.data.model
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import com.radami.migrainewatch.domain.DeliveredWarning
+import com.radami.migrainewatch.domain.PressureDirection
 import java.time.Instant
 
 /**
@@ -21,3 +23,13 @@ data class NotifiedAlert(
     val thresholdHpa: Float,
     val notifiedDateTime: Instant
 )
+
+/**
+ * The warning this row records, or null when its direction is one this build can't read.
+ * Such a row then matches no event: re-announcing is safer than silencing the wrong one.
+ */
+fun NotifiedAlert.toDeliveredWarning(): DeliveredWarning? {
+    val direction = PressureDirection.ofWireName(direction) ?: return null
+
+    return DeliveredWarning(start = startDateTime, end = endDateTime, direction = direction)
+}

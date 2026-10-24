@@ -1,6 +1,5 @@
 package com.radami.migrainewatch.domain
 
-import com.radami.migrainewatch.data.model.PressureReading
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -20,8 +19,8 @@ data class AlertWindow(
 )
 
 object AlertDetector {
-    fun detect(readings: List<PressureReading>, thresholdHpa: Float): List<AlertWindow> {
-        if (readings.size < 2) return emptyList()
+    fun detect(samples: List<PressureSample>, thresholdHpa: Float): List<AlertWindow> {
+        if (samples.size < 2) return emptyList()
         val windowMillis = 24L * 60 * 60 * 1000
 
         // Step 1: collect every qualifying 24-hour sliding window.
@@ -32,20 +31,20 @@ object AlertDetector {
             val direction: PressureDirection
         )
         val raw = mutableListOf<RawWindow>()
-        for (i in readings.indices) {
-            val startMillis = readings[i].dateTime.toEpochMilli()
+        for (i in samples.indices) {
+            val startMillis = samples[i].time.toEpochMilli()
             val endMillis = startMillis + windowMillis
-            val window = readings.filter { it.dateTime.toEpochMilli() in startMillis..endMillis }
+            val window = samples.filter { it.time.toEpochMilli() in startMillis..endMillis }
             if (window.size < 2) continue
-            val maxReading = window.maxByOrNull { it.pressureMsl }!!
-            val minReading = window.minByOrNull { it.pressureMsl }!!
-            val delta = maxReading.pressureMsl - minReading.pressureMsl
+            val maxSample = window.maxByOrNull { it.pressureMsl }!!
+            val minSample = window.minByOrNull { it.pressureMsl }!!
+            val delta = maxSample.pressureMsl - minSample.pressureMsl
             if (delta < thresholdHpa) continue
             // Direction comes from the position of the extremes (peak before trough = drop),
             // matching step 3. Using first/last reading instead is fragile with noisy data
             // and can produce duplicate alerts.
             val direction =
-                if (maxReading.dateTime <= minReading.dateTime) PressureDirection.DROP
+                if (maxSample.time <= minSample.time) PressureDirection.DROP
                 else PressureDirection.RISE
             raw.add(RawWindow(startMillis, endMillis, delta, direction))
         }
@@ -72,13 +71,13 @@ object AlertDetector {
         // sliding-window boundaries. Delta still comes from `w.delta` (step 1's 24h swing), not
         // the extremes' own swing, since the merged window can span well over a day.
         val pinned = mergedRaw.map { w ->
-            val window = readings.filter { it.dateTime.toEpochMilli() in w.startMillis..w.endMillis }
-            val maxReading = window.maxByOrNull { it.pressureMsl }!!
-            val minReading = window.minByOrNull { it.pressureMsl }!!
-            val (start, end, direction) = if (maxReading.dateTime <= minReading.dateTime) {
-                Triple(maxReading.dateTime, minReading.dateTime, PressureDirection.DROP)
+            val window = samples.filter { it.time.toEpochMilli() in w.startMillis..w.endMillis }
+            val maxSample = window.maxByOrNull { it.pressureMsl }!!
+            val minSample = window.minByOrNull { it.pressureMsl }!!
+            val (start, end, direction) = if (maxSample.time <= minSample.time) {
+                Triple(maxSample.time, minSample.time, PressureDirection.DROP)
             } else {
-                Triple(minReading.dateTime, maxReading.dateTime, PressureDirection.RISE)
+                Triple(minSample.time, maxSample.time, PressureDirection.RISE)
             }
             AlertWindow(start, end, w.delta, direction)
         }.sortedBy { it.start }

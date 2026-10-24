@@ -3,7 +3,7 @@ package com.radami.migrainewatch.ui.screens.calendar
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.radami.migrainewatch.data.model.Severity
+import com.radami.migrainewatch.domain.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.data.repository.SymptomRepository
 import dagger.hilt.android.lifecycle.HiltViewModel

@@ -1,6 +1,5 @@
 package com.radami.migrainewatch.domain
 
-import com.radami.migrainewatch.data.model.NotifiedAlert
 import java.time.Duration
 import java.time.Instant
 
@@ -29,13 +28,13 @@ object AlertNotificationDecider {
 
     /**
      * @param alerts events currently in the forecast, from [PressureAlertUseCase].
-     * @param alreadyNotified events the user has been told about, recent ones suffice.
+     * @param alreadyNotified warnings the user has been sent; recent ones suffice.
      * @return the complete set to schedule, ordered by fire time. Anything scheduled but
      *   missing here has stopped qualifying and gets cancelled.
      */
     fun decide(
         alerts: List<AlertWindow>,
-        alreadyNotified: List<NotifiedAlert>,
+        alreadyNotified: List<DeliveredWarning>,
         notificationsEnabled: Boolean,
         now: Instant
     ): List<PendingAlertNotification> {
@@ -61,19 +60,12 @@ object AlertNotificationDecider {
             AlertPhase.UNDERWAY -> now
         }
 
-    /**
-     * Whether a delivered warning covers [alert]. Direction matters. Ignores the threshold each
-     * was sent at, so a sensitivity change doesn't re-announce an already-told event.
-     */
-    fun covers(notified: NotifiedAlert, alert: AlertWindow): Boolean {
-        // An unreadable direction matches nothing: re-announcing is safer than a false match.
-        val notifiedDirection = PressureDirection.ofWireName(notified.direction) ?: return false
-
-        return isSameEvent(
-            notifiedDirection, notified.startDateTime, notified.endDateTime,
+    /** Whether [delivered] already announced [alert]: the same event, by [isSameEvent]'s rule. */
+    fun covers(delivered: DeliveredWarning, alert: AlertWindow): Boolean =
+        isSameEvent(
+            delivered.direction, delivered.start, delivered.end,
             alert.direction, alert.start, alert.end
         )
-    }
 
     /**
      * Whether two forecasts describe the same event. Shared with the worker so history and the

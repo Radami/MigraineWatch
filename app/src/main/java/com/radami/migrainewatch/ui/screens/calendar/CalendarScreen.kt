@@ -69,7 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.radami.migrainewatch.data.model.Severity
+import com.radami.migrainewatch.domain.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.label

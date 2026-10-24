@@ -1,7 +1,7 @@
 package com.radami.migrainewatch.data.local
 
 import androidx.room.TypeConverter
-import com.radami.migrainewatch.data.model.Severity
+import com.radami.migrainewatch.domain.Severity
 import java.time.Instant
 import java.time.LocalDate
 
