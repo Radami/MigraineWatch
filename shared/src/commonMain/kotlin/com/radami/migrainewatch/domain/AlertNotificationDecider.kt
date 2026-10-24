@@ -1,7 +1,9 @@
 package com.radami.migrainewatch.domain
 
-import java.time.Duration
-import java.time.Instant
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 /** An alert the user should be told about, when to tell them, and what it can claim. */
 data class PendingAlertNotification(
@@ -18,16 +20,16 @@ data class PendingAlertNotification(
 object AlertNotificationDecider {
 
     /** How far ahead of an event the warning is useful — early enough to act on. */
-    val LEAD_TIME: Duration = Duration.ofHours(12)
+    val LEAD_TIME: Duration = 12.hours
 
     /**
      * How far back delivered warnings are read when deduplicating. Must outlast the longest
      * event we'd announce, or a multi-day event gets re-announced on its later days.
      */
-    val NOTIFICATION_LOOKBACK: Duration = Duration.ofDays(7)
+    val NOTIFICATION_LOOKBACK: Duration = 7.days
 
     /**
-     * @param alerts events currently in the forecast, from [PressureAlertUseCase].
+     * @param alerts events currently in the forecast, from `PressureAlertUseCase`.
      * @param alreadyNotified warnings the user has been sent; recent ones suffice.
      * @return the complete set to schedule, ordered by fire time. Anything scheduled but
      *   missing here has stopped qualifying and gets cancelled.
@@ -42,7 +44,7 @@ object AlertNotificationDecider {
 
         return alerts
             // An event that has already finished is history, not a warning.
-            .filter { it.end.isAfter(now) }
+            .filter { it.end > now }
             .filterNot { alert -> alreadyNotified.any { covers(it, alert) } }
             .map { alert ->
                 PendingAlertNotification(alert, notifyAt(alert, now), AlertPhase.of(alert, now))
@@ -56,7 +58,7 @@ object AlertNotificationDecider {
      */
     private fun notifyAt(alert: AlertWindow, now: Instant): Instant =
         when (AlertPhase.of(alert, now)) {
-            AlertPhase.AHEAD -> maxOf(alert.start.minus(LEAD_TIME), now)
+            AlertPhase.AHEAD -> maxOf(alert.start - LEAD_TIME, now)
             AlertPhase.UNDERWAY -> now
         }
 
@@ -91,6 +93,6 @@ object AlertNotificationDecider {
         otherEnd: Instant
     ): Boolean {
         if (direction != otherDirection) return false
-        return !start.isAfter(otherEnd) && !otherStart.isAfter(end)
+        return start <= otherEnd && otherStart <= end
     }
 }

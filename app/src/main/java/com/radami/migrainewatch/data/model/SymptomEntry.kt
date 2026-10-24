@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.radami.migrainewatch.domain.Severity
 import com.radami.migrainewatch.domain.SymptomDay
+import kotlinx.datetime.toKotlinLocalDate
 import java.time.Instant
 import java.time.LocalDate
 
@@ -21,4 +22,4 @@ data class SymptomEntry(
 )
 
 /** What streak counting needs from a logged day. */
-fun SymptomEntry.toSymptomDay(): SymptomDay = SymptomDay(date, severity)
+fun SymptomEntry.toSymptomDay(): SymptomDay = SymptomDay(date.toKotlinLocalDate(), severity)

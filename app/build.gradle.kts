@@ -54,12 +54,12 @@ plugins {
 android {
     namespace = "com.radami.migrainewatch"
     compileSdk {
-        version = release(37)
+        version = release(libs.versions.compileSdk.get().toInt())
     }
 
     defaultConfig {
         applicationId = "com.radami.migrainewatch"
-        minSdk = 26
+        minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = 36
         versionCode = 4
         versionName = "1.3"
@@ -188,6 +188,8 @@ ksp {
 }
 
 dependencies {
+    implementation(project(":shared"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)

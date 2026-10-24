@@ -1,24 +1,24 @@
 package com.radami.migrainewatch.domain
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
 import kotlin.math.sin
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 class AlertDetectorTest {
 
     private val now = Instant.parse("2023-10-01T12:00:00Z")
-    private val utc = ZoneId.of("UTC")
+    private val utc = TimeZone.UTC
 
     @Test
     fun `detect returns alert when pressure drops more than threshold`() {
         val readings = listOf(
             PressureSample(now, 1020f),
-            PressureSample(now.plus(12, ChronoUnit.HOURS), 1010f)
+            PressureSample(now + 12.hours, 1010f)
         )
         
         val alerts = AlertDetector.detect(readings, 5f)
@@ -32,7 +32,7 @@ class AlertDetectorTest {
     fun `detect returns empty list when pressure change is below threshold`() {
         val readings = listOf(
             PressureSample(now, 1020f),
-            PressureSample(now.plus(12, ChronoUnit.HOURS), 1018f)
+            PressureSample(now + 12.hours, 1018f)
         )
         
         val alerts = AlertDetector.detect(readings, 5f)
@@ -55,8 +55,8 @@ class AlertDetectorTest {
 
         val span = AlertDetector.daysTouched(alert, utc)
 
-        assertEquals(LocalDate.of(2023, 10, 1), span.start)
-        assertEquals(LocalDate.of(2023, 10, 3), span.endInclusive)
+        assertEquals(LocalDate(2023, 10, 1), span.start)
+        assertEquals(LocalDate(2023, 10, 3), span.endInclusive)
     }
 
     @Test
@@ -70,11 +70,11 @@ class AlertDetectorTest {
 
         val span = AlertDetector.daysTouched(alert, utc)
 
-        assertTrue(LocalDate.of(2023, 9, 30) !in span)
-        assertTrue(LocalDate.of(2023, 10, 1) in span)
-        assertTrue(LocalDate.of(2023, 10, 2) in span)
-        assertTrue(LocalDate.of(2023, 10, 3) in span)
-        assertTrue(LocalDate.of(2023, 10, 4) !in span)
+        assertTrue(LocalDate(2023, 9, 30) !in span)
+        assertTrue(LocalDate(2023, 10, 1) in span)
+        assertTrue(LocalDate(2023, 10, 2) in span)
+        assertTrue(LocalDate(2023, 10, 3) in span)
+        assertTrue(LocalDate(2023, 10, 4) !in span)
     }
 
     @Test
@@ -89,8 +89,8 @@ class AlertDetectorTest {
 
         val span = AlertDetector.daysTouched(alert, utc)
 
-        assertEquals(LocalDate.of(2023, 10, 2), span.endInclusive)
-        assertTrue(LocalDate.of(2023, 10, 3) !in span)
+        assertEquals(LocalDate(2023, 10, 2), span.endInclusive)
+        assertTrue(LocalDate(2023, 10, 3) !in span)
     }
 
     @Test
@@ -105,8 +105,8 @@ class AlertDetectorTest {
 
         val span = AlertDetector.daysTouched(alert, utc)
 
-        assertEquals(LocalDate.of(2023, 10, 2), span.start)
-        assertTrue(LocalDate.of(2023, 10, 2) in span)
+        assertEquals(LocalDate(2023, 10, 2), span.start)
+        assertTrue(LocalDate(2023, 10, 2) in span)
     }
 
     @Test
@@ -120,10 +120,10 @@ class AlertDetectorTest {
             direction = PressureDirection.DROP
         )
 
-        assertEquals(LocalDate.of(2023, 10, 1), AlertDetector.daysTouched(alert, utc).start)
+        assertEquals(LocalDate(2023, 10, 1), AlertDetector.daysTouched(alert, utc).start)
         assertEquals(
-            LocalDate.of(2023, 10, 2),
-            AlertDetector.daysTouched(alert, ZoneId.of("Europe/Berlin")).start
+            LocalDate(2023, 10, 2),
+            AlertDetector.daysTouched(alert, TimeZone.of("Europe/Berlin")).start
         )
     }
 
@@ -136,7 +136,7 @@ class AlertDetectorTest {
             direction = PressureDirection.DROP
         )
 
-        val days = AlertDetector.eventDays(listOf(alert), ZoneId.of("UTC"))
+        val days = AlertDetector.eventDays(listOf(alert), TimeZone.UTC)
 
         assertEquals(
             setOf(
@@ -165,7 +165,7 @@ class AlertDetectorTest {
             direction = PressureDirection.RISE
         )
 
-        val days = AlertDetector.eventDays(listOf(drop, rise), ZoneId.of("UTC"))
+        val days = AlertDetector.eventDays(listOf(drop, rise), TimeZone.UTC)
 
         assertEquals(
             setOf(LocalDate.parse("2023-10-01"), LocalDate.parse("2023-10-02")),
@@ -182,7 +182,7 @@ class AlertDetectorTest {
             direction = PressureDirection.DROP
         )
 
-        val days = AlertDetector.eventDays(listOf(alert), ZoneId.of("UTC"))
+        val days = AlertDetector.eventDays(listOf(alert), TimeZone.UTC)
 
         assertEquals(
             setOf(LocalDate.parse("2023-10-01"), LocalDate.parse("2023-10-02")),
@@ -200,14 +200,14 @@ class AlertDetectorTest {
             direction = PressureDirection.DROP
         )
 
-        val days = AlertDetector.eventDays(listOf(alert), ZoneId.of("UTC"))
+        val days = AlertDetector.eventDays(listOf(alert), TimeZone.UTC)
 
         assertEquals(setOf(LocalDate.parse("2023-10-01")), days)
     }
 
     @Test
     fun `eventDays returns nothing when there are no alerts`() {
-        assertTrue(AlertDetector.eventDays(emptyList(), ZoneId.of("UTC")).isEmpty())
+        assertTrue(AlertDetector.eventDays(emptyList(), TimeZone.UTC).isEmpty())
     }
 
     @Test
@@ -229,7 +229,7 @@ class AlertDetectorTest {
             // The historical half comes from a fetch 8 h earlier, so its pattern is shifted.
             val j = if (i < 0) i + 8 else i
             val pressure = base + 2f * sin(j / 10.0 + seed).toFloat() + eventOffset(j)
-            PressureSample(now.plus(i.toLong(), ChronoUnit.HOURS), pressure)
+            PressureSample(now + i.hours, pressure)
         }
 
         val alerts = AlertDetector.detect(readings, 10f)
@@ -238,7 +238,7 @@ class AlertDetectorTest {
         assertEquals(alerts.size, alerts.map { it.start }.distinct().size)
         // ...same-direction alerts must not overlap...
         alerts.zipWithNext().forEach { (a, b) ->
-            assertTrue(a.direction != b.direction || a.end.isBefore(b.start))
+            assertTrue(a.direction != b.direction || a.end < b.start)
         }
         // ...and the three mock events survive as alternating drop / rise / drop.
         assertEquals(

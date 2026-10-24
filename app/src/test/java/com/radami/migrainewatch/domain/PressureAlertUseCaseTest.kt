@@ -9,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import kotlin.time.toKotlinInstant
 
 /**
  * Tests the relevance window: how long a finished event still counts as current. This is a
@@ -39,7 +40,7 @@ class PressureAlertUseCaseTest {
         val alerts = useCase.alertsIn(dropEnding(endedHoursAgo = 7), THRESHOLD_HPA, now)
 
         assertEquals(1, alerts.size)
-        assertTrue(alerts.first().end.isBefore(now))
+        assertTrue(alerts.first().end < now.toKotlinInstant())
     }
 
     @Test
@@ -61,6 +62,6 @@ class PressureAlertUseCaseTest {
         val alerts = useCase.alertsIn(readings, THRESHOLD_HPA, now)
 
         assertEquals(1, alerts.size)
-        assertTrue(alerts.first().end.isAfter(now))
+        assertTrue(alerts.first().end > now.toKotlinInstant())
     }
 }

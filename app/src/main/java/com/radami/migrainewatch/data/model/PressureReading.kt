@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.radami.migrainewatch.domain.PressureSample
 import java.time.Instant
+import kotlin.time.toKotlinInstant
 
 @Entity(tableName = "pressure_readings")
 data class PressureReading(
@@ -14,4 +15,5 @@ data class PressureReading(
 )
 
 /** What detection needs from a stored reading. */
-fun PressureReading.toPressureSample(): PressureSample = PressureSample(dateTime, pressureMsl)
+fun PressureReading.toPressureSample(): PressureSample = 
+    PressureSample(dateTime.toKotlinInstant(), pressureMsl)

@@ -65,9 +65,11 @@ import com.radami.migrainewatch.ui.components.PressureChart
 import com.radami.migrainewatch.ui.theme.alertColorPalette
 import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
 import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
-import java.time.Instant
+import kotlinx.datetime.toKotlinTimeZone
 import java.time.ZoneId
 import kotlin.math.roundToInt
+import kotlin.time.Clock
+import kotlin.time.toJavaInstant
 
 /** Whether the chart's selected range reaches the event a row describes. */
 private enum class ChartVisibility { InView, OutOfView }
@@ -85,7 +87,11 @@ fun PressureScreen(
 
     // Chart and alert list share one window so what the chart shades is what the list doesn't
     // have to explain. Snapping keeps it stable across recompositions in the same step.
-    val chartWindow = ChartWindow.around(Instant.now(), state.selectedRange.step, state.zone)
+    val chartWindow = ChartWindow.around(
+        Clock.System.now(),
+        state.selectedRange.step,
+        state.zone.toKotlinTimeZone()
+    )
 
     val listState = rememberLazyListState()
     LazyColumn(
@@ -363,7 +369,7 @@ private fun AlertRow(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
             )
             Text(
-                "${formatter.format(alert.start)} → ${formatter.format(alert.end)}",
+                "${formatter.format(alert.start.toJavaInstant())} → ${formatter.format(alert.end.toJavaInstant())}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface
                     .copy(alpha = SECONDARY_ALPHA * contentAlpha)

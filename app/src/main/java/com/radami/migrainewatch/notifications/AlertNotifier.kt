@@ -108,5 +108,5 @@ class AlertNotifier @Inject constructor(
      * between processes and would strand the old notification in the tray.
      */
     private fun notificationId(alert: AlertWindow): Int =
-        (alert.start.epochSecond / 60).toInt() * 31 + alert.direction.wireName.hashCode()
+        (alert.start.epochSeconds / 60).toInt() * 31 + alert.direction.wireName.hashCode()
 }

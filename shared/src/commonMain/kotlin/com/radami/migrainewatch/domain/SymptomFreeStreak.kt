@@ -1,7 +1,10 @@
 package com.radami.migrainewatch.domain
 
-import java.time.LocalDate
-import java.time.temporal.ChronoUnit
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import kotlinx.datetime.until
 
 /**
  * How long the user has gone without a symptom event — right now, and at their best.
@@ -38,7 +41,7 @@ data class SymptomFreeStreak(
             val lastEvent = events.lastOrNull() ?: return null
 
             // Days elapsed since that event is the streak still running.
-            val currentDays = ChronoUnit.DAYS.between(lastEvent.date, today).coerceAtLeast(0)
+            val currentDays = lastEvent.date.until(today, DateTimeUnit.DAY).coerceAtLeast(0)
 
             return SymptomFreeStreak(
                 currentDays = currentDays,
@@ -59,8 +62,8 @@ data class SymptomFreeStreak(
             val lastEventDate = events.last().date
             val running = Run(
                 days = currentDays,
-                from = lastEventDate.plusDays(1),
-                to = lastEventDate.plusDays(currentDays)
+                from = lastEventDate.plus(1, DateTimeUnit.DAY),
+                to = lastEventDate.plus(currentDays, DateTimeUnit.DAY)
             )
 
             // maxByOrNull keeps the first tie, crediting the run that first set the record.
@@ -69,9 +72,9 @@ data class SymptomFreeStreak(
 
         /** The symptom-free days bounded by two event days, excluding the events themselves. */
         private fun runBetween(afterEvent: LocalDate, beforeEvent: LocalDate) = Run(
-            days = ChronoUnit.DAYS.between(afterEvent, beforeEvent) - 1,
-            from = afterEvent.plusDays(1),
-            to = beforeEvent.minusDays(1)
+            days = afterEvent.until(beforeEvent, DateTimeUnit.DAY) - 1,
+            from = afterEvent.plus(1, DateTimeUnit.DAY),
+            to = beforeEvent.minus(1, DateTimeUnit.DAY)
         )
     }
 }

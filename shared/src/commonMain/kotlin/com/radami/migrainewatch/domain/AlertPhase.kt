@@ -1,6 +1,6 @@
 package com.radami.migrainewatch.domain
 
-import java.time.Instant
+import kotlin.time.Instant
 
 /**
  * Where an event sits relative to now, deciding what a notification can honestly claim. Kept
@@ -17,6 +17,6 @@ enum class AlertPhase {
 
     companion object {
         fun of(alert: AlertWindow, now: Instant): AlertPhase =
-            if (alert.start.isAfter(now)) AHEAD else UNDERWAY
+            if (alert.start > now) AHEAD else UNDERWAY
     }
 }

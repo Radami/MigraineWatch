@@ -1,6 +1,6 @@
 package com.radami.migrainewatch.domain
 
-import java.time.Instant
+import kotlin.time.Instant
 
 /**
  * A warning the user has already been sent: the event's window and direction, which is all

@@ -89,6 +89,7 @@ import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
 import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
 import com.radami.migrainewatch.ui.theme.SUBDUED_ALPHA
 import com.radami.migrainewatch.ui.theme.SUPPORTING_ALPHA
+import kotlinx.datetime.toJavaLocalDate
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -330,7 +331,7 @@ private fun OutlookStrip(outlook: List<DayOutlook>, onDayClick: () -> Unit) {
                 // Today is the first column by construction, not by date comparison, so it
                 // can't disagree with the list it came from even if the whole strip goes stale.
                 isToday = index == 0,
-                weekday = weekdayFormatter.format(day.date),
+                weekday = weekdayFormatter.format(day.date.toJavaLocalDate()),
                 onClick = onDayClick
             )
         }
@@ -486,7 +487,8 @@ private fun SymptomFreeCard(streak: SymptomFreeStreak?, zone: ZoneId) {
 @Composable
 private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
     val lastEventLabel = remember(streak.lastEvent, currentYear) {
-        val date = streak.lastEvent.date.format(dateFormatterFor(streak.lastEvent.date, currentYear))
+        val lastEventDate = streak.lastEvent.date.toJavaLocalDate()
+        val date = lastEventDate.format(dateFormatterFor(lastEventDate, currentYear))
         "Last: ${streak.lastEvent.severity.label} on $date"
     }
 
@@ -571,7 +573,7 @@ private fun SymptomFreeStreak.Run.rangeLabel(currentYear: Int): String {
     } else {
         AppDateFormats.SHORT_DATE_AND_YEAR
     }
-    return "${from.format(formatter)} – ${to.format(formatter)}"
+    return "${from.toJavaLocalDate().format(formatter)} – ${to.toJavaLocalDate().format(formatter)}"
 }
 
 @Composable

@@ -3,10 +3,12 @@ package com.radami.migrainewatch.ui.screens.today
 import com.radami.migrainewatch.domain.DayOutlook
 import com.radami.migrainewatch.domain.OutlookRisk
 import com.radami.migrainewatch.domain.PressureDirection
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.plus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.LocalDate
 
 /**
  * Today screen copy has many branches over risk, coverage, and plurals. A wrong day count or
@@ -14,14 +16,14 @@ import java.time.LocalDate
  */
 class TodayLabelsTest {
 
-    private val today = LocalDate.of(2026, 8, 23)
+    private val today = LocalDate(2026, 8, 23)
 
     private fun day(
         offset: Long,
         risk: OutlookRisk,
         peakDelta: Float? = null,
         direction: PressureDirection? = null
-    ) = DayOutlook(today.plusDays(offset), risk, peakDelta, direction)
+    ) = DayOutlook(today.plus(offset, DateTimeUnit.DAY), risk, peakDelta, direction)
 
     /** A full week, today first, with [risks] read off in order. */
     private fun outlook(vararg risks: OutlookRisk) =

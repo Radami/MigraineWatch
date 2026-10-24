@@ -1,6 +1,6 @@
 package com.radami.migrainewatch.domain
 
-import java.time.Instant
+import kotlin.time.Instant
 
 /**
  * One pressure measurement as detection sees it: when, and the mean sea-level pressure in hPa.

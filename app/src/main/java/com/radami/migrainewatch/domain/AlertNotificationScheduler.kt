@@ -19,6 +19,9 @@ import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.radami.migrainewatch.data.model.toDeliveredWarning
+import kotlin.time.toJavaDuration
+import kotlin.time.toJavaInstant
+import kotlin.time.toKotlinInstant
 
 /** What one reconcile did, so a caller can report it instead of leaving it to logcat. */
 sealed interface ReconcileResult {
@@ -68,14 +71,14 @@ class AlertNotificationScheduler @Inject constructor(
             val settings = userPreferences.settings.first()
             val alerts = alertUseCase.currentAlerts(now)
             val alreadyNotified = notifiedAlertDao
-                .getNotifiedSince(now.minus(AlertNotificationDecider.NOTIFICATION_LOOKBACK))
+                .getNotifiedSince(now.minus(AlertNotificationDecider.NOTIFICATION_LOOKBACK.toJavaDuration()))
                 .mapNotNull { it.toDeliveredWarning() }
 
             val pending = AlertNotificationDecider.decide(
                 alerts = alerts,
                 alreadyNotified = alreadyNotified,
                 notificationsEnabled = settings.notificationsEnabled,
-                now = now
+                now = now.toKotlinInstant()
             )
 
             val wanted = pending.associateBy { workName(it) }
@@ -115,7 +118,7 @@ class AlertNotificationScheduler @Inject constructor(
     }
 
     private fun enqueue(name: String, notification: PendingAlertNotification, now: Instant) {
-        val delay = Duration.between(now, notification.notifyAt).coerceAtLeast(Duration.ZERO)
+        val delay = Duration.between(now, notification.notifyAt.toJavaInstant()).coerceAtLeast(Duration.ZERO)
 
         val request = OneTimeWorkRequestBuilder<AlertNotificationWorker>()
             .setInitialDelay(delay)
@@ -137,6 +140,6 @@ class AlertNotificationScheduler @Inject constructor(
      */
     private fun workName(notification: PendingAlertNotification): String {
         val alert = notification.alert
-        return "$WORK_NAME_PREFIX${alert.direction.wireName}_${alert.start.epochSecond / 3600}"
+        return "$WORK_NAME_PREFIX${alert.direction.wireName}_${alert.start.epochSeconds / 3600}"
     }
 }

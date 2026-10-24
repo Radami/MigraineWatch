@@ -1,8 +1,13 @@
 package com.radami.migrainewatch.domain
 
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateRange
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.minus
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 
 /**
  * One pressure event.
@@ -32,9 +37,9 @@ object AlertDetector {
         )
         val raw = mutableListOf<RawWindow>()
         for (i in samples.indices) {
-            val startMillis = samples[i].time.toEpochMilli()
+            val startMillis = samples[i].time.toEpochMilliseconds()
             val endMillis = startMillis + windowMillis
-            val window = samples.filter { it.time.toEpochMilli() in startMillis..endMillis }
+            val window = samples.filter { it.time.toEpochMilliseconds() in startMillis..endMillis }
             if (window.size < 2) continue
             val maxSample = window.maxByOrNull { it.pressureMsl }!!
             val minSample = window.minByOrNull { it.pressureMsl }!!
@@ -71,7 +76,7 @@ object AlertDetector {
         // sliding-window boundaries. Delta still comes from `w.delta` (step 1's 24h swing), not
         // the extremes' own swing, since the merged window can span well over a day.
         val pinned = mergedRaw.map { w ->
-            val window = samples.filter { it.time.toEpochMilli() in w.startMillis..w.endMillis }
+            val window = samples.filter { it.time.toEpochMilliseconds() in w.startMillis..w.endMillis }
             val maxSample = window.maxByOrNull { it.pressureMsl }!!
             val minSample = window.minByOrNull { it.pressureMsl }!!
             val (start, end, direction) = if (maxSample.time <= minSample.time) {
@@ -87,7 +92,7 @@ object AlertDetector {
         val result = mutableListOf<AlertWindow>()
         for (alert in pinned) {
             val prev = result.lastOrNull()
-            if (prev != null && alert.direction == prev.direction && !alert.start.isAfter(prev.end)) {
+            if (prev != null && alert.direction == prev.direction && alert.start <= prev.end) {
                 result[result.lastIndex] = prev.copy(
                     end = maxOf(prev.end, alert.end),
                     delta = maxOf(prev.delta, alert.delta)
@@ -103,14 +108,15 @@ object AlertDetector {
      * The span of days [alert] spends any time in, first to last. Test whether a single day is
      * touched with `day in daysTouched(alert, zone)`.
      */
-    fun daysTouched(alert: AlertWindow, zone: ZoneId): ClosedRange<LocalDate> {
-        val firstDay = alert.start.atZone(zone).toLocalDate()
-        val endDay = alert.end.atZone(zone).toLocalDate()
+    fun daysTouched(alert: AlertWindow, zone: TimeZone): LocalDateRange {
+        val firstDay = alert.start.toLocalDateTime(zone).date
+        val endDay = alert.end.toLocalDateTime(zone).date
 
         // An alert ending exactly at midnight spends no time in that day, so it doesn't count
         // unless the window spans at least two days.
-        val endsAtMidnight = alert.end == endDay.atStartOfDay(zone).toInstant()
-        val lastDay = if (endsAtMidnight && endDay.isAfter(firstDay)) endDay.minusDays(1) else endDay
+        val endsAtMidnight = alert.end == endDay.atStartOfDayIn(zone)
+        val lastDay =
+            if (endsAtMidnight && endDay > firstDay) endDay.minus(1, DateTimeUnit.DAY) else endDay
 
         return firstDay..lastDay
     }
@@ -119,17 +125,6 @@ object AlertDetector {
      * Every day any alert touches, in either direction. The calendar only marks a day as risky
      * or not, so direction and duration don't matter here.
      */
-    fun eventDays(alerts: List<AlertWindow>, zone: ZoneId): Set<LocalDate> {
-        val days = mutableSetOf<LocalDate>()
-        alerts.forEach { alert ->
-            val span = daysTouched(alert, zone)
-            var day = span.start
-            while (!day.isAfter(span.endInclusive)) {
-                days.add(day)
-                day = day.plusDays(1)
-            }
-        }
-
-        return days
-    }
+    fun eventDays(alerts: List<AlertWindow>, zone: TimeZone): Set<LocalDate> =
+        alerts.flatMapTo(mutableSetOf()) { daysTouched(it, zone) }
 }

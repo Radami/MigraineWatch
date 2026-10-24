@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.toKotlinTimeZone
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -121,7 +123,8 @@ class CalendarViewModel @Inject constructor(
                                 readings.map { it.toPressureSample() },
                                 settings.alertThresholdHpa
                             )
-                            AlertDetector.eventDays(alerts, zone)
+                            AlertDetector.eventDays(alerts, zone.toKotlinTimeZone())
+                                .mapTo(HashSet()) { it.toJavaLocalDate() }
                         }
 
                         val lastMonth = thisMonth.minusMonths(1)

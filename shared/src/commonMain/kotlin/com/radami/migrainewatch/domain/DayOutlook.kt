@@ -1,8 +1,11 @@
 package com.radami.migrainewatch.domain
 
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.plus
+import kotlin.time.Instant
 
 /** What the forecast lets us say about one day. */
 enum class OutlookRisk {
@@ -39,21 +42,21 @@ data class DayOutlook(
          * it.
          *
          * @param coveredThrough instant the readings stop describing, or null. See
-         *   [PressureAlertUseCase.coverageEnd]. A day is only "clear" once coverage reaches its
+         *   `PressureAlertUseCase.coverageEnd`. A day is only "clear" once coverage reaches its
          *   final midnight; otherwise it's [OutlookRisk.Unknown].
          */
         fun forecast(
             alerts: List<AlertWindow>,
             coveredThrough: Instant?,
             today: LocalDate,
-            zone: ZoneId
+            zone: TimeZone
         ): List<DayOutlook> = (0 until DAYS).map { offset ->
-            val date = today.plusDays(offset.toLong())
+            val date = today.plus(offset, DateTimeUnit.DAY)
             val touching = alerts.filter { date in AlertDetector.daysTouched(it, zone) }
 
             // Covered only once readings describe the day through to its final midnight.
-            val dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant()
-            val covered = coveredThrough != null && !coveredThrough.isBefore(dayEnd)
+            val dayEnd = date.plus(1, DateTimeUnit.DAY).atStartOfDayIn(zone)
+            val covered = coveredThrough != null && coveredThrough >= dayEnd
 
             // A touched day is elevated regardless of coverage; the event is already known.
             val peak = touching.maxByOrNull { it.delta }

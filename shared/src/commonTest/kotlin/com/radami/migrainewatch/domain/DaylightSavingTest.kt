@@ -1,10 +1,11 @@
 package com.radami.migrainewatch.domain
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.time.Instant
 
 /**
  * Days that are not 24 hours long. Every expected instant is written out in UTC rather than
@@ -13,22 +14,22 @@ import java.time.ZoneId
 class DaylightSavingTest {
 
     private companion object {
-        val BERLIN: ZoneId = ZoneId.of("Europe/Berlin")
+        val BERLIN: TimeZone = TimeZone.of("Europe/Berlin")
 
         /**
          * Chile springs forward at midnight, so 6 September 2026 has no 00:00: the day starts
          * at 01:00, which is 04:00 UTC, the same instant the 5th ended.
          */
-        val SANTIAGO: ZoneId = ZoneId.of("America/Santiago")
+        val SANTIAGO: TimeZone = TimeZone.of("America/Santiago")
 
         /** 23 hours long: 2026-03-28T23:00Z to 2026-03-29T22:00Z. */
-        val SPRING_FORWARD: LocalDate = LocalDate.of(2026, 3, 29)
+        val SPRING_FORWARD: LocalDate = LocalDate(2026, 3, 29)
 
         /** 25 hours long: 2026-10-24T22:00Z to 2026-10-25T23:00Z. */
-        val FALL_BACK: LocalDate = LocalDate.of(2026, 10, 25)
+        val FALL_BACK: LocalDate = LocalDate(2026, 10, 25)
 
-        val CHILE_DAY_BEFORE_GAP: LocalDate = LocalDate.of(2026, 9, 5)
-        val CHILE_DAY_WITHOUT_MIDNIGHT: LocalDate = LocalDate.of(2026, 9, 6)
+        val CHILE_DAY_BEFORE_GAP: LocalDate = LocalDate(2026, 9, 5)
+        val CHILE_DAY_WITHOUT_MIDNIGHT: LocalDate = LocalDate(2026, 9, 6)
 
         /** Local noon, where the daily chart anchors. */
         const val NOON = 12
@@ -41,7 +42,7 @@ class DaylightSavingTest {
         direction = PressureDirection.DROP
     )
 
-    private fun firstOutlookDay(today: LocalDate, coveredThrough: String, zone: ZoneId) =
+    private fun firstOutlookDay(today: LocalDate, coveredThrough: String, zone: TimeZone) =
         DayOutlook.forecast(emptyList(), Instant.parse(coveredThrough), today, zone).first()
 
     // --- DayOutlook coverage -----------------------------------------------------------------
@@ -134,7 +135,7 @@ class DaylightSavingTest {
         // 14:37 CET on the 25th.
         val window = ChartWindow.around(Instant.parse("2026-10-25T13:37:00Z"), ChartStep.OneDay, BERLIN)
 
-        assertEquals(Instant.parse("2026-10-25T11:00:00Z").epochSecond, window.anchorEpochSecond)
+        assertEquals(Instant.parse("2026-10-25T11:00:00Z").epochSeconds, window.anchorEpochSecond)
     }
 
     @Test
@@ -142,7 +143,7 @@ class DaylightSavingTest {
         // 14:37 CEST on the 29th.
         val window = ChartWindow.around(Instant.parse("2026-03-29T12:37:00Z"), ChartStep.OneDay, BERLIN)
 
-        assertEquals(Instant.parse("2026-03-29T10:00:00Z").epochSecond, window.anchorEpochSecond)
+        assertEquals(Instant.parse("2026-03-29T10:00:00Z").epochSeconds, window.anchorEpochSecond)
     }
 
     @Test
@@ -155,7 +156,7 @@ class DaylightSavingTest {
             "2026-10-26T12:00", "2026-10-27T12:00", "2026-10-28T12:00", "2026-10-29T12:00"
         )
         val actual = ChartWindow.POINT_INDICES.map { i ->
-            Instant.ofEpochSecond(window.epochSecondAt(i)).atZone(BERLIN).toLocalDateTime().toString()
+            Instant.fromEpochSeconds(window.epochSecondAt(i)).toLocalDateTime(BERLIN).toString()
         }
 
         assertEquals(expected, actual)
@@ -166,8 +167,8 @@ class DaylightSavingTest {
         // 14:37 on the 6th in Santiago, now on summer time (UTC-3).
         val window = ChartWindow.around(Instant.parse("2026-09-06T17:37:00Z"), ChartStep.OneDay, SANTIAGO)
 
-        val anchor = Instant.ofEpochSecond(window.anchorEpochSecond).atZone(SANTIAGO)
-        assertEquals(CHILE_DAY_WITHOUT_MIDNIGHT, anchor.toLocalDate())
+        val anchor = Instant.fromEpochSeconds(window.anchorEpochSecond).toLocalDateTime(SANTIAGO)
+        assertEquals(CHILE_DAY_WITHOUT_MIDNIGHT, anchor.date)
         assertEquals(NOON, anchor.hour)
     }
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
+import kotlinx.datetime.toKotlinTimeZone
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,6 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.time.toKotlinInstant
 
 /**
  * Checks the empty-state stand-in is actually composed and laid out in the chart's place.
@@ -56,7 +58,7 @@ class PressureChartEmptyStateTest {
             Box(Modifier.width(CARD_WIDTH)) {
                 PressureChart(
                     readings = readings,
-                    window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE),
+                    window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.ThreeHours, ZONE.toKotlinTimeZone()),
                     zone = ZONE,
                     modifier = Modifier.width(CHART_WIDTH)
                 ) {

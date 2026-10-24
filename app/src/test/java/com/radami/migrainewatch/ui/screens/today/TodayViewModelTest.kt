@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.datetime.toJavaLocalDate
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -116,7 +117,7 @@ class TodayViewModelTest {
 
         assertFalse(state.isLoading)
         assertEquals(DayOutlook.DAYS, state.outlook.size)
-        assertEquals(LocalDate.now(), state.outlook.first().date)
+        assertEquals(LocalDate.now(), state.outlook.first().date.toJavaLocalDate())
     }
 
     @Test
@@ -361,7 +362,7 @@ class TodayViewModelTest {
         val state = viewModel.loadedState()
         val outlook = state.outlook
 
-        assertEquals(today.plusDays(DayOutlook.DAYS - 1L), outlook.last().date)
+        assertEquals(today.plusDays(DayOutlook.DAYS - 1L), outlook.last().date.toJavaLocalDate())
         assertEquals(OutlookRisk.Clear, outlook.last().risk)
         assertTrue(outlook.none { it.risk == OutlookRisk.Unknown })
         assertNull(state.outlookGap)
@@ -418,7 +419,7 @@ class TodayViewModelTest {
         val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
             .loadedState()
 
-        assertEquals(LocalDate.now(zone), state.outlook.first().date)
+        assertEquals(LocalDate.now(zone), state.outlook.first().date.toJavaLocalDate())
     }
 
     @Test

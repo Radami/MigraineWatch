@@ -65,6 +65,7 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import kotlin.time.Clock
 
 /** Headroom above and below the data so the line doesn't run along the frame: a fraction of
  * the spread, with a floor in hPa for flat stretches that barely moved. */
@@ -229,7 +230,7 @@ fun PressureChart(
 
     // Dashed "now" line position. Read once per window, not every recomposition, so the
     // decoration below can be remembered too.
-    val nowX = remember(window) { window.xOf(Instant.now()) }
+    val nowX = remember(window) { window.xOf(Clock.System.now()) }
 
     // Shared by the line layer and the decoration, and kept across every rebuild of either:
     // the layer tweens through it, the decoration reads each frame of that tween back from it.

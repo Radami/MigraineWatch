@@ -3,6 +3,7 @@ package com.radami.migrainewatch.format
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import java.time.ZoneId
+import kotlin.time.toJavaInstant
 
 /** How much of an event's timing there is room to spell out. */
 enum class AlertTimingDetail {
@@ -33,13 +34,13 @@ fun formatAlertTiming(
     zone: ZoneId
 ): String {
     val formatter = AppDateFormats.WEEKDAY_AND_TIME
-    val startLabel = formatter.format(alert.start.atZone(zone))
+    val startLabel = formatter.format(alert.start.toJavaInstant().atZone(zone))
 
     // Only an event already running has an end worth naming: one still ahead is bounded by a
     // start the user can act on, and naming both would bury it.
     val easesSuffix = when (detail) {
         AlertTimingDetail.Brief -> ""
-        AlertTimingDetail.WithEnd -> " · eases ${formatter.format(alert.end.atZone(zone))}"
+        AlertTimingDetail.WithEnd -> " · eases ${formatter.format(alert.end.toJavaInstant().atZone(zone))}"
     }
 
     return when (phase) {

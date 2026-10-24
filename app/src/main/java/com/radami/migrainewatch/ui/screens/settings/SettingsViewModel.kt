@@ -31,9 +31,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.Instant
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlin.time.Clock
+import kotlin.time.toJavaInstant
 
 data class SettingsUiState(
     val alertSensitivity: AlertSensitivity = AlertSensitivity.Default,
@@ -162,9 +163,9 @@ class SettingsViewModel @Inject constructor(
     /** Posts the next warning now, ignoring lead time and notified history. Records nothing, so the real alert still fires later. */
     fun previewNextAlert() {
         viewModelScope.launch {
-            val now = Instant.now()
-            val next = alertUseCase.currentAlerts(now)
-                .filter { it.end.isAfter(now) }
+            val now = Clock.System.now()
+            val next = alertUseCase.currentAlerts(now.toJavaInstant())
+                .filter { it.end > now }
                 .minByOrNull { it.start }
 
             if (next == null) {

@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.datetime.toKotlinTimeZone
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,6 +29,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.time.Instant
+import kotlin.time.toKotlinInstant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PressureViewModelTest {
@@ -152,7 +154,7 @@ class PressureViewModelTest {
         TimeRange.entries.forEach { range ->
             assertFalse(
                 "$range should not reach an event six days out",
-                ChartWindow.around(now, range.step, state.zone).covers(alert)
+                ChartWindow.around(now.toKotlinInstant(), range.step, state.zone.toKotlinTimeZone()).covers(alert)
             )
         }
     }

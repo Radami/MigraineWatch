@@ -17,8 +17,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
-import java.time.Instant
 import java.time.ZoneId
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 /**
  * Pins the tray id a warning is posted under. A re-posted warning replaces the old one by id,
@@ -66,7 +67,7 @@ class AlertNotifierTest {
     @Test
     fun `posting the same event again replaces it rather than stacking`() {
         notifier.notify(alert, AlertPhase.AHEAD, KATHMANDU)
-        notifier.notify(alert.copy(end = alert.end.plusSeconds(3600)), AlertPhase.UNDERWAY, KATHMANDU)
+        notifier.notify(alert.copy(end = alert.end + 1.hours), AlertPhase.UNDERWAY, KATHMANDU)
 
         assertEquals(1, shadowOf(notificationManager).size())
     }

@@ -143,7 +143,7 @@ internal fun edgeOffsetSampler(
     rendering: ChartRendering,
 ): (Float, Int) -> Float? = when (rendering) {
     ChartRendering.Line -> { edgeX, endIndex ->
-        val atEdge = pressureAt(readings, window.instantAt(edgeX).epochSecond)
+        val atEdge = pressureAt(readings, window.instantAt(edgeX).epochSeconds)
         val atEnd = pressureAt(readings, window.epochSecondAt(endIndex))
 
         // Null unless both ends of the strip have data, matching how gaps break the lines

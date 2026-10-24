@@ -1,7 +1,10 @@
 package com.radami.migrainewatch.domain
 
-import java.time.Instant
-import java.time.ZoneId
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atTime
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 
 private const val SECONDS_PER_HOUR = 3600L
 
@@ -40,16 +43,16 @@ data class ChartWindow(
         fun around(
             now: Instant,
             step: ChartStep,
-            zone: ZoneId
+            zone: TimeZone
         ): ChartWindow {
             val anchor = when (step) {
-                ChartStep.OneDay -> now.atZone(zone)
-                    .toLocalDate()
+                ChartStep.OneDay -> now.toLocalDateTime(zone)
+                    .date
                     .atTime(DAILY_ANCHOR_HOUR, 0)
-                    .atZone(zone)
-                    .toEpochSecond()
+                    .toInstant(zone)
+                    .epochSeconds
 
-                else -> (now.epochSecond / step.seconds) * step.seconds
+                else -> (now.epochSeconds / step.seconds) * step.seconds
             }
 
             return ChartWindow(anchorEpochSecond = anchor, step = step)
@@ -77,24 +80,24 @@ data class ChartWindow(
      * [POINT_INDICES] are still returned; drawing clips them to the plot area.
      */
     fun xOf(instant: Instant): Float =
-        ANCHOR_INDEX + (instant.epochSecond - anchorEpochSecond).toFloat() / step.seconds
+        ANCHOR_INDEX + (instant.epochSeconds - anchorEpochSecond).toFloat() / step.seconds
 
     /**
      * The instant chart x-value [x] falls on: the inverse of [xOf], defined between points too.
      * Needed for the strip of plot past the last point.
      */
     fun instantAt(x: Float): Instant =
-        Instant.ofEpochSecond(anchorEpochSecond + ((x - ANCHOR_INDEX) * step.seconds).toLong())
+        Instant.fromEpochSeconds(anchorEpochSecond + ((x - ANCHOR_INDEX) * step.seconds).toLong())
 
     /** Left edge of the plot area. */
     val firstVisible: Instant =
-        Instant.ofEpochSecond(epochSecondAt(POINT_INDICES.first) - edgeMarginSeconds)
+        Instant.fromEpochSeconds(epochSecondAt(POINT_INDICES.first) - edgeMarginSeconds)
 
     /** Right edge of the plot area. */
     val lastVisible: Instant =
-        Instant.ofEpochSecond(epochSecondAt(POINT_INDICES.last) + edgeMarginSeconds)
+        Instant.fromEpochSeconds(epochSecondAt(POINT_INDICES.last) + edgeMarginSeconds)
 
     /** Whether any part of [alert] falls inside the plot area (merely touching an edge doesn't count). */
     fun covers(alert: AlertWindow): Boolean =
-        alert.end.isAfter(firstVisible) && alert.start.isBefore(lastVisible)
+        alert.end > firstVisible && alert.start < lastVisible
 }

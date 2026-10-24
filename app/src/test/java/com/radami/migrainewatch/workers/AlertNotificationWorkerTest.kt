@@ -35,6 +35,8 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import kotlin.time.toJavaInstant
+import kotlin.time.toKotlinInstant
 
 /**
  * The worker re-checks an event when its warning falls due, then posts and records it. Its
@@ -61,15 +63,15 @@ class AlertNotificationWorkerTest {
     private val startedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS)
 
     private val ahead = AlertWindow(
-        start = startedAt.plus(Duration.ofHours(6)),
-        end = startedAt.plus(Duration.ofHours(26)),
+        start = startedAt.plus(Duration.ofHours(6)).toKotlinInstant(),
+        end = startedAt.plus(Duration.ofHours(26)).toKotlinInstant(),
         delta = 9f,
         direction = PressureDirection.DROP
     )
 
     private val underway = AlertWindow(
-        start = startedAt.minus(Duration.ofHours(2)),
-        end = startedAt.plus(Duration.ofHours(10)),
+        start = startedAt.minus(Duration.ofHours(2)).toKotlinInstant(),
+        end = startedAt.plus(Duration.ofHours(10)).toKotlinInstant(),
         delta = 9f,
         direction = PressureDirection.RISE
     )
@@ -130,8 +132,8 @@ class AlertNotificationWorkerTest {
         runWorker(ahead)
         val finishedAt = Instant.now()
 
-        assertEquals(ahead.start, recorded.captured.startDateTime)
-        assertEquals(ahead.end, recorded.captured.endDateTime)
+        assertEquals(ahead.start.toJavaInstant(), recorded.captured.startDateTime)
+        assertEquals(ahead.end.toJavaInstant(), recorded.captured.endDateTime)
         assertEquals(PressureDirection.DROP.wireName, recorded.captured.direction)
         assertEquals(THRESHOLD_HPA, recorded.captured.thresholdHpa, 0f)
 
@@ -155,8 +157,8 @@ class AlertNotificationWorkerTest {
     @Test
     fun `an event already warned about is not posted again`() {
         val delivered = NotifiedAlert(
-            startDateTime = ahead.start,
-            endDateTime = ahead.end,
+            startDateTime = ahead.start.toJavaInstant(),
+            endDateTime = ahead.end.toJavaInstant(),
             direction = PressureDirection.DROP.wireName,
             thresholdHpa = THRESHOLD_HPA,
             notifiedDateTime = startedAt.minus(Duration.ofHours(1))

@@ -26,12 +26,16 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.toKotlinTimeZone
+import kotlinx.datetime.todayIn
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import com.radami.migrainewatch.data.model.toSymptomDay
+import kotlin.time.Clock
+import kotlin.time.toJavaInstant
+import kotlin.time.toKotlinInstant
 
 /**
  * Why the outlook has nothing to say about the week. Distinguished by asking the repository how
@@ -123,24 +127,25 @@ class TodayViewModel @Inject constructor(
                 TodayInputs(readings, entries, settings, refreshState)
             }.collectLatest { (readings, entries, settings, refreshState) ->
                 // Re-evaluated per emission so relevance doesn't go stale while the screen stays open.
-                val now = Instant.now()
+                val now = Clock.System.now()
                 val zone = settings.location.zone
+                val timeZone = zone.toKotlinTimeZone()
 
                 // Shared use case keeps the banner and scheduled notifications in sync. Streak
                 // walks the full history, so both run off the main thread.
                 val (alerts, streak, outlook) = withContext(Dispatchers.Default) {
-                    val detected = alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now)
+                    val detected = alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now.toJavaInstant())
 
                     // Re-read per emission so it can't go stale across midnight while nothing else emits.
-                    val today = LocalDate.now(zone)
+                    val today = Clock.System.todayIn(timeZone)
 
                     // Outlook can only call a day clear as far as readings reach, not the last
                     // reading itself — the use case knows actual coverage.
                     val days = DayOutlook.forecast(
                         alerts = detected,
-                        coveredThrough = alertUseCase.coverageEnd(readings),
+                        coveredThrough = alertUseCase.coverageEnd(readings)?.toKotlinInstant(),
                         today = today,
-                        zone = zone
+                        zone = timeZone
                     )
 
                     val streak = SymptomFreeStreak.from(entries.map { it.toSymptomDay() }, today)
@@ -148,7 +153,7 @@ class TodayViewModel @Inject constructor(
                 }
 
                 // Banner leads with the earliest still-live event, i.e. whichever one the user is in.
-                val pending = alerts.filter { it.end.isAfter(now) }
+                val pending = alerts.filter { it.end > now }
 
                 val gap = when {
                     // Partial-week coverage is normal, not a gap; the strip fades its tail instead.

@@ -5,8 +5,8 @@ import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.PressureDirection
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import java.time.Instant
 import java.time.ZoneId
+import kotlin.time.Instant
 
 class AlertTimingFormatTest {
 

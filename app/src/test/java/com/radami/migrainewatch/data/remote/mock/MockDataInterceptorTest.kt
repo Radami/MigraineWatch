@@ -9,6 +9,7 @@ import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
 import com.radami.migrainewatch.domain.PressureDirection
 import com.radami.migrainewatch.domain.PressureSample
+import kotlinx.datetime.TimeZone
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,6 +22,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import kotlin.time.Clock
 
 /**
  * The mock scenarios are calibrated against the alert sensitivity presets, so a change to
@@ -106,10 +108,10 @@ class MockDataInterceptorTest {
         // which is a poor fixture for a screenshot: every mock event has to fit the range that
         // shows the most, whatever the chart is anchored on when it is looked at.
         // The mock reports the device's zone, so that is the zone its location adopts.
-        val chart = ChartWindow.around(Instant.now(), ChartStep.OneDay, ZoneId.systemDefault())
+        val chart = ChartWindow.around(Clock.System.now(), ChartStep.OneDay, TimeZone.currentSystemDefault())
         alerts.forEach { alert ->
-            assertTrue("$alert starts before the chart", !alert.start.isBefore(chart.firstVisible))
-            assertTrue("$alert ends after the chart", !alert.end.isAfter(chart.lastVisible))
+            assertTrue("$alert starts before the chart", alert.start >= chart.firstVisible)
+            assertTrue("$alert ends after the chart", alert.end <= chart.lastVisible)
         }
 
         // Back to back: each event's turning point is where the next one begins.
@@ -154,10 +156,10 @@ class MockDataInterceptorTest {
         // The fourth event goes unshaded because the card stops at three, and that has to be
         // the only reason: an event the chart could not reach anyway would prove nothing.
         // The mock reports the device's zone, so that is the zone its location adopts.
-        val chart = ChartWindow.around(Instant.now(), ChartStep.OneDay, ZoneId.systemDefault())
+        val chart = ChartWindow.around(Clock.System.now(), ChartStep.OneDay, TimeZone.currentSystemDefault())
         alerts.forEach { alert ->
-            assertTrue("$alert starts before the chart", !alert.start.isBefore(chart.firstVisible))
-            assertTrue("$alert ends after the chart", !alert.end.isAfter(chart.lastVisible))
+            assertTrue("$alert starts before the chart", alert.start >= chart.firstVisible)
+            assertTrue("$alert ends after the chart", alert.end <= chart.lastVisible)
         }
     }
 

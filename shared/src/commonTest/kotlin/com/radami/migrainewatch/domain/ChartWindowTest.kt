@@ -1,20 +1,23 @@
 package com.radami.migrainewatch.domain
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
-import java.time.Instant
-import java.time.ZoneId
-import java.time.ZonedDateTime
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 class ChartWindowTest {
 
     private companion object {
-        val ZONE: ZoneId = ZoneId.of("Europe/Berlin")
+        val ZONE: TimeZone = TimeZone.of("Europe/Berlin")
 
         /** 14:37 local, so nothing lands on a step boundary by accident. */
-        val NOW: Instant = ZonedDateTime.of(2026, 8, 22, 14, 37, 0, 0, ZONE).toInstant()
+        val NOW: Instant = LocalDateTime(2026, 8, 22, 14, 37).toInstant(ZONE)
 
         const val HOUR = 3600L
 
@@ -27,18 +30,18 @@ class ChartWindowTest {
         val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
 
         assertEquals(0L, window.anchorEpochSecond % (3 * HOUR))
-        assertTrue(window.anchorEpochSecond <= NOW.epochSecond)
-        assertTrue(NOW.epochSecond - window.anchorEpochSecond < 3 * HOUR)
+        assertTrue(window.anchorEpochSecond <= NOW.epochSeconds)
+        assertTrue(NOW.epochSeconds - window.anchorEpochSecond < 3 * HOUR)
     }
 
     @Test
     fun `daily step anchors on local noon`() {
         val window = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
 
-        val anchor = Instant.ofEpochSecond(window.anchorEpochSecond).atZone(ZONE)
+        val anchor = Instant.fromEpochSeconds(window.anchorEpochSecond).toLocalDateTime(ZONE)
         assertEquals(12, anchor.hour)
         assertEquals(0, anchor.minute)
-        assertEquals(NOW.atZone(ZONE).toLocalDate(), anchor.toLocalDate())
+        assertEquals(NOW.toLocalDateTime(ZONE).date, anchor.date)
     }
 
     @Test
@@ -54,11 +57,11 @@ class ChartWindowTest {
     @Test
     fun `x is the anchor index at the anchor and fractional between points`() {
         val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
-        val anchor = Instant.ofEpochSecond(window.anchorEpochSecond)
+        val anchor = Instant.fromEpochSeconds(window.anchorEpochSecond)
 
         assertEquals(3f, window.xOf(anchor), 0.0001f)
-        assertEquals(4.5f, window.xOf(anchor.plusSeconds(4 * HOUR + 1800)), 0.0001f)
-        assertEquals(0f, window.xOf(anchor.minusSeconds(9 * HOUR)), 0.0001f)
+        assertEquals(4.5f, window.xOf(anchor + (4 * HOUR + 1800).seconds), 0.0001f)
+        assertEquals(0f, window.xOf(anchor - (9 * HOUR).seconds), 0.0001f)
     }
 
     @Test
@@ -75,7 +78,7 @@ class ChartWindowTest {
         val window = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
 
         ChartWindow.POINT_INDICES.forEach { i ->
-            assertEquals(window.epochSecondAt(i), window.instantAt(i.toFloat()).epochSecond)
+            assertEquals(window.epochSecondAt(i), window.instantAt(i.toFloat()).epochSeconds)
         }
     }
 
@@ -91,18 +94,18 @@ class ChartWindowTest {
 
         assertEquals(
             window.epochSecondAt(firstIndex) - step / 2,
-            window.instantAt(firstIndex - 0.5f).epochSecond
+            window.instantAt(firstIndex - 0.5f).epochSeconds
         )
         assertEquals(
             window.epochSecondAt(lastIndex) + step / 2,
-            window.instantAt(lastIndex + 0.5f).epochSecond
+            window.instantAt(lastIndex + 0.5f).epochSeconds
         )
     }
 
     @Test
     fun `x runs past the last point for an event beyond the window`() {
         val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
-        val beyond = Instant.ofEpochSecond(window.anchorEpochSecond + 24 * HOUR)
+        val beyond = Instant.fromEpochSeconds(window.anchorEpochSecond + 24 * HOUR)
 
         // Clipping is the drawing code's job, so the mapping itself must not clamp.
         assertTrue(window.xOf(beyond) > ChartWindow.POINT_INDICES.last)
@@ -111,18 +114,18 @@ class ChartWindowTest {
     @Test
     fun `an event inside the window is covered`() {
         val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
-        val anchor = Instant.ofEpochSecond(window.anchorEpochSecond)
+        val anchor = Instant.fromEpochSeconds(window.anchorEpochSecond)
 
-        assertTrue(window.covers(alert(anchor.plusSeconds(HOUR), anchor.plusSeconds(5 * HOUR))))
+        assertTrue(window.covers(alert(anchor + HOUR.seconds, anchor + (5 * HOUR).seconds)))
     }
 
     @Test
     fun `an event overlapping an edge is covered`() {
         val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
 
-        val overLeft = alert(window.firstVisible.minusSeconds(48 * HOUR), window.firstVisible.plusSeconds(HOUR))
-        val overRight = alert(window.lastVisible.minusSeconds(HOUR), window.lastVisible.plusSeconds(48 * HOUR))
-        val spanning = alert(window.firstVisible.minusSeconds(HOUR), window.lastVisible.plusSeconds(HOUR))
+        val overLeft = alert(window.firstVisible - (48 * HOUR).seconds, window.firstVisible + HOUR.seconds)
+        val overRight = alert(window.lastVisible - HOUR.seconds, window.lastVisible + (48 * HOUR).seconds)
+        val spanning = alert(window.firstVisible - HOUR.seconds, window.lastVisible + HOUR.seconds)
 
         assertTrue(window.covers(overLeft))
         assertTrue(window.covers(overRight))
@@ -133,8 +136,8 @@ class ChartWindowTest {
     fun `an event outside the window is not covered`() {
         val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
 
-        val before = alert(window.firstVisible.minusSeconds(10 * HOUR), window.firstVisible.minusSeconds(HOUR))
-        val after = alert(window.lastVisible.plusSeconds(HOUR), window.lastVisible.plusSeconds(10 * HOUR))
+        val before = alert(window.firstVisible - (10 * HOUR).seconds, window.firstVisible - HOUR.seconds)
+        val after = alert(window.lastVisible + HOUR.seconds, window.lastVisible + (10 * HOUR).seconds)
 
         assertFalse(window.covers(before))
         assertFalse(window.covers(after))
@@ -144,8 +147,8 @@ class ChartWindowTest {
     fun `an event that only touches an edge is not covered`() {
         val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
 
-        val endsAtStart = alert(window.firstVisible.minusSeconds(HOUR), window.firstVisible)
-        val startsAtEnd = alert(window.lastVisible, window.lastVisible.plusSeconds(HOUR))
+        val endsAtStart = alert(window.firstVisible - HOUR.seconds, window.firstVisible)
+        val startsAtEnd = alert(window.lastVisible, window.lastVisible + HOUR.seconds)
 
         // Either would draw a band of no width, which reads as shading that failed.
         assertFalse(window.covers(endsAtStart))
@@ -158,11 +161,11 @@ class ChartWindowTest {
 
         assertEquals(
             window.epochSecondAt(ChartWindow.POINT_INDICES.first) - 12 * HOUR,
-            window.firstVisible.epochSecond
+            window.firstVisible.epochSeconds
         )
         assertEquals(
             window.epochSecondAt(ChartWindow.POINT_INDICES.last) + 12 * HOUR,
-            window.lastVisible.epochSecond
+            window.lastVisible.epochSeconds
         )
     }
 
@@ -172,11 +175,11 @@ class ChartWindowTest {
 
         assertEquals(
             window.epochSecondAt(ChartWindow.POINT_INDICES.first),
-            window.firstVisible.epochSecond
+            window.firstVisible.epochSeconds
         )
         assertEquals(
             window.epochSecondAt(ChartWindow.POINT_INDICES.last),
-            window.lastVisible.epochSecond
+            window.lastVisible.epochSeconds
         )
     }
 
@@ -186,7 +189,7 @@ class ChartWindowTest {
         val days7 = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
 
         // Two days ahead: past the 24 hrs chip's 12 hours of forecast, well inside the 7 days chip.
-        val event = alert(NOW.plusSeconds(48 * HOUR), NOW.plusSeconds(54 * HOUR))
+        val event = alert(NOW + (48 * HOUR).seconds, NOW + (54 * HOUR).seconds)
 
         assertFalse(hours24.covers(event))
         assertTrue(days7.covers(event))

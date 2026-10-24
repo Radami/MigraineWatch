@@ -1,10 +1,10 @@
 package com.radami.migrainewatch.domain
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
-import java.time.Duration
-import java.time.Instant
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 class AlertNotificationDeciderTest {
 
@@ -16,8 +16,8 @@ class AlertNotificationDeciderTest {
         direction: PressureDirection = PressureDirection.DROP,
         delta: Float = 12f
     ) = AlertWindow(
-        start = now.plus(Duration.ofHours(startHoursFromNow)),
-        end = now.plus(Duration.ofHours(startHoursFromNow + durationHours)),
+        start = now + startHoursFromNow.hours,
+        end = now + (startHoursFromNow + durationHours).hours,
         delta = delta,
         direction = direction
     )
@@ -38,7 +38,7 @@ class AlertNotificationDeciderTest {
         val pending = decide(listOf(event))
 
         assertEquals(1, pending.size)
-        assertEquals(now.plus(Duration.ofHours(24)), pending[0].notifyAt)
+        assertEquals(now + 24.hours, pending[0].notifyAt)
         assertEquals(event, pending[0].alert)
     }
 

@@ -27,6 +27,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Duration
 import java.time.Instant
+import kotlin.time.toKotlinInstant
 
 /**
  * Pins what the scheduler hands WorkManager. The work name in particular must never drift:
@@ -52,8 +53,8 @@ class AlertNotificationSchedulerTest {
     }
 
     private val alert = AlertWindow(
-        start = EVENT_START,
-        end = EVENT_END,
+        start = EVENT_START.toKotlinInstant(),
+        end = EVENT_END.toKotlinInstant(),
         delta = 9f,
         direction = PressureDirection.DROP
     )

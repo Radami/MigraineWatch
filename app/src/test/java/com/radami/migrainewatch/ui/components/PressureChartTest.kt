@@ -3,6 +3,7 @@ package com.radami.migrainewatch.ui.components
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
+import kotlinx.datetime.toKotlinTimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -11,6 +12,7 @@ import org.junit.Test
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import kotlin.time.toKotlinInstant
 
 /**
  * Covers the chart's pre-draw decisions (ranges, rendering mode, plotted series, edge offset),
@@ -87,7 +89,7 @@ class PressureChartTest {
 
     @Test
     fun `a step's range covers the half-step either side of its own instant`() {
-        val window = ChartWindow.around(NOW, ChartStep.SixHours, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.SixHours, ZONE.toKotlinTimeZone())
         val anchor = window.anchorEpochSecond
 
         // Two readings three hours either side of the anchor, and one just outside the step.
@@ -106,7 +108,7 @@ class PressureChartTest {
 
     @Test
     fun `a step holding one reading has no range and is left out`() {
-        val window = ChartWindow.around(NOW, ChartStep.SixHours, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.SixHours, ZONE.toKotlinTimeZone())
         val readings = listOf(reading(Instant.ofEpochSecond(window.anchorEpochSecond), 1013f))
 
         assertEquals(emptyList<RangeEntry>(), stepRanges(readings, window, ChartRendering.MinMaxBand))
@@ -114,7 +116,7 @@ class PressureChartTest {
 
     @Test
     fun `a line asks for no ranges at all`() {
-        val window = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.OneDay, ZONE.toKotlinTimeZone())
 
         assertEquals(
             emptyList<RangeEntry>(),
@@ -124,7 +126,7 @@ class PressureChartTest {
 
     @Test
     fun `every point of a fully covered window has a range`() {
-        val window = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.OneDay, ZONE.toKotlinTimeZone())
 
         val ranges = stepRanges(coveringReadings(window), window, ChartRendering.MinMaxBand)
 
@@ -165,7 +167,7 @@ class PressureChartTest {
 
     @Test
     fun `a line is the band whose edges coincide`() {
-        val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.ThreeHours, ZONE.toKotlinTimeZone())
 
         val edges = seriesEdges(coveringReadings(window), window, ChartRendering.Line, emptyList())
 
@@ -175,7 +177,7 @@ class PressureChartTest {
 
     @Test
     fun `a band's edges are the ranges it was given`() {
-        val window = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.OneDay, ZONE.toKotlinTimeZone())
         val ranges = listOf(
             RangeEntry(index = 2, minY = 1000f, maxY = 1005f),
             RangeEntry(index = 3, minY = 1002f, maxY = 1007f)
@@ -190,7 +192,7 @@ class PressureChartTest {
 
     @Test
     fun `a point with no reading is dropped rather than plotted at zero`() {
-        val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.ThreeHours, ZONE.toKotlinTimeZone())
 
         // Only the anchor and the step after it are covered, so only those two can be plotted.
         val readings = listOf(
@@ -210,7 +212,7 @@ class PressureChartTest {
 
     @Test
     fun `a line is sampled out to the plot edge`() {
-        val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.ThreeHours, ZONE.toKotlinTimeZone())
         val readings = coveringReadings(window)
         val lastIndex = ChartWindow.POINT_INDICES.last
 
@@ -226,7 +228,7 @@ class PressureChartTest {
 
     @Test
     fun `a line falling towards the edge carries a negative offset`() {
-        val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.ThreeHours, ZONE.toKotlinTimeZone())
         val readings = coveringReadings(window).map { it.copy(pressureMsl = -it.pressureMsl) }
         val firstIndex = ChartWindow.POINT_INDICES.first
 
@@ -239,7 +241,7 @@ class PressureChartTest {
 
     @Test
     fun `a line stops at the edge of its readings rather than inventing a value`() {
-        val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.ThreeHours, ZONE.toKotlinTimeZone())
         val lastIndex = ChartWindow.POINT_INDICES.last
 
         // Readings that stop exactly on the last point, so the strip beyond it is uncovered.
@@ -255,7 +257,7 @@ class PressureChartTest {
     /** An empty edge pair is also the signal the empty-state card's message hangs off. */
     @Test
     fun `a window the readings do not reach has no edges to plot`() {
-        val window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.ThreeHours, ZONE.toKotlinTimeZone())
 
         // A cache that stopped a day ago, with the narrowest chip selected: the data exists,
         // but not within the nine hours back this window reaches.
@@ -271,7 +273,7 @@ class PressureChartTest {
 
     @Test
     fun `no readings at all leaves nothing to plot either`() {
-        val window = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.OneDay, ZONE.toKotlinTimeZone())
         val ranges = stepRanges(emptyList(), window, ChartRendering.MinMaxBand)
 
         assertTrue(seriesEdges(emptyList(), window, renderingFor(ChartRendering.MinMaxBand, ranges), ranges)
@@ -322,7 +324,7 @@ class PressureChartTest {
 
     @Test
     fun `a band holds its step's range flat out to the edge`() {
-        val window = ChartWindow.around(NOW, ChartStep.OneDay, ZONE)
+        val window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.OneDay, ZONE.toKotlinTimeZone())
         val readings = coveringReadings(window)
 
         val offsetAt = edgeOffsetSampler(readings, window, ChartRendering.MinMaxBand)
