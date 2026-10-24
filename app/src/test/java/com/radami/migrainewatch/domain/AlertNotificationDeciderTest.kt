@@ -1,6 +1,5 @@
 package com.radami.migrainewatch.domain
 
-import com.radami.migrainewatch.data.model.NotifiedAlert
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,17 +22,12 @@ class AlertNotificationDeciderTest {
         direction = direction
     )
 
-    private fun notified(alert: AlertWindow, thresholdHpa: Float = 6f) = NotifiedAlert(
-        startDateTime = alert.start,
-        endDateTime = alert.end,
-        direction = alert.direction.wireName,
-        thresholdHpa = thresholdHpa,
-        notifiedDateTime = now
-    )
+    private fun delivered(alert: AlertWindow) =
+        DeliveredWarning(start = alert.start, end = alert.end, direction = alert.direction)
 
     private fun decide(
         alerts: List<AlertWindow>,
-        alreadyNotified: List<NotifiedAlert> = emptyList(),
+        alreadyNotified: List<DeliveredWarning> = emptyList(),
         notificationsEnabled: Boolean = true
     ) = AlertNotificationDecider.decide(alerts, alreadyNotified, notificationsEnabled, now)
 
@@ -76,7 +70,7 @@ class AlertNotificationDeciderTest {
     fun `does not repeat an event the user has been told about`() {
         val event = alert(startHoursFromNow = 36)
 
-        val pending = decide(listOf(event), alreadyNotified = listOf(notified(event)))
+        val pending = decide(listOf(event), alreadyNotified = listOf(delivered(event)))
 
         assertTrue(pending.isEmpty())
     }
@@ -86,7 +80,7 @@ class AlertNotificationDeciderTest {
         val asFirstSeen = alert(startHoursFromNow = 36)
         val asRefetched = alert(startHoursFromNow = 40)
 
-        val pending = decide(listOf(asRefetched), alreadyNotified = listOf(notified(asFirstSeen)))
+        val pending = decide(listOf(asRefetched), alreadyNotified = listOf(delivered(asFirstSeen)))
 
         assertTrue(pending.isEmpty())
     }
@@ -96,7 +90,7 @@ class AlertNotificationDeciderTest {
         val asFirstSeen = alert(startHoursFromNow = 36, durationHours = 20)
         val afterItEnds = alert(startHoursFromNow = 57)
 
-        val pending = decide(listOf(afterItEnds), alreadyNotified = listOf(notified(asFirstSeen)))
+        val pending = decide(listOf(afterItEnds), alreadyNotified = listOf(delivered(asFirstSeen)))
 
         assertEquals(1, pending.size)
     }
@@ -108,7 +102,7 @@ class AlertNotificationDeciderTest {
         val brief = alert(startHoursFromNow = 36, durationHours = 2)
         val separate = alert(startHoursFromNow = 40)
 
-        val pending = decide(listOf(separate), alreadyNotified = listOf(notified(brief)))
+        val pending = decide(listOf(separate), alreadyNotified = listOf(delivered(brief)))
 
         assertEquals(listOf(separate), pending.map { it.alert })
     }
@@ -118,7 +112,7 @@ class AlertNotificationDeciderTest {
         val asFirstSeen = alert(startHoursFromNow = 36, durationHours = 20)
         val asRefetched = alert(startHoursFromNow = 34, durationHours = 30)
 
-        val pending = decide(listOf(asRefetched), alreadyNotified = listOf(notified(asFirstSeen)))
+        val pending = decide(listOf(asRefetched), alreadyNotified = listOf(delivered(asFirstSeen)))
 
         assertTrue(pending.isEmpty())
     }
@@ -128,18 +122,19 @@ class AlertNotificationDeciderTest {
         val drop = alert(startHoursFromNow = 36, direction = PressureDirection.DROP)
         val rise = alert(startHoursFromNow = 36, direction = PressureDirection.RISE)
 
-        val pending = decide(listOf(drop, rise), alreadyNotified = listOf(notified(drop)))
+        val pending = decide(listOf(drop, rise), alreadyNotified = listOf(delivered(drop)))
 
         assertEquals(listOf(rise), pending.map { it.alert })
     }
 
     @Test
     fun `re-announces nothing when sensitivity is raised then lowered again`() {
-        // The event was notified at 6 hPa. Moving to Low dropped it from the forecast's
+        // The event was notified at High. Moving to Low dropped it from the forecast's
         // qualifying set; moving back to High brings it back — but the user already knows.
+        // A delivered warning keeps no threshold, so the sensitivity can't affect the match.
         val event = alert(startHoursFromNow = 36, delta = 6.5f)
 
-        val pending = decide(listOf(event), alreadyNotified = listOf(notified(event, thresholdHpa = 6f)))
+        val pending = decide(listOf(event), alreadyNotified = listOf(delivered(event)))
 
         assertTrue(pending.isEmpty())
     }

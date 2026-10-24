@@ -1,4 +1,4 @@
-package com.radami.migrainewatch.data.model
+package com.radami.migrainewatch.domain
 
 /**
  * Declaration order runs clear to worst; screens that list severities (calendar legend,

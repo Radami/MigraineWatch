@@ -1,7 +1,7 @@
 package com.radami.migrainewatch.ui.theme
 
 import androidx.compose.ui.graphics.Color
-import com.radami.migrainewatch.data.model.Severity
+import com.radami.migrainewatch.domain.Severity
 
 /**
  * The colour a severity wears everywhere: day markers, legend swatches, the log entry

@@ -1,7 +1,7 @@
 package com.radami.migrainewatch.ui.screens.calendar
 
 import androidx.lifecycle.SavedStateHandle
-import com.radami.migrainewatch.data.model.Severity
+import com.radami.migrainewatch.domain.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.data.repository.SymptomRepository
 import io.mockk.coEvery

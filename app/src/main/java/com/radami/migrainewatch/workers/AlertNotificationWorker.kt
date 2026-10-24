@@ -18,6 +18,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
 import java.time.Instant
+import com.radami.migrainewatch.data.model.toDeliveredWarning
 
 /**
  * Fires at the lead time worked out by [com.radami.migrainewatch.domain.AlertNotificationScheduler]
@@ -51,6 +52,7 @@ class AlertNotificationWorker @AssistedInject constructor(
         // morning must not silence a genuinely new one this evening.
         val alreadySent = notifiedAlertDao
             .getNotifiedSince(now.minus(AlertNotificationDecider.NOTIFICATION_LOOKBACK))
+            .mapNotNull { it.toDeliveredWarning() }
             .any { AlertNotificationDecider.covers(it, alert) }
         if (alreadySent) return Result.success()
 

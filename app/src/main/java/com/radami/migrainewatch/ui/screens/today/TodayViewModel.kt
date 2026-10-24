@@ -31,6 +31,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
+import com.radami.migrainewatch.data.model.toSymptomDay
 
 /**
  * Why the outlook has nothing to say about the week. Distinguished by asking the repository how
@@ -142,7 +143,8 @@ class TodayViewModel @Inject constructor(
                         zone = zone
                     )
 
-                    Triple(detected, SymptomFreeStreak.from(entries, today), days)
+                    val streak = SymptomFreeStreak.from(entries.map { it.toSymptomDay() }, today)
+                    Triple(detected, streak, days)
                 }
 
                 // Banner leads with the earliest still-live event, i.e. whichever one the user is in.

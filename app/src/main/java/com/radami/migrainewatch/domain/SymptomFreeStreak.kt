@@ -1,7 +1,5 @@
 package com.radami.migrainewatch.domain
 
-import com.radami.migrainewatch.data.model.Severity
-import com.radami.migrainewatch.data.model.SymptomEntry
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -34,9 +32,9 @@ data class SymptomFreeStreak(
         /**
          * Returns null when no event has ever been logged, which leaves nothing to count from.
          */
-        fun from(entries: List<SymptomEntry>, today: LocalDate): SymptomFreeStreak? {
+        fun from(days: List<SymptomDay>, today: LocalDate): SymptomFreeStreak? {
             // Only mild/aura/migraine break a streak; a clear day is part of one.
-            val events = entries.filter { it.severity.isSymptomEvent }.sortedBy { it.date }
+            val events = days.filter { it.severity.isSymptomEvent }.sortedBy { it.date }
             val lastEvent = events.lastOrNull() ?: return null
 
             // Days elapsed since that event is the streak still running.
@@ -49,7 +47,7 @@ data class SymptomFreeStreak(
             )
         }
 
-        private fun longestRun(events: List<SymptomEntry>, currentDays: Long): Run? {
+        private fun longestRun(events: List<SymptomDay>, currentDays: Long): Run? {
             if (events.size < MIN_EVENTS_FOR_LONGEST) return null
 
             val completed = events.zipWithNext().map { (earlier, later) ->
