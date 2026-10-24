@@ -45,7 +45,6 @@ val SANDBOX_BUILD_TYPE = "sandbox"
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -153,14 +152,14 @@ android {
     sourceSets {
         // MigrationTestHelper reads the exported schemas off the device as assets, so the
         // directory Room writes them to has to be packaged into the instrumented test APK.
-        getByName("androidTest").assets.srcDirs(files("$projectDir/schemas"))
+        getByName("androidTest").assets.directories.add("$projectDir/schemas")
 
         // initWith copies build type *properties*, not source directories, so without this the
         // sandbox build would silently lack src/debug — and with it DebugAlertReceiver, leaving
         // the documented `adb shell am broadcast` trigger to do nothing on a manual launch.
         // Sharing the directory is what makes "the debug build under another id" true.
         getByName(SANDBOX_BUILD_TYPE) {
-            java.srcDir("src/debug/java")
+            java.directories.add("src/debug/java")
             manifest.srcFile("src/debug/AndroidManifest.xml")
         }
     }
