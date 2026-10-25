@@ -2,6 +2,7 @@ package com.radami.migrainewatch.data.local
 
 import android.content.Context
 import androidx.room.Room
+import androidx.sqlite.driver.AndroidSQLiteDriver
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.radami.migrainewatch.data.local.dao.PressureReadingDao
@@ -14,8 +15,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.time.Instant
-import java.time.temporal.ChronoUnit
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 @RunWith(AndroidJUnit4::class)
 class PressureReadingDaoTest {
@@ -31,7 +35,9 @@ class PressureReadingDaoTest {
     @Before
     fun createDb() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .setDriver(AndroidSQLiteDriver())
+            .build()
         dao = db.pressureReadingDao()
     }
 
@@ -42,24 +48,24 @@ class PressureReadingDaoTest {
 
     @Test
     fun insertAndGetReadings() = runBlocking {
-        val now = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+        val now = Instant.fromEpochSeconds(Clock.System.now().epochSeconds)
         val readings = listOf(
             PressureReading(now, 1013f, 1000f, now),
-            PressureReading(now.plus(1, ChronoUnit.HOURS), 1014f, 1001f, now)
+            PressureReading(now + 1.hours, 1014f, 1001f, now)
         )
         
         dao.insertHistorical(readings)
         
-        val result = dao.getReadingsInRange(now.minusSeconds(1), now.plusSeconds(3601)).first()
+        val result = dao.getReadingsInRange(now - 1.seconds, now + 3601.seconds).first()
         assertEquals(2, result.size)
         assertEquals(1013f, result[0].pressureMsl)
     }
 
     @Test
     fun deleteForecastOnlyDeletesFutureData() = runBlocking {
-        val now = Instant.now().truncatedTo(ChronoUnit.SECONDS)
-        val pastReading = PressureReading(now.minus(1, ChronoUnit.HOURS), 1010f, 1000f, now)
-        val futureReading = PressureReading(now.plus(1, ChronoUnit.HOURS), 1020f, 1010f, now)
+        val now = Instant.fromEpochSeconds(Clock.System.now().epochSeconds)
+        val pastReading = PressureReading(now - 1.hours, 1010f, 1000f, now)
+        val futureReading = PressureReading(now + 1.hours, 1020f, 1010f, now)
         
         dao.insertHistorical(listOf(pastReading))
         dao.insertForecast(listOf(futureReading))
@@ -82,14 +88,14 @@ class PressureReadingDaoTest {
 
         // Berlin: midday local lands on the hour in UTC.
         val berlin = (0 until SERIES_HOURS).map { hour ->
-            PressureReading(noonUtc.plus(hour.toLong(), ChronoUnit.HOURS), 1013f, 1000f, noonUtc)
+            PressureReading(noonUtc + hour.hours, 1013f, 1000f, noonUtc)
         }
         dao.insertHistorical(berlin)
         assertEquals(SERIES_HOURS, dao.getAllReadings().first().size)
 
         // Kathmandu: the same wall-clock hours, 45 minutes off Berlin's grid.
         val kathmandu = (0 until SERIES_HOURS).map { hour ->
-            val at = noonUtc.plus(hour.toLong(), ChronoUnit.HOURS).minus(45, ChronoUnit.MINUTES)
+            val at = noonUtc + hour.hours - 45.minutes
             PressureReading(at, 1005f, 995f, noonUtc)
         }
 

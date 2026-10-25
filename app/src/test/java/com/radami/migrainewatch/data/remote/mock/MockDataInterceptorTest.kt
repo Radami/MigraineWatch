@@ -23,6 +23,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlin.time.Clock
+import kotlin.time.toKotlinInstant
 
 /**
  * The mock scenarios are calibrated against the alert sensitivity presets, so a change to
@@ -61,12 +62,12 @@ class MockDataInterceptorTest {
         val readings = response.hourly.time.mapIndexedNotNull { index, timeText ->
             val pressure = response.hourly.pressureMsl.getOrNull(index) ?: return@mapIndexedNotNull null
             val instant = LocalDateTime.parse(timeText, formatter).atZone(zone).toInstant()
-            PressureReading(instant, pressure, pressure, fetchedAt)
+            PressureReading(instant.toKotlinInstant(), pressure, pressure, fetchedAt.toKotlinInstant())
         }
 
         // TodayViewModel detects over the last 24 h plus the forecast, so mirror that window.
         val from = fetchedAt.minus(24, ChronoUnit.HOURS)
-        return readings.filter { !it.dateTime.isBefore(from) }.map { it.toPressureSample() }
+        return readings.filter { it.dateTime >= from.toKotlinInstant() }.map { it.toPressureSample() }
     }
 
     private fun alertCount(sensitivity: AlertSensitivity): Int =

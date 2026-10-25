@@ -31,10 +31,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.datetime.toJavaLocalDate
 import java.time.LocalDate
 import javax.inject.Inject
 import kotlin.time.Clock
-import kotlin.time.toJavaInstant
 
 data class SettingsUiState(
     val alertSensitivity: AlertSensitivity = AlertSensitivity.Default,
@@ -94,7 +94,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val earliest = symptomRepository.getEarliestDate()
             if (earliest != null) {
-                _trackingSince.value = earliest.format(AppDateFormats.MONTH_AND_YEAR)
+                _trackingSince.value = earliest.toJavaLocalDate().format(AppDateFormats.MONTH_AND_YEAR)
             }
         }
     }
@@ -164,7 +164,7 @@ class SettingsViewModel @Inject constructor(
     fun previewNextAlert() {
         viewModelScope.launch {
             val now = Clock.System.now()
-            val next = alertUseCase.currentAlerts(now.toJavaInstant())
+            val next = alertUseCase.currentAlerts(now)
                 .filter { it.end > now }
                 .minByOrNull { it.start }
 

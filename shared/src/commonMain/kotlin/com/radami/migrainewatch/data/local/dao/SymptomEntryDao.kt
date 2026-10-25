@@ -7,7 +7,7 @@ import androidx.room.Query
 import androidx.room.Update
 import com.radami.migrainewatch.data.model.SymptomEntry
 import kotlinx.coroutines.flow.Flow
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 
 @Dao
 interface SymptomEntryDao {

@@ -50,7 +50,7 @@ class PressureChartEmptyStateTest {
     /** Hourly readings that stop a full day before the window opens. */
     private fun staleReadings(): List<PressureReading> = (24..48).map { hoursAgo ->
         val at = Instant.ofEpochSecond(NOW.epochSecond - hoursAgo * HOUR)
-        PressureReading(at, 1013f, 1003f, NOW)
+        PressureReading(at.toKotlinInstant(), 1013f, 1003f, NOW.toKotlinInstant())
     }.reversed()
 
     private fun setChart(readings: List<PressureReading>) {
@@ -89,7 +89,7 @@ class PressureChartEmptyStateTest {
     fun `readings that reach the window draw the chart instead`() {
         val covering = (-12..12).map { hours ->
             val at = Instant.ofEpochSecond(NOW.epochSecond + hours * HOUR)
-            PressureReading(at, 1013f + hours, 1003f + hours, NOW)
+            PressureReading(at.toKotlinInstant(), 1013f + hours, 1003f + hours, NOW.toKotlinInstant())
         }
 
         setChart(covering)

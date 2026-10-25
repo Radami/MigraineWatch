@@ -30,10 +30,10 @@ class PressureChartTest {
         const val EPSILON = 0.001f
 
         fun reading(at: Instant, pressure: Float) = PressureReading(
-            dateTime = at,
+            dateTime = at.toKotlinInstant(),
             pressureMsl = pressure,
             surfacePressure = pressure - 10f,
-            fetchedDateTime = NOW
+            fetchedDateTime = NOW.toKotlinInstant()
         )
 
         /** Spans [window] plus an hour each side; pressure = hours from anchor, so expected values are easy to state. */

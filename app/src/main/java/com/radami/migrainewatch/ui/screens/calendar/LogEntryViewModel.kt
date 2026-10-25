@@ -11,9 +11,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.time.Instant
+import kotlinx.datetime.toKotlinLocalDate
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlin.time.Clock
 
 data class LogEntryUiState(
     val date: LocalDate = LocalDate.now(),
@@ -76,7 +77,7 @@ class LogEntryViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val existing = symptomRepository.getByDate(date)
+            val existing = symptomRepository.getByDate(date.toKotlinLocalDate())
             if (existing != null) {
                 _uiState.value = _uiState.value.copy(
                     severity = existing.severity,
@@ -138,11 +139,11 @@ class LogEntryViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = state.copy(isSaving = true)
             runCatching {
-                val now = Instant.now()
-                val existing = symptomRepository.getByDate(state.date)
+                val now = Clock.System.now()
+                val existing = symptomRepository.getByDate(state.date.toKotlinLocalDate())
                 symptomRepository.save(
                     SymptomEntry(
-                        date = state.date,
+                        date = state.date.toKotlinLocalDate(),
                         severity = severity,
                         triggers = state.triggers.inTriggerOrder(),
                         durationBucket = state.durationBucket,

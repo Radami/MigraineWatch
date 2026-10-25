@@ -7,7 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import com.radami.migrainewatch.data.model.PressureReading
 import kotlinx.coroutines.flow.Flow
-import java.time.Instant
+import kotlin.time.Instant
 
 @Dao
 interface PressureReadingDao {

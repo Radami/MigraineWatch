@@ -4,8 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import com.radami.migrainewatch.domain.DeliveredWarning
 import com.radami.migrainewatch.domain.PressureDirection
-import java.time.Instant
-import kotlin.time.toKotlinInstant
+import kotlin.time.Instant
 
 /**
  * A pressure event the user has already been notified about.
@@ -33,8 +32,8 @@ fun NotifiedAlert.toDeliveredWarning(): DeliveredWarning? {
     val direction = PressureDirection.ofWireName(direction) ?: return null
 
     return DeliveredWarning(
-        start = startDateTime.toKotlinInstant(),
-        end = endDateTime.toKotlinInstant(),
+        start = startDateTime,
+        end = endDateTime,
         direction = direction
     )
 }

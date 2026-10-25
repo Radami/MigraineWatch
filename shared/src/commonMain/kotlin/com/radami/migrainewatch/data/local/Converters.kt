@@ -2,12 +2,12 @@ package com.radami.migrainewatch.data.local
 
 import androidx.room.TypeConverter
 import com.radami.migrainewatch.domain.Severity
-import java.time.Instant
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
+import kotlin.time.Instant
 
 class Converters {
-    @TypeConverter fun instantToLong(v: Instant): Long = v.toEpochMilli()
-    @TypeConverter fun longToInstant(v: Long): Instant = Instant.ofEpochMilli(v)
+    @TypeConverter fun instantToLong(v: Instant): Long = v.toEpochMilliseconds()
+    @TypeConverter fun longToInstant(v: Long): Instant = Instant.fromEpochMilliseconds(v)
 
     @TypeConverter fun localDateToString(v: LocalDate): String = v.toString()
     @TypeConverter fun stringToLocalDate(v: String): LocalDate = LocalDate.parse(v)

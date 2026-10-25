@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
+import androidx.sqlite.driver.AndroidSQLiteDriver
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.radami.migrainewatch.data.local.AppDatabase
@@ -36,6 +37,7 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Collections
 import java.util.Locale
+import kotlin.time.toKotlinInstant
 
 /**
  * A refresh must publish a whole forecast or none of it, never a series stripped of its
@@ -98,7 +100,9 @@ class PressureRepositoryAtomicityTest {
 
     @Before
     fun setup() {
-        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .setDriver(AndroidSQLiteDriver())
+            .build()
         dao = db.pressureReadingDao()
 
         context.preferencesDataStoreFile(PREFS_NAME).delete()
@@ -128,9 +132,9 @@ class PressureRepositoryAtomicityTest {
      * cleared but not yet replaced. The second is wider and is what the Today card sees as failed.
      */
     private fun assertNoneTorn(emissions: List<List<PressureReading>>) {
-        val probe = start.plus(FORECAST_PROBE_HOURS, ChronoUnit.HOURS)
+        val probe = start.plus(FORECAST_PROBE_HOURS, ChronoUnit.HOURS).toKotlinInstant()
         val torn = emissions.filter { readings ->
-            readings.isNotEmpty() && readings.none { it.dateTime.isAfter(probe) }
+            readings.isNotEmpty() && readings.none { it.dateTime > probe }
         }
         val emptied = emissions.count { it.isEmpty() }
 
@@ -149,8 +153,8 @@ class PressureRepositoryAtomicityTest {
         val emissions = Collections.synchronizedList(mutableListOf<List<PressureReading>>())
         val collector = launch(Dispatchers.IO) {
             dao.getReadingsInRange(
-                start.minus(SERIES_HOURS, ChronoUnit.HOURS),
-                start.plus(SERIES_HOURS, ChronoUnit.HOURS)
+                start.minus(SERIES_HOURS, ChronoUnit.HOURS).toKotlinInstant(),
+                start.plus(SERIES_HOURS, ChronoUnit.HOURS).toKotlinInstant()
             ).collect { emissions.add(it) }
         }
 
@@ -219,8 +223,8 @@ class PressureRepositoryAtomicityTest {
         val emissions = Collections.synchronizedList(mutableListOf<List<PressureReading>>())
         val collector = launch(Dispatchers.IO) {
             dao.getReadingsInRange(
-                start.minus(SERIES_HOURS, ChronoUnit.HOURS),
-                start.plus(SERIES_HOURS, ChronoUnit.HOURS)
+                start.minus(SERIES_HOURS, ChronoUnit.HOURS).toKotlinInstant(),
+                start.plus(SERIES_HOURS, ChronoUnit.HOURS).toKotlinInstant()
             ).collect { emissions.add(it) }
         }
 

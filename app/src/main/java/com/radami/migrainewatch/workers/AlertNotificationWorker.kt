@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.first
 import com.radami.migrainewatch.data.model.toDeliveredWarning
 import kotlin.time.Clock
 import kotlin.time.Instant
-import kotlin.time.toJavaInstant
 
 /**
  * Fires at the lead time worked out by [com.radami.migrainewatch.domain.AlertNotificationScheduler]
@@ -46,14 +45,14 @@ class AlertNotificationWorker @AssistedInject constructor(
         // The scheduler cancels events that leave the forecast, but up to an hour can pass
         // between reconciles, so confirm the event is still there before waking the user.
         val now = Clock.System.now()
-        val stillForecast = alertUseCase.currentAlerts(now.toJavaInstant())
+        val stillForecast = alertUseCase.currentAlerts(now)
             .any { AlertNotificationDecider.isSameEvent(it, alert) }
         if (!stillForecast) return Result.success()
 
         // Matched on the event, not merely on direction: an unrelated drop announced this
         // morning must not silence a genuinely new one this evening.
         val alreadySent = notifiedAlertDao
-            .getNotifiedSince((now - AlertNotificationDecider.NOTIFICATION_LOOKBACK).toJavaInstant())
+            .getNotifiedSince(now - AlertNotificationDecider.NOTIFICATION_LOOKBACK)
             .mapNotNull { it.toDeliveredWarning() }
             .any { AlertNotificationDecider.covers(it, alert) }
         if (alreadySent) return Result.success()
@@ -65,11 +64,11 @@ class AlertNotificationWorker @AssistedInject constructor(
 
         notifiedAlertDao.insert(
             NotifiedAlert(
-                startDateTime = alert.start.toJavaInstant(),
-                endDateTime = alert.end.toJavaInstant(),
+                startDateTime = alert.start,
+                endDateTime = alert.end,
                 direction = alert.direction.wireName,
                 thresholdHpa = settings.alertThresholdHpa,
-                notifiedDateTime = now.toJavaInstant()
+                notifiedDateTime = now
             )
         )
         return Result.success()

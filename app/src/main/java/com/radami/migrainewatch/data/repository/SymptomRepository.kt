@@ -3,7 +3,7 @@ package com.radami.migrainewatch.data.repository
 import com.radami.migrainewatch.data.local.dao.SymptomEntryDao
 import com.radami.migrainewatch.data.model.SymptomEntry
 import kotlinx.coroutines.flow.Flow
-import java.time.LocalDate
+import kotlinx.datetime.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 

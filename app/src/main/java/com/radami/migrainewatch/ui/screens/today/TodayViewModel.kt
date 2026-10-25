@@ -30,12 +30,11 @@ import kotlinx.datetime.toKotlinTimeZone
 import kotlinx.datetime.todayIn
 import java.time.Instant
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import com.radami.migrainewatch.data.model.toSymptomDay
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 import kotlin.time.toJavaInstant
-import kotlin.time.toKotlinInstant
 
 /**
  * Why the outlook has nothing to say about the week. Distinguished by asking the repository how
@@ -99,6 +98,11 @@ class TodayViewModel @Inject constructor(
     private val alertUseCase: PressureAlertUseCase
 ) : ViewModel() {
 
+    private companion object {
+        /** Far enough back to pin an already-underway event to its real start. */
+        const val HISTORY_DAYS = 4L
+    }
+
     private val _uiState = MutableStateFlow(TodayUiState())
     val uiState: StateFlow<TodayUiState> = _uiState.asStateFlow()
 
@@ -111,10 +115,9 @@ class TodayViewModel @Inject constructor(
     }
 
     private fun observeData() {
-        // Look back far enough to pin an already-underway event to its real start.
-        val queryStart = Instant.now()
-        val from = queryStart.minus(4, ChronoUnit.DAYS)
-        val to = queryStart.plus(PressureAlertUseCase.FORECAST_DAYS, ChronoUnit.DAYS)
+        val queryStart = Clock.System.now()
+        val from = queryStart - HISTORY_DAYS.days
+        val to = queryStart + PressureAlertUseCase.FORECAST_DAYS.days
 
         viewModelScope.launch {
             combine(
@@ -134,7 +137,7 @@ class TodayViewModel @Inject constructor(
                 // Shared use case keeps the banner and scheduled notifications in sync. Streak
                 // walks the full history, so both run off the main thread.
                 val (alerts, streak, outlook) = withContext(Dispatchers.Default) {
-                    val detected = alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now.toJavaInstant())
+                    val detected = alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now)
 
                     // Re-read per emission so it can't go stale across midnight while nothing else emits.
                     val today = Clock.System.todayIn(timeZone)
@@ -143,7 +146,7 @@ class TodayViewModel @Inject constructor(
                     // reading itself — the use case knows actual coverage.
                     val days = DayOutlook.forecast(
                         alerts = detected,
-                        coveredThrough = alertUseCase.coverageEnd(readings)?.toKotlinInstant(),
+                        coveredThrough = alertUseCase.coverageEnd(readings),
                         today = today,
                         zone = timeZone
                     )
@@ -182,7 +185,7 @@ class TodayViewModel @Inject constructor(
                     symptomFreeStreak = streak,
                     locationName = settings.location.name,
                     zone = zone,
-                    lastUpdated = readings.maxOfOrNull { it.fetchedDateTime },
+                    lastUpdated = readings.maxOfOrNull { it.fetchedDateTime }?.toJavaInstant(),
                     outlookGap = gap,
                     isLoading = false
                 )

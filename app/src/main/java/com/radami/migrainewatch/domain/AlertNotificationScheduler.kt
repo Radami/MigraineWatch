@@ -14,14 +14,14 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import java.time.Duration
-import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.radami.migrainewatch.data.model.toDeliveredWarning
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Instant
 import kotlin.time.toJavaDuration
-import kotlin.time.toJavaInstant
-import kotlin.time.toKotlinInstant
 
 /** What one reconcile did, so a caller can report it instead of leaving it to logcat. */
 sealed interface ReconcileResult {
@@ -55,7 +55,7 @@ class AlertNotificationScheduler @Inject constructor(
         const val WORK_NAME_PREFIX = "alert_notification_"
 
         /** Delivered warnings are pruned beyond this; nothing that old can still be forecast. */
-        val HISTORY_RETENTION: Duration = Duration.ofDays(30)
+        val HISTORY_RETENTION: Duration = 30.days
 
         /** Room for a burst of reconciles so [results] never drops one it could have reported. */
         const val RESULT_BUFFER = 8
@@ -66,26 +66,26 @@ class AlertNotificationScheduler @Inject constructor(
     /** The outcome of every reconcile, whoever triggered it. Debug settings listen here. */
     val results: SharedFlow<ReconcileResult> = _results.asSharedFlow()
 
-    suspend fun reconcile(now: Instant = Instant.now()): ReconcileResult {
+    suspend fun reconcile(now: Instant = Clock.System.now()): ReconcileResult {
         val result = runCatching {
             val settings = userPreferences.settings.first()
             val alerts = alertUseCase.currentAlerts(now)
             val alreadyNotified = notifiedAlertDao
-                .getNotifiedSince(now.minus(AlertNotificationDecider.NOTIFICATION_LOOKBACK.toJavaDuration()))
+                .getNotifiedSince(now - AlertNotificationDecider.NOTIFICATION_LOOKBACK)
                 .mapNotNull { it.toDeliveredWarning() }
 
             val pending = AlertNotificationDecider.decide(
                 alerts = alerts,
                 alreadyNotified = alreadyNotified,
                 notificationsEnabled = settings.notificationsEnabled,
-                now = now.toKotlinInstant()
+                now = now
             )
 
             val wanted = pending.associateBy { workName(it) }
             val cancelled = cancelWarningsMissingFrom(wanted.keys)
             wanted.forEach { (name, notification) -> enqueue(name, notification, now) }
 
-            notifiedAlertDao.deleteOlderThan(now.minus(HISTORY_RETENTION))
+            notifiedAlertDao.deleteOlderThan(now - HISTORY_RETENTION)
             ReconcileResult.Success(pending = wanted.size, cancelled = cancelled)
         }.getOrElse { error ->
             // Never let scheduling take down the caller; the next fetch retries.
@@ -118,16 +118,16 @@ class AlertNotificationScheduler @Inject constructor(
     }
 
     private fun enqueue(name: String, notification: PendingAlertNotification, now: Instant) {
-        val delay = Duration.between(now, notification.notifyAt.toJavaInstant()).coerceAtLeast(Duration.ZERO)
+        val delay = (notification.notifyAt - now).coerceAtLeast(Duration.ZERO)
 
         val request = OneTimeWorkRequestBuilder<AlertNotificationWorker>()
-            .setInitialDelay(delay)
+            .setInitialDelay(delay.toJavaDuration())
             .setInputData(AlertNotificationWorker.inputDataFor(notification.alert))
             .addTag(WORK_TAG)
             .addTag(name)
             .build()
 
-        Log.d(TAG, "Warning $name (${notification.phase}) scheduled in ${delay.toMinutes()} min")
+        Log.d(TAG, "Warning $name (${notification.phase}) scheduled in ${delay.inWholeMinutes} min")
 
         // REPLACE rather than KEEP: a refreshed forecast moves an event, and the warning has
         // to move with it.

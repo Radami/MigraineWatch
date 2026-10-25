@@ -36,6 +36,7 @@ import java.io.IOException
 import java.time.Instant
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.time.toKotlinInstant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PressureRepositoryTest {
@@ -126,7 +127,7 @@ class PressureRepositoryTest {
     /** Skips the archive gap fill (triggered when stored history is over 30 days old). */
     private fun stubRecentHistory() {
         val now = Instant.now()
-        coEvery { dao.getLatestHistorical(any()) } returns PressureReading(now, 1013f, 1000f, now)
+        coEvery { dao.getLatestHistorical(any()) } returns PressureReading(now.toKotlinInstant(), 1013f, 1000f, now.toKotlinInstant())
     }
 
     @Test

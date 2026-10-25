@@ -22,6 +22,7 @@ import org.junit.Before
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDate
+import kotlin.time.toKotlinInstant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CalendarViewModelTest {
@@ -59,8 +60,8 @@ class CalendarViewModelTest {
 
         // A 12 hPa drop inside half an hour, well over the threshold.
         val readings = listOf(
-            PressureReading(DROP_START, 1020f, 1020f, DROP_END),
-            PressureReading(DROP_END, 1008f, 1008f, DROP_END)
+            PressureReading(DROP_START.toKotlinInstant(), 1020f, 1020f, DROP_END.toKotlinInstant()),
+            PressureReading(DROP_END.toKotlinInstant(), 1008f, 1008f, DROP_END.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
     }

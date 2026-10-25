@@ -28,14 +28,17 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.util.Locale
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toKotlinTimeZone
+import kotlinx.datetime.toLocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 /** What a fetch does with the readings already stored. */
 private enum class RefreshMode {
@@ -121,11 +124,6 @@ class PressureRepository @Inject constructor(
     private val prefs: UserPreferences,
     @ApplicationScope private val scope: CoroutineScope
 ) {
-    // Pinned to ROOT: these go into an Open-Meteo query string, not onto a screen.
-    // A device locale with non-Latin digits would otherwise send a date the API can't parse.
-    private val isoFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm", Locale.ROOT)
-    private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ROOT)
-
     // Guards [inFlight] only. The fetch itself runs outside the lock, so joining an existing
     // refresh never waits on the network — it waits on the Deferred.
     private val refreshMutex = Mutex()
@@ -223,7 +221,7 @@ class PressureRepository @Inject constructor(
 
         // An unknown zone is requested as "auto"; storeForecast keeps the one that comes back.
         val requestZone = loc.knownZone?.id ?: AUTO_TIMEZONE
-        val now = Instant.now()
+        val now = Clock.System.now()
         Log.d(TAG, "Refreshing data for ${loc.name} at ${loc.lat},${loc.lon} in $requestZone")
 
         // Own catch, not part of the outcome: the forecast endpoint already covers 30 days,
@@ -245,13 +243,14 @@ class PressureRepository @Inject constructor(
      */
     private suspend fun gapFillIfNeeded(loc: LocationData, requestZone: String, now: Instant) {
         val lastHistorical = dao.getLatestHistorical(now)
-        val historyStart = now.minus(FORECAST_HISTORY_DAYS, ChronoUnit.DAYS)
-        if (lastHistorical != null && !lastHistorical.dateTime.isBefore(historyStart)) return
+        val historyStart = now - FORECAST_HISTORY_DAYS.days
+        if (lastHistorical != null && lastHistorical.dateTime >= historyStart) return
 
-        val gapStart = lastHistorical?.dateTime ?: now.minus(INITIAL_BACKFILL_DAYS, ChronoUnit.DAYS)
+        val gapStart = lastHistorical?.dateTime ?: (now - INITIAL_BACKFILL_DAYS.days)
         // Dates only bound the request, so the fallback zone is close enough while it's unknown.
-        val startDate = formatDate(gapStart, loc.zone)
-        val endDate = formatDate(historyStart, loc.zone)
+        val zone = loc.zone.toKotlinTimeZone()
+        val startDate = formatDate(gapStart, zone)
+        val endDate = formatDate(historyStart, zone)
         Log.d(TAG, "Fetching archive from $startDate to $endDate")
 
         val response = archiveApi.getArchive(
@@ -261,9 +260,9 @@ class PressureRepository @Inject constructor(
             endDate = endDate,
             timezone = requestZone
         )
-        val fetchedAt = Instant.now()
+        val fetchedAt = Clock.System.now()
         val historical = parseResponse(response, fetchedAt, response.timezone.ifBlank { loc.zone.id })
-            .filter { it.dateTime.isBefore(now) }
+            .filter { it.dateTime < now }
 
         Log.d(TAG, "Inserting ${historical.size} historical readings from archive")
         dao.insertHistorical(historical)
@@ -282,7 +281,7 @@ class PressureRepository @Inject constructor(
             longitude = loc.lon,
             timezone = requestZone
         )
-        val fetchedAt = Instant.now()
+        val fetchedAt = Clock.System.now()
         val readings = parseResponse(response, fetchedAt, response.timezone.ifBlank { loc.zone.id })
 
         // Not written: both write paths clear what they replace first, so an empty response
@@ -292,8 +291,8 @@ class PressureRepository @Inject constructor(
             return RefreshState.NoReadings
         }
 
-        val historical = readings.filter { it.dateTime.isBefore(now) }
-        val forecast = readings.filter { !it.dateTime.isBefore(now) }
+        val historical = readings.filter { it.dateTime < now }
+        val forecast = readings.filter { it.dateTime >= now }
 
         Log.d(TAG, "Inserting ${historical.size} historical and ${forecast.size} forecast readings")
 
@@ -326,9 +325,9 @@ class PressureRepository @Inject constructor(
 
     /** No dispatcher of its own: Room already runs suspending queries on its own executor. */
     suspend fun isForecastStale(): Boolean {
-        val now = Instant.now()
+        val now = Clock.System.now()
         val fetchedAt = dao.getLatestForecastFetchTime(now) ?: return true
-        return fetchedAt.isBefore(now.minus(FORECAST_FRESHNESS_HOURS, ChronoUnit.HOURS))
+        return fetchedAt < now - FORECAST_FRESHNESS_HOURS.hours
     }
 
     private fun parseResponse(
@@ -336,17 +335,16 @@ class PressureRepository @Inject constructor(
         fetchedAt: Instant,
         timezone: String
     ): List<PressureReading> {
-        val zone = ZoneId.of(timezone)
+        val zone = TimeZone.of(timezone)
         return response.hourly.time.mapIndexedNotNull { i, timeStr ->
             val pressureMsl = response.hourly.pressureMsl.getOrNull(i) ?: return@mapIndexedNotNull null
             val surfacePressure = response.hourly.surfacePressure.getOrNull(i) ?: return@mapIndexedNotNull null
-            val instant = LocalDateTime.parse(timeStr, isoFormatter)
-                .atZone(zone)
-                .toInstant()
+            val instant = LocalDateTime.parse(timeStr).toInstant(zone)
             PressureReading(instant, pressureMsl, surfacePressure, fetchedAt)
         }
     }
 
-    private fun formatDate(instant: Instant, zone: ZoneId): String =
-        instant.atZone(zone).toLocalDate().format(dateFormatter)
+    /** ISO `yyyy-MM-dd` in ASCII digits whatever the device locale: it goes into a query string. */
+    private fun formatDate(instant: Instant, zone: TimeZone): String =
+        instant.toLocalDateTime(zone).date.toString()
 }

@@ -20,12 +20,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.datetime.toKotlinTimeZone
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
+import kotlin.time.toKotlinInstant
 import com.radami.migrainewatch.data.model.toPressureSample
 
 data class CalendarUiState(
@@ -111,12 +113,12 @@ class CalendarViewModel @Inject constructor(
                 val statsFrom = today.minusMonths(12)
 
                 combine(
-                    symptomRepository.getEntriesInRange(from, to),
-                    pressureRepository.getReadingsInRange(fromInstant, toInstant),
-                    symptomRepository.getEntriesInRange(statsFrom, today)
+                    symptomRepository.getEntriesInRange(from.toKotlinLocalDate(), to.toKotlinLocalDate()),
+                    pressureRepository.getReadingsInRange(fromInstant.toKotlinInstant(), toInstant.toKotlinInstant()),
+                    symptomRepository.getEntriesInRange(statsFrom.toKotlinLocalDate(), today.toKotlinLocalDate())
                 ) { entries, readings, statsEntries -> Triple(entries, readings, statsEntries) }
                     .collectLatest { (entries, readings, statsEntries) ->
-                        val entriesMap = entries.associateBy { it.date }
+                        val entriesMap = entries.associateBy { it.date.toJavaLocalDate() }
 
                         val highRiskDays = withContext(Dispatchers.Default) {
                             val alerts = AlertDetector.detect(
@@ -129,10 +131,10 @@ class CalendarViewModel @Inject constructor(
 
                         val lastMonth = thisMonth.minusMonths(1)
                         val monthLogCounts = statsEntries
-                            .filter { YearMonth.from(it.date) == thisMonth }
+                            .filter { YearMonth.from(it.date.toJavaLocalDate()) == thisMonth }
                             .groupingBy { it.severity }.eachCount()
                         val lastMonthLogCounts = statsEntries
-                            .filter { YearMonth.from(it.date) == lastMonth }
+                            .filter { YearMonth.from(it.date.toJavaLocalDate()) == lastMonth }
                             .groupingBy { it.severity }.eachCount()
                         // The fetched range is exactly the rolling 12-month window.
                         val last12MonthsLogCounts = statsEntries.groupingBy { it.severity }.eachCount()

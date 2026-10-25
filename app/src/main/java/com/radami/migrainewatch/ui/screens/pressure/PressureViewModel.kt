@@ -25,8 +25,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 import javax.inject.Inject
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
+import kotlin.time.toJavaInstant
 
 /**
  * The chip above the chart: resolution and drawing mode. A min/max band only reads well over a
@@ -98,9 +100,9 @@ class PressureViewModel @Inject constructor(
 
     private fun observeData() {
         // Fixed at screen open; a clock-following range would resubscribe the query every emission.
-        val queryStart = Instant.now()
-        val from = queryStart.minus(HISTORY_DAYS, ChronoUnit.DAYS)
-        val to = queryStart.plus(PressureAlertUseCase.FORECAST_DAYS, ChronoUnit.DAYS)
+        val queryStart = Clock.System.now()
+        val from = queryStart - HISTORY_DAYS.days
+        val to = queryStart + PressureAlertUseCase.FORECAST_DAYS.days
 
         viewModelScope.launch {
             combine(
@@ -110,7 +112,7 @@ class PressureViewModel @Inject constructor(
             ) { readings, settings, refreshState -> PressureInputs(readings, settings, refreshState) }
                 .collectLatest { (readings, settings, refreshState) ->
                     // Re-evaluated per emission so nothing goes stale while the screen stays open.
-                    val now = Instant.now()
+                    val now = Clock.System.now()
 
                     // Shared use case, so this matches exactly what the Today banner and notifications describe.
                     val alerts = withContext(Dispatchers.Default) {
@@ -118,7 +120,7 @@ class PressureViewModel @Inject constructor(
                     }
 
                     // Last measured reading, or the earliest forecast one if opened before any measurement lands.
-                    val current = readings.lastOrNull { it.dateTime.isBefore(now) }
+                    val current = readings.lastOrNull { it.dateTime < now }
                         ?: readings.firstOrNull()
 
                     _uiState.update { state ->
@@ -129,7 +131,7 @@ class PressureViewModel @Inject constructor(
                             alertThresholdHpa = settings.alertThresholdHpa,
                             locationName = settings.location.name,
                             zone = settings.location.zone,
-                            lastUpdated = readings.maxOfOrNull { it.fetchedDateTime },
+                            lastUpdated = readings.maxOfOrNull { it.fetchedDateTime }?.toJavaInstant(),
                             refreshState = refreshState,
                             isLoading = false
                         )

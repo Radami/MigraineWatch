@@ -67,11 +67,11 @@ internal data class SeriesEdges(val lower: List<EdgePoint>, val upper: List<Edge
  * reusing a reading from elsewhere.
  */
 internal fun pressureAt(readings: List<PressureReading>, epoch: Long): Float? {
-    val after = readings.firstOrNull { it.dateTime.epochSecond >= epoch } ?: return null
-    if (after.dateTime.epochSecond == epoch) return after.pressureMsl
-    val before = readings.lastOrNull { it.dateTime.epochSecond <= epoch } ?: return null
-    val t0 = before.dateTime.epochSecond
-    val t1 = after.dateTime.epochSecond
+    val after = readings.firstOrNull { it.dateTime.epochSeconds >= epoch } ?: return null
+    if (after.dateTime.epochSeconds == epoch) return after.pressureMsl
+    val before = readings.lastOrNull { it.dateTime.epochSeconds <= epoch } ?: return null
+    val t0 = before.dateTime.epochSeconds
+    val t1 = after.dateTime.epochSeconds
     val fraction = (epoch - t0).toFloat() / (t1 - t0)
     return before.pressureMsl + fraction * (after.pressureMsl - before.pressureMsl)
 }
@@ -91,7 +91,7 @@ internal fun stepRanges(
     val half = window.step.seconds / 2
     return ChartWindow.POINT_INDICES.mapNotNull { i ->
         val anchorEpoch = window.epochSecondAt(i)
-        val inStep = readings.filter { abs(it.dateTime.epochSecond - anchorEpoch) <= half }
+        val inStep = readings.filter { abs(it.dateTime.epochSeconds - anchorEpoch) <= half }
         if (inStep.size < MIN_READINGS_FOR_RANGE) return@mapNotNull null
         RangeEntry(i, inStep.minOf { it.pressureMsl }, inStep.maxOf { it.pressureMsl })
     }

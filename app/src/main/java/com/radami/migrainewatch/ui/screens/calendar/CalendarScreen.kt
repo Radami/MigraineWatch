@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.IntOffset
 import com.radami.migrainewatch.ui.theme.Motion
 import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
 import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
+import kotlinx.datetime.toJavaLocalDate
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -154,7 +155,7 @@ fun CalendarScreen(
                     onClose = viewModel::dismissBottomSheet,
                     onEdit = {
                         viewModel.dismissBottomSheet()
-                        onLogEntry(entry.date)
+                        onLogEntry(entry.date.toJavaLocalDate())
                     },
                     onDelete = { viewModel.deleteEntry(entry) }
                 )
@@ -470,7 +471,7 @@ private fun DayDetailSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                entry.date.format(dateFormatter),
+                entry.date.toJavaLocalDate().format(dateFormatter),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold
             )

@@ -31,12 +31,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.time.Duration
-import java.time.Instant
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
-import kotlin.time.toJavaInstant
-import kotlin.time.toKotlinInstant
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 /**
  * The worker re-checks an event when its warning falls due, then posts and records it. Its
@@ -49,7 +49,7 @@ class AlertNotificationWorkerTest {
     private companion object {
         const val THRESHOLD_HPA = 6f
         val LOCATION_ZONE: ZoneId = ZoneId.of("Asia/Kathmandu")
-        val NOTIFICATION_LOOKBACK: Duration = Duration.ofDays(7)
+        val NOTIFICATION_LOOKBACK: Duration = 7.days
     }
 
     private val alertUseCase = mockk<PressureAlertUseCase>()
@@ -60,18 +60,18 @@ class AlertNotificationWorkerTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
     /** Whole seconds: the scheduler hands the worker its event in epoch seconds. */
-    private val startedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+    private val startedAt = Instant.fromEpochSeconds(Clock.System.now().epochSeconds)
 
     private val ahead = AlertWindow(
-        start = startedAt.plus(Duration.ofHours(6)).toKotlinInstant(),
-        end = startedAt.plus(Duration.ofHours(26)).toKotlinInstant(),
+        start = startedAt + 6.hours,
+        end = startedAt + 26.hours,
         delta = 9f,
         direction = PressureDirection.DROP
     )
 
     private val underway = AlertWindow(
-        start = startedAt.minus(Duration.ofHours(2)).toKotlinInstant(),
-        end = startedAt.plus(Duration.ofHours(10)).toKotlinInstant(),
+        start = startedAt - 2.hours,
+        end = startedAt + 10.hours,
         delta = 9f,
         direction = PressureDirection.RISE
     )
@@ -130,15 +130,15 @@ class AlertNotificationWorkerTest {
         coEvery { notifiedAlertDao.insert(capture(recorded)) } returns Unit
 
         runWorker(ahead)
-        val finishedAt = Instant.now()
+        val finishedAt = Clock.System.now()
 
-        assertEquals(ahead.start.toJavaInstant(), recorded.captured.startDateTime)
-        assertEquals(ahead.end.toJavaInstant(), recorded.captured.endDateTime)
+        assertEquals(ahead.start, recorded.captured.startDateTime)
+        assertEquals(ahead.end, recorded.captured.endDateTime)
         assertEquals(PressureDirection.DROP.wireName, recorded.captured.direction)
         assertEquals(THRESHOLD_HPA, recorded.captured.thresholdHpa, 0f)
 
         val notifiedAt = recorded.captured.notifiedDateTime
-        assertTrue(!notifiedAt.isBefore(startedAt) && !notifiedAt.isAfter(finishedAt))
+        assertTrue(notifiedAt >= startedAt && notifiedAt <= finishedAt)
     }
 
     @Test
@@ -147,21 +147,21 @@ class AlertNotificationWorkerTest {
         coEvery { notifiedAlertDao.getNotifiedSince(capture(since)) } returns emptyList()
 
         runWorker(ahead)
-        val finishedAt = Instant.now()
+        val finishedAt = Clock.System.now()
 
         val lookedBack = since.captured
-        assertTrue(!lookedBack.isBefore(startedAt.minus(NOTIFICATION_LOOKBACK)))
-        assertTrue(!lookedBack.isAfter(finishedAt.minus(NOTIFICATION_LOOKBACK)))
+        assertTrue(lookedBack >= startedAt - NOTIFICATION_LOOKBACK)
+        assertTrue(lookedBack <= finishedAt - NOTIFICATION_LOOKBACK)
     }
 
     @Test
     fun `an event already warned about is not posted again`() {
         val delivered = NotifiedAlert(
-            startDateTime = ahead.start.toJavaInstant(),
-            endDateTime = ahead.end.toJavaInstant(),
+            startDateTime = ahead.start,
+            endDateTime = ahead.end,
             direction = PressureDirection.DROP.wireName,
             thresholdHpa = THRESHOLD_HPA,
-            notifiedDateTime = startedAt.minus(Duration.ofHours(1))
+            notifiedDateTime = startedAt - 1.hours
         )
         coEvery { notifiedAlertDao.getNotifiedSince(any()) } returns listOf(delivered)
 

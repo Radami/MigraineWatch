@@ -15,13 +15,14 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.datetime.toKotlinLocalDate
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
-import java.time.Instant
 import java.time.LocalDate
+import kotlin.time.Clock
 
 /**
  * Relief is recorded as chips, not a slider, so 0% and "unanswered" must stay distinguishable.
@@ -121,16 +122,16 @@ class LogEntryViewModelTest {
 
     @Test
     fun `an existing entry's relief is loaded back into the form`() = runTest {
-        coEvery { symptomRepository.getByDate(DATE) } returns SymptomEntry(
-            date = DATE,
+        coEvery { symptomRepository.getByDate(DATE.toKotlinLocalDate()) } returns SymptomEntry(
+            date = DATE.toKotlinLocalDate(),
             severity = Severity.MIGRAINE,
             triggers = emptyList(),
             durationBucket = null,
             reliefPercent = 25,
             medication = null,
             notes = null,
-            createdAt = Instant.now(),
-            updatedAt = Instant.now()
+            createdAt = Clock.System.now(),
+            updatedAt = Clock.System.now()
         )
 
         val viewModel = viewModel()

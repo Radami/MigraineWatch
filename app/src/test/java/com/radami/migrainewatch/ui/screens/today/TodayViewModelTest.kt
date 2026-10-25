@@ -36,6 +36,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import kotlin.time.toKotlinInstant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TodayViewModelTest {
@@ -107,7 +108,7 @@ class TodayViewModelTest {
     fun `uiState updates when data is loaded`() = runTest {
         val now = Instant.now()
         val readings = listOf(
-            PressureReading(now, 1013f, 1013f, now)
+            PressureReading(now.toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         
@@ -127,8 +128,8 @@ class TodayViewModelTest {
         // banner has nothing left to warn about.
         val end = now.minus(2, ChronoUnit.HOURS)
         val readings = listOf(
-            PressureReading(end.minus(24, ChronoUnit.HOURS), 1020f, 1020f, now),
-            PressureReading(end, 1010f, 1010f, now)
+            PressureReading(end.minus(24, ChronoUnit.HOURS).toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+            PressureReading(end.toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
@@ -144,8 +145,8 @@ class TodayViewModelTest {
         val now = Instant.now()
         // Create a 10hPa drop over 12 hours
         val readings = listOf(
-            PressureReading(now, 1020f, 1020f, now),
-            PressureReading(now.plusSeconds(12 * 3600), 1010f, 1010f, now)
+            PressureReading(now.toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+            PressureReading(now.plusSeconds(12 * 3600).toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
@@ -169,8 +170,8 @@ class TodayViewModelTest {
         val now = Instant.now()
         // Started 6h ago, 6h left: still pending, but "starts" would misdescribe it.
         val readings = listOf(
-            PressureReading(now.minus(6, ChronoUnit.HOURS), 1020f, 1020f, now),
-            PressureReading(now.plus(6, ChronoUnit.HOURS), 1010f, 1010f, now)
+            PressureReading(now.minus(6, ChronoUnit.HOURS).toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+            PressureReading(now.plus(6, ChronoUnit.HOURS).toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
@@ -187,8 +188,8 @@ class TodayViewModelTest {
     fun `an event still ahead is reported as ahead`() = runTest {
         val now = Instant.now()
         val readings = listOf(
-            PressureReading(now.plus(6, ChronoUnit.HOURS), 1020f, 1020f, now),
-            PressureReading(now.plus(18, ChronoUnit.HOURS), 1010f, 1010f, now)
+            PressureReading(now.plus(6, ChronoUnit.HOURS).toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+            PressureReading(now.plus(18, ChronoUnit.HOURS).toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
@@ -202,7 +203,7 @@ class TodayViewModelTest {
     fun `no pending event leaves the banner nothing to word`() = runTest {
         val now = Instant.now()
         every { pressureRepository.getReadingsInRange(any(), any()) } returns
-            flowOf(listOf(PressureReading(now, 1013f, 1013f, now)))
+            flowOf(listOf(PressureReading(now.toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())))
 
         assertNull(
             TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
@@ -215,7 +216,7 @@ class TodayViewModelTest {
         val now = Instant.now()
         // Stale cache, history only. Card dates what it has instead of blaming the connection.
         val readings = (1..12).map { hoursAgo ->
-            PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS), 1013f, 1013f, now)
+            PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS).toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())
         }
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
 
@@ -304,7 +305,7 @@ class TodayViewModelTest {
     fun `readings that fell behind are dated even when the last fetch failed`() = runTest {
         val now = Instant.now()
         val readings = (1..12).map { hoursAgo ->
-            PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS), 1013f, 1013f, now)
+            PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS).toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())
         }
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         refreshState.value = RefreshState.Failed
@@ -325,7 +326,7 @@ class TodayViewModelTest {
 
         // Through to the last hour of today, and no further.
         val readings = (0 until HOURS_PER_DAY).map { hour ->
-            PressureReading(today.atTime(hour, 0).atZone(zone).toInstant(), 1013f, 1013f, now)
+            PressureReading(today.atTime(hour, 0).atZone(zone).toInstant().toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())
         }
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
 
@@ -352,7 +353,7 @@ class TodayViewModelTest {
         val readings = (0 until DayOutlook.DAYS).flatMap { day ->
             (0 until HOURS_PER_DAY).map { hour ->
                 val at = today.plusDays(day.toLong()).atTime(hour, 0).atZone(zone).toInstant()
-                PressureReading(at, 1013f, 1013f, now)
+                PressureReading(at.toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())
             }
         }
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
@@ -404,7 +405,7 @@ class TodayViewModelTest {
                 else ->
                     PEAK_HPA - (PEAK_HPA - TROUGH_HPA) * ChronoUnit.HOURS.between(dropStart, at) / DROP_HOURS
             }
-            PressureReading(at, pressure, pressure, now)
+            PressureReading(at.toKotlinInstant(), pressure, pressure, now.toKotlinInstant())
         }
     }
 

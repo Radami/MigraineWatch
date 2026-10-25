@@ -4,12 +4,13 @@ import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import kotlinx.coroutines.flow.first
-import java.time.Instant
-import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.radami.migrainewatch.data.model.toPressureSample
-import kotlin.time.toKotlinInstant
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 /**
  * The single definition of "which pressure events count right now". The Today screen and the
@@ -52,7 +53,7 @@ class PressureAlertUseCase @Inject constructor(
      * the forecast would look short of data.
      */
     fun coverageEnd(readings: List<PressureReading>): Instant? =
-        readings.maxOfOrNull { it.dateTime }?.plus(READING_INTERVAL_HOURS, ChronoUnit.HOURS)
+        readings.maxOfOrNull { it.dateTime }?.plus(READING_INTERVAL_HOURS.hours)
 
     /**
      * Alerts within [readings], which the caller has already collected (e.g. the Today screen's
@@ -63,22 +64,22 @@ class PressureAlertUseCase @Inject constructor(
         thresholdHpa: Float,
         now: Instant
     ): List<AlertWindow> {
-        val detectFrom = now.minus(DETECTION_HISTORY_HOURS, ChronoUnit.HOURS)
-        val window = readings.filter { !it.dateTime.isBefore(detectFrom) }
+        val detectFrom = now - DETECTION_HISTORY_HOURS.hours
+        val window = readings.filter { it.dateTime >= detectFrom }
 
         // Extra history is only to find true starts, not to widen the result.
-        val relevantFrom = now.minus(RELEVANCE_HOURS, ChronoUnit.HOURS).toKotlinInstant()
+        val relevantFrom = now - RELEVANCE_HOURS.hours
         return AlertDetector.detect(window.map { it.toPressureSample() }, thresholdHpa)
             .filter { it.end > relevantFrom }
     }
 
     /** Alerts for the user's current sensitivity, read straight from storage. */
-    suspend fun currentAlerts(now: Instant = Instant.now()): List<AlertWindow> {
+    suspend fun currentAlerts(now: Instant = Clock.System.now()): List<AlertWindow> {
         val settings = userPreferences.settings.first()
         val readings = pressureRepository
             .getReadingsInRange(
-                now.minus(DETECTION_HISTORY_HOURS, ChronoUnit.HOURS),
-                now.plus(FORECAST_DAYS, ChronoUnit.DAYS)
+                now - DETECTION_HISTORY_HOURS.hours,
+                now + FORECAST_DAYS.days
             )
             .first()
 

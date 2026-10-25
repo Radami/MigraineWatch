@@ -92,8 +92,8 @@ class PressureViewModelTest {
         val now = Instant.now()
         readingsReturn(
             listOf(
-                PressureReading(now.minusSeconds(HOUR_SECONDS), 1013f, 1013f, now),
-                PressureReading(now.plusSeconds(HOUR_SECONDS), 1011f, 1011f, now)
+                PressureReading(now.minusSeconds(HOUR_SECONDS).toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant()),
+                PressureReading(now.plusSeconds(HOUR_SECONDS).toKotlinInstant(), 1011f, 1011f, now.toKotlinInstant())
             )
         )
 
@@ -109,8 +109,8 @@ class PressureViewModelTest {
         val now = Instant.now()
         readingsReturn(
             listOf(
-                PressureReading(now, 1020f, 1020f, now),
-                PressureReading(now.plusSeconds(12 * HOUR_SECONDS), 1010f, 1010f, now)
+                PressureReading(now.toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+                PressureReading(now.plusSeconds(12 * HOUR_SECONDS).toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
             )
         )
 
@@ -128,8 +128,8 @@ class PressureViewModelTest {
         // Kept clear of the 72h detection edge so it can't pass for the wrong reason.
         readingsReturn(
             listOf(
-                PressureReading(now.minusSeconds(48 * HOUR_SECONDS), 1020f, 1020f, now),
-                PressureReading(now.minusSeconds(36 * HOUR_SECONDS), 1005f, 1005f, now)
+                PressureReading(now.minusSeconds(48 * HOUR_SECONDS).toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+                PressureReading(now.minusSeconds(36 * HOUR_SECONDS).toKotlinInstant(), 1005f, 1005f, now.toKotlinInstant())
             )
         )
 
@@ -143,8 +143,8 @@ class PressureViewModelTest {
         // actionable days), so this event must be listed but marked "not in view".
         readingsReturn(
             listOf(
-                PressureReading(now.plusSeconds(6 * DAY_SECONDS), 1020f, 1020f, now),
-                PressureReading(now.plusSeconds(6 * DAY_SECONDS + 12 * HOUR_SECONDS), 1008f, 1008f, now)
+                PressureReading(now.plusSeconds(6 * DAY_SECONDS).toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+                PressureReading(now.plusSeconds(6 * DAY_SECONDS + 12 * HOUR_SECONDS).toKotlinInstant(), 1008f, 1008f, now.toKotlinInstant())
             )
         )
 
@@ -162,7 +162,7 @@ class PressureViewModelTest {
     @Test
     fun `selecting a range changes the chip without touching the data`() = runTest {
         val now = Instant.now()
-        readingsReturn(listOf(PressureReading(now, 1013f, 1013f, now)))
+        readingsReturn(listOf(PressureReading(now.toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())))
 
         val viewModel = viewModel()
         viewModel.loadedState()

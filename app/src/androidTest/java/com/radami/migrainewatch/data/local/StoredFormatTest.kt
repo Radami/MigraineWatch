@@ -12,13 +12,13 @@ import com.radami.migrainewatch.di.DatabaseModule
 import com.radami.migrainewatch.domain.Severity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.datetime.LocalDate
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.time.Instant
-import java.time.LocalDate
+import kotlin.time.Instant
 
 /**
  * Pins how rows sit on disk, read and written with plain SQLite rather than through Room.
@@ -53,10 +53,10 @@ class StoredFormatTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
     private val reading = PressureReading(
-        dateTime = Instant.ofEpochMilli(READING_AT_MILLIS),
+        dateTime = Instant.fromEpochMilliseconds(READING_AT_MILLIS),
         pressureMsl = PRESSURE_MSL,
         surfacePressure = SURFACE_PRESSURE,
-        fetchedDateTime = Instant.ofEpochMilli(FETCHED_AT_MILLIS)
+        fetchedDateTime = Instant.fromEpochMilliseconds(FETCHED_AT_MILLIS)
     )
 
     private val entry = SymptomEntry(
@@ -67,16 +67,16 @@ class StoredFormatTest {
         reliefPercent = RELIEF_PERCENT,
         medication = "Ibuprofen",
         notes = "Woke with it",
-        createdAt = Instant.ofEpochMilli(ENTRY_CREATED_MILLIS),
-        updatedAt = Instant.ofEpochMilli(ENTRY_UPDATED_MILLIS)
+        createdAt = Instant.fromEpochMilliseconds(ENTRY_CREATED_MILLIS),
+        updatedAt = Instant.fromEpochMilliseconds(ENTRY_UPDATED_MILLIS)
     )
 
     private val alert = NotifiedAlert(
-        startDateTime = Instant.ofEpochMilli(ALERT_START_MILLIS),
-        endDateTime = Instant.ofEpochMilli(ALERT_END_MILLIS),
+        startDateTime = Instant.fromEpochMilliseconds(ALERT_START_MILLIS),
+        endDateTime = Instant.fromEpochMilliseconds(ALERT_END_MILLIS),
         direction = "drop",
         thresholdHpa = THRESHOLD_HPA,
-        notifiedDateTime = Instant.ofEpochMilli(ALERT_NOTIFIED_MILLIS)
+        notifiedDateTime = Instant.fromEpochMilliseconds(ALERT_NOTIFIED_MILLIS)
     )
 
     @Before
@@ -127,7 +127,7 @@ class StoredFormatTest {
         }
 
     /** Creates the schema the way the app does, so raw inserts land in the real tables. */
-    private fun createSchema() = withAppDatabase { it.openHelper.writableDatabase }
+    private fun createSchema() = withAppDatabase { it.symptomEntryDao().getEarliestDate() }
 
     @Test
     fun aReadingIsStoredAsEpochMillisecondsAndRealNumbers() {

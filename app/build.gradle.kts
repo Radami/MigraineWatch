@@ -152,7 +152,7 @@ android {
     sourceSets {
         // MigrationTestHelper reads the exported schemas off the device as assets, so the
         // directory Room writes them to has to be packaged into the instrumented test APK.
-        getByName("androidTest").assets.directories.add("$projectDir/schemas")
+        getByName("androidTest").assets.directories.add("$rootDir/shared/schemas")
 
         // initWith copies build type *properties*, not source directories, so without this the
         // sandbox build would silently lack src/debug — and with it DebugAlertReceiver, leaving
@@ -178,13 +178,6 @@ kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_11
     }
-}
-
-ksp {
-    // Room writes one JSON file per schema version here, and they are committed. Without the
-    // previous version's file there is nothing for a migration to start from and nothing for
-    // a migration test to verify against, so dropping these is what forces a destructive wipe.
-    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -222,9 +215,8 @@ dependencies {
     kspTest(libs.hilt.compiler)
 
     // Room
-    implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
+    implementation(libs.sqlite.framework)
 
     // DataStore
     implementation(libs.datastore.preferences)
