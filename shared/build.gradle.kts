@@ -33,6 +33,9 @@ kotlin {
             api(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
             api(libs.room.runtime)
+            api(libs.datastore.preferences.core)
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.okio)
         }
 
         commonTest.dependencies {

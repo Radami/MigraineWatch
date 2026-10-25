@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.toJavaZoneId
 import java.time.Instant
 import java.time.ZoneId
 import javax.inject.Inject
@@ -60,7 +61,7 @@ data class PressureUiState(
     val selectedRange: TimeRange = TimeRange.Days7,
     val locationName: String = "",
     /** The location's zone, which the chart and every time on the screen are shown in. */
-    val zone: ZoneId = LocationData().zone,
+    val zone: ZoneId = LocationData().zone.toJavaZoneId(),
     val lastUpdated: Instant? = null,
     /** How the fetch is going. An empty table alone can't tell in-flight from failed from empty. */
     val refreshState: RefreshState = RefreshState.InFlight,
@@ -130,7 +131,7 @@ class PressureViewModel @Inject constructor(
                             alertWindows = alerts,
                             alertThresholdHpa = settings.alertThresholdHpa,
                             locationName = settings.location.name,
-                            zone = settings.location.zone,
+                            zone = settings.location.zone.toJavaZoneId(),
                             lastUpdated = readings.maxOfOrNull { it.fetchedDateTime }?.toJavaInstant(),
                             refreshState = refreshState,
                             isLoading = false

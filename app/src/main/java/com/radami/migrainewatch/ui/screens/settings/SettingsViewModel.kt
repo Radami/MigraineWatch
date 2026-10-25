@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.toJavaZoneId
 import java.time.LocalDate
 import javax.inject.Inject
 import kotlin.time.Clock
@@ -174,7 +175,7 @@ class SettingsViewModel @Inject constructor(
             }
 
             val phase = AlertPhase.of(next, now)
-            val zone = userPreferences.settings.first().location.zone
+            val zone = userPreferences.settings.first().location.zone.toJavaZoneId()
             val message = when {
                 notifier.notify(next, phase, zone) ->
                     "Sent: ${formatHpa(next.delta)} hPa ${next.direction.wireName} ($phase)"

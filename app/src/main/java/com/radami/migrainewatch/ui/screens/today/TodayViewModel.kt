@@ -26,7 +26,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.datetime.toKotlinTimeZone
+import kotlinx.datetime.toJavaZoneId
 import kotlinx.datetime.todayIn
 import java.time.Instant
 import java.time.ZoneId
@@ -78,7 +78,7 @@ data class TodayUiState(
     val symptomFreeStreak: SymptomFreeStreak? = null,
     val locationName: String = "",
     /** The location's zone, which every date and time on the screen is shown in. */
-    val zone: ZoneId = LocationData().zone,
+    val zone: ZoneId = LocationData().zone.toJavaZoneId(),
     val lastUpdated: Instant? = null,
     /**
      * Why [outlook] has nothing to show, null when it does. Non-null only when every day is
@@ -131,8 +131,8 @@ class TodayViewModel @Inject constructor(
             }.collectLatest { (readings, entries, settings, refreshState) ->
                 // Re-evaluated per emission so relevance doesn't go stale while the screen stays open.
                 val now = Clock.System.now()
-                val zone = settings.location.zone
-                val timeZone = zone.toKotlinTimeZone()
+                val timeZone = settings.location.zone
+                val zone = timeZone.toJavaZoneId()
 
                 // Shared use case keeps the banner and scheduled notifications in sync. Streak
                 // walks the full history, so both run off the main thread.

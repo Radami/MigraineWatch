@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.datetime.toJavaZoneId
 import java.time.ZoneId
 import javax.inject.Inject
 
@@ -23,6 +24,6 @@ class MainViewModel @Inject constructor(
 
     /** The location's zone, for anything outside a screen that needs today's date there. */
     val locationZone: StateFlow<ZoneId> = userPreferences.settings
-        .map { it.location.zone }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LocationData().zone)
+        .map { it.location.zone.toJavaZoneId() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LocationData().zone.toJavaZoneId())
 }

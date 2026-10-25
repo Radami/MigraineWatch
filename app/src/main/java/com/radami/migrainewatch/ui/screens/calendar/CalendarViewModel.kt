@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.toJavaZoneId
 import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.datetime.toKotlinTimeZone
 import java.time.Instant
@@ -31,9 +32,9 @@ import kotlin.time.toKotlinInstant
 import com.radami.migrainewatch.data.model.toPressureSample
 
 data class CalendarUiState(
-    val currentMonth: YearMonth = YearMonth.now(LocationData().zone),
+    val currentMonth: YearMonth = YearMonth.now(LocationData().zone.toJavaZoneId()),
     /** Today at the location, which the grid marks and the statistics count back from. */
-    val today: LocalDate = LocalDate.now(LocationData().zone),
+    val today: LocalDate = LocalDate.now(LocationData().zone.toJavaZoneId()),
     val entriesInMonth: Map<LocalDate, SymptomEntry> = emptyMap(),
     // Days touched by a pressure event that crossed the user's alert threshold. The calendar
     // marks these as high risk; which way the pressure moved is not shown.
@@ -100,7 +101,7 @@ class CalendarViewModel @Inject constructor(
                 Pair(offset, settings)
             }.collectLatest { (offset, settings) ->
                 // Days, months and the readings' bounds all counted at the location.
-                val zone = settings.location.zone
+                val zone = settings.location.zone.toJavaZoneId()
                 val today = LocalDate.now(zone)
                 val thisMonth = YearMonth.from(today)
                 val month = thisMonth.plusMonths(offset)

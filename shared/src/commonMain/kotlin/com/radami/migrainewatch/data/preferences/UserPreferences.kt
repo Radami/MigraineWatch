@@ -1,6 +1,5 @@
 package com.radami.migrainewatch.data.preferences
 
-import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -10,15 +9,14 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.radami.migrainewatch.logging.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.retryWhen
-import java.io.IOException
-import java.time.DateTimeException
-import java.time.ZoneId
-import javax.inject.Inject
-import javax.inject.Singleton
+import kotlinx.datetime.IllegalTimeZoneException
+import kotlinx.datetime.TimeZone
+import okio.IOException
 
 /** Stored when a location's zone hasn't been looked up yet; see [LocationData.knownZone]. */
 const val UNKNOWN_TIMEZONE = ""
@@ -42,13 +40,13 @@ data class LocationData(
      * it up from the coordinates. An unparseable id counts as unknown so that lookup
      * replaces it.
      */
-    val knownZone: ZoneId?
+    val knownZone: TimeZone?
         get() {
             if (timezone == UNKNOWN_TIMEZONE || timezone == LEGACY_UNKNOWN_TIMEZONE) return null
 
             return try {
-                ZoneId.of(timezone)
-            } catch (e: DateTimeException) {
+                TimeZone.of(timezone)
+            } catch (e: IllegalTimeZoneException) {
                 null
             }
         }
@@ -57,7 +55,7 @@ data class LocationData(
      * The zone the app counts this location's days and times in. Until the location's own is
      * known, the device's: an unknown zone is almost always a GPS fix, so the user is there.
      */
-    val zone: ZoneId get() = knownZone ?: ZoneId.systemDefault()
+    val zone: TimeZone get() = knownZone ?: TimeZone.currentSystemDefault()
 }
 
 data class AppSettings(
@@ -72,8 +70,7 @@ data class AppSettings(
     val alertSensitivity: AlertSensitivity get() = AlertSensitivity.forThreshold(alertThresholdHpa)
 }
 
-@Singleton
-class UserPreferences @Inject constructor(
+class UserPreferences(
     private val dataStore: DataStore<Preferences>
 ) {
     private companion object {
@@ -103,7 +100,7 @@ class UserPreferences @Inject constructor(
      */
     val settings: Flow<AppSettings> = dataStore.data.retryWhen { cause, attempt ->
         if (cause !is IOException) return@retryWhen false
-        Log.e(TAG, "Could not read settings; falling back to defaults", cause)
+        Logger.e(TAG, "Could not read settings; falling back to defaults", cause)
 
         // Emit only once, on the first failure, not on every retry attempt.
         if (attempt == 0L) emit(emptyPreferences())

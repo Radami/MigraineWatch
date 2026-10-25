@@ -31,7 +31,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
-import kotlinx.datetime.toKotlinTimeZone
 import kotlinx.datetime.toLocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -248,7 +247,7 @@ class PressureRepository @Inject constructor(
 
         val gapStart = lastHistorical?.dateTime ?: (now - INITIAL_BACKFILL_DAYS.days)
         // Dates only bound the request, so the fallback zone is close enough while it's unknown.
-        val zone = loc.zone.toKotlinTimeZone()
+        val zone = loc.zone
         val startDate = formatDate(gapStart, zone)
         val endDate = formatDate(historyStart, zone)
         Log.d(TAG, "Fetching archive from $startDate to $endDate")

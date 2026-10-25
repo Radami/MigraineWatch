@@ -18,6 +18,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
 import com.radami.migrainewatch.data.model.toDeliveredWarning
+import kotlinx.datetime.toJavaZoneId
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -60,7 +61,7 @@ class AlertNotificationWorker @AssistedInject constructor(
         // Read now rather than carried from the scheduler: work can run hours after its delay
         // expires, by which time an event that was still ahead has started.
         val phase = AlertPhase.of(alert, now)
-        if (!notifier.notify(alert, phase, settings.location.zone)) return Result.retry()
+        if (!notifier.notify(alert, phase, settings.location.zone.toJavaZoneId())) return Result.retry()
 
         notifiedAlertDao.insert(
             NotifiedAlert(
