@@ -1,6 +1,5 @@
 package com.radami.migrainewatch.data.repository
 
-import android.util.Log
 import com.radami.migrainewatch.data.local.dao.PressureReadingDao
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.LocationData
@@ -8,7 +7,7 @@ import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.remote.OpenMeteoApi
 import com.radami.migrainewatch.data.remote.OpenMeteoArchiveApi
 import com.radami.migrainewatch.data.remote.dto.OpenMeteoResponse
-import com.radami.migrainewatch.di.ApplicationScope
+import com.radami.migrainewatch.logging.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -32,8 +31,6 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
@@ -115,13 +112,12 @@ private inline fun <T> catchingFailures(block: () -> T): Result<T> =
         Result.failure(e)
     }
 
-@Singleton
-class PressureRepository @Inject constructor(
+class PressureRepository(
     private val dao: PressureReadingDao,
     private val forecastApi: OpenMeteoApi,
     private val archiveApi: OpenMeteoArchiveApi,
     private val prefs: UserPreferences,
-    @ApplicationScope private val scope: CoroutineScope
+    private val scope: CoroutineScope
 ) {
     // Guards [inFlight] only. The fetch itself runs outside the lock, so joining an existing
     // refresh never waits on the network — it waits on the Deferred.
@@ -210,28 +206,28 @@ class PressureRepository @Inject constructor(
      */
     private suspend fun fetchAndStore(mode: RefreshMode): RefreshState {
         val loc = catchingFailures { prefs.settings.first().location }
-            .onFailure { Log.e(TAG, "Could not read the stored location", it) }
+            .onFailure { Logger.e(TAG, "Could not read the stored location", it) }
             .getOrElse { return RefreshState.Failed }
 
         if (loc.lat == 0.0 && loc.lon == 0.0) {
-            Log.w(TAG, "Refresh skipped: No location set")
+            Logger.w(TAG, "Refresh skipped: No location set")
             return RefreshState.NoLocation
         }
 
         // An unknown zone is requested as "auto"; storeForecast keeps the one that comes back.
         val requestZone = loc.knownZone?.id ?: AUTO_TIMEZONE
         val now = Clock.System.now()
-        Log.d(TAG, "Refreshing data for ${loc.name} at ${loc.lat},${loc.lon} in $requestZone")
+        Logger.d(TAG, "Refreshing data for ${loc.name} at ${loc.lat},${loc.lon} in $requestZone")
 
         // Own catch, not part of the outcome: the forecast endpoint already covers 30 days,
         // so failing to backfill further just thins the chart, it isn't a refresh failure.
         if (mode == RefreshMode.KeepHistory) {
             catchingFailures { gapFillIfNeeded(loc, requestZone, now) }
-                .onFailure { Log.e(TAG, "Archive fetch failed", it) }
+                .onFailure { Logger.e(TAG, "Archive fetch failed", it) }
         }
 
         return catchingFailures { storeForecast(mode, loc, requestZone, now) }
-            .onFailure { Log.e(TAG, "Forecast fetch failed", it) }
+            .onFailure { Logger.e(TAG, "Forecast fetch failed", it) }
             .getOrElse { RefreshState.Failed }
     }
 
@@ -250,7 +246,7 @@ class PressureRepository @Inject constructor(
         val zone = loc.zone
         val startDate = formatDate(gapStart, zone)
         val endDate = formatDate(historyStart, zone)
-        Log.d(TAG, "Fetching archive from $startDate to $endDate")
+        Logger.d(TAG, "Fetching archive from $startDate to $endDate")
 
         val response = archiveApi.getArchive(
             latitude = loc.lat,
@@ -263,7 +259,7 @@ class PressureRepository @Inject constructor(
         val historical = parseResponse(response, fetchedAt, response.timezone.ifBlank { loc.zone.id })
             .filter { it.dateTime < now }
 
-        Log.d(TAG, "Inserting ${historical.size} historical readings from archive")
+        Logger.d(TAG, "Inserting ${historical.size} historical readings from archive")
         dao.insertHistorical(historical)
     }
 
@@ -274,7 +270,7 @@ class PressureRepository @Inject constructor(
         requestZone: String,
         now: Instant
     ): RefreshState {
-        Log.d(TAG, "Fetching forecast for timezone $requestZone")
+        Logger.d(TAG, "Fetching forecast for timezone $requestZone")
         val response = forecastApi.getForecast(
             latitude = loc.lat,
             longitude = loc.lon,
@@ -286,14 +282,14 @@ class PressureRepository @Inject constructor(
         // Not written: both write paths clear what they replace first, so an empty response
         // would wipe the forecast (or the whole table on a move) instead of just updating it.
         if (readings.isEmpty()) {
-            Log.w(TAG, "Forecast response carried no readings; leaving the stored series alone")
+            Logger.w(TAG, "Forecast response carried no readings; leaving the stored series alone")
             return RefreshState.NoReadings
         }
 
         val historical = readings.filter { it.dateTime < now }
         val forecast = readings.filter { it.dateTime >= now }
 
-        Log.d(TAG, "Inserting ${historical.size} historical and ${forecast.size} forecast readings")
+        Logger.d(TAG, "Inserting ${historical.size} historical and ${forecast.size} forecast readings")
 
         // Last chance to drop a superseded fetch before it writes; the DB writes below
         // don't suspend, so they wouldn't otherwise notice a cancellation in time.
@@ -316,7 +312,7 @@ class PressureRepository @Inject constructor(
         // for the archive: the series is stored either way, and the next refresh tries again.
         if (loc.knownZone == null && response.timezone.isNotBlank()) {
             catchingFailures { prefs.adoptTimezone(loc, response.timezone) }
-                .onFailure { Log.e(TAG, "Could not store the resolved timezone", it) }
+                .onFailure { Logger.e(TAG, "Could not store the resolved timezone", it) }
         }
 
         return RefreshState.Updated

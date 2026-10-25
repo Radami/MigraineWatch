@@ -38,6 +38,11 @@ kotlin {
             implementation(libs.okio)
         }
 
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
+            implementation(libs.sqlite.bundled)
+        }
+
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }

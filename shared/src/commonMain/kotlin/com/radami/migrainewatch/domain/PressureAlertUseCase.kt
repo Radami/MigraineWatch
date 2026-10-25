@@ -4,8 +4,6 @@ import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.PressureRepository
 import kotlinx.coroutines.flow.first
-import javax.inject.Inject
-import javax.inject.Singleton
 import com.radami.migrainewatch.data.model.toPressureSample
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -16,8 +14,7 @@ import kotlin.time.Instant
  * The single definition of "which pressure events count right now". The Today screen and the
  * notification scheduler both go through here so they can't drift apart.
  */
-@Singleton
-class PressureAlertUseCase @Inject constructor(
+class PressureAlertUseCase(
     private val pressureRepository: PressureRepository,
     private val userPreferences: UserPreferences
 ) {

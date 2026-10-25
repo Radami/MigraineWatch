@@ -4,11 +4,8 @@ import com.radami.migrainewatch.data.local.dao.SymptomEntryDao
 import com.radami.migrainewatch.data.model.SymptomEntry
 import kotlinx.coroutines.flow.Flow
 import kotlinx.datetime.LocalDate
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class SymptomRepository @Inject constructor(
+class SymptomRepository(
     private val dao: SymptomEntryDao
 ) {
     fun getEntriesInRange(from: LocalDate, to: LocalDate): Flow<List<SymptomEntry>> =
