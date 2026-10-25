@@ -235,8 +235,7 @@ dependencies {
     androidTestImplementation(libs.workmanager.testing)
 
     // Networking
-    implementation(libs.retrofit.core)
-    implementation(libs.retrofit.kotlinx.serialization)
+    implementation(libs.ktor.client.okhttp)
     implementation(libs.okhttp.logging)
     implementation(libs.kotlinx.serialization.json)
 
@@ -254,7 +253,6 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.androidx.arch.core.testing)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.compose.ui.test)

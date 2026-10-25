@@ -78,14 +78,11 @@ class OpenMeteoHttpTest {
 
     private val server = FakeOpenMeteo()
     private val client = OkHttpClient.Builder().addInterceptor(server).build()
-    private val json = NetworkModule.provideJson()
+    private val httpClient = NetworkModule.provideHttpClient(client)
 
-    private val forecastApi =
-        NetworkModule.provideOpenMeteoApi(NetworkModule.provideForecastRetrofit(client, json))
-    private val archiveApi =
-        NetworkModule.provideOpenMeteoArchiveApi(NetworkModule.provideArchiveRetrofit(client, json))
-    private val geocodingApi =
-        GeocodingModule.provideGeocodingApi(GeocodingModule.provideGeocodingRetrofit(client, json))
+    private val forecastApi = NetworkModule.provideOpenMeteoApi(httpClient)
+    private val archiveApi = NetworkModule.provideOpenMeteoArchiveApi(httpClient)
+    private val geocodingApi = GeocodingModule.provideGeocodingApi(httpClient)
 
     private fun fetchForecast() = runBlocking {
         forecastApi.getForecast(latitude = LATITUDE, longitude = LONGITUDE, timezone = ZONE)
