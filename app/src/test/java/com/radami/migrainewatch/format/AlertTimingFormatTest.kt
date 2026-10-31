@@ -49,6 +49,24 @@ class AlertTimingFormatTest {
     }
 
     @Test
+    fun `an event under way leaves out its end when there is no room for it`() {
+        assertEquals(
+            "Underway since Monday 12:00",
+            formatAlertTiming(alert, AlertPhase.UNDERWAY, AlertTimingDetail.Brief, KATHMANDU)
+        )
+    }
+
+    @Test
+    fun `times are on a 24 hour clock and padded to two digits`() {
+        val justAfterMidnight = alert.copy(start = Instant.parse("2026-08-23T18:20:00Z"))
+
+        assertEquals(
+            "Starts Monday 00:05",
+            formatAlertTiming(justAfterMidnight, AlertPhase.AHEAD, AlertTimingDetail.Brief, KATHMANDU)
+        )
+    }
+
+    @Test
     fun `the same event reads differently in another zone`() {
         assertEquals(
             "Underway since Monday 06:15 · eases Monday 21:45",
