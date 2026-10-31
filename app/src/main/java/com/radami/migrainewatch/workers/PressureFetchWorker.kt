@@ -11,7 +11,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.RefreshState
-import com.radami.migrainewatch.domain.AlertNotificationScheduler
+import com.radami.migrainewatch.domain.AlertReconciler
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
@@ -21,7 +21,7 @@ class PressureFetchWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
     private val pressureRepository: PressureRepository,
-    private val alertScheduler: AlertNotificationScheduler
+    private val alertReconciler: AlertReconciler
 ) : CoroutineWorker(appContext, params) {
 
     /**
@@ -34,7 +34,7 @@ class PressureFetchWorker @AssistedInject constructor(
 
             // Reconcile always runs, even on a failed fetch: the clock has moved regardless,
             // and skipping it would leave warnings for events that already finished.
-            alertScheduler.reconcile()
+            alertReconciler.reconcile()
 
             when (outcome) {
                 // This run did not bring the app up to date, so retry on WorkManager's backoff

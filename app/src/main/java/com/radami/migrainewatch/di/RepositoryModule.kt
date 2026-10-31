@@ -1,5 +1,6 @@
 package com.radami.migrainewatch.di
 
+import com.radami.migrainewatch.data.local.dao.NotifiedAlertDao
 import com.radami.migrainewatch.data.local.dao.PressureReadingDao
 import com.radami.migrainewatch.data.local.dao.SymptomEntryDao
 import com.radami.migrainewatch.data.preferences.UserPreferences
@@ -7,7 +8,9 @@ import com.radami.migrainewatch.data.remote.OpenMeteoApi
 import com.radami.migrainewatch.data.remote.OpenMeteoArchiveApi
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.SymptomRepository
+import com.radami.migrainewatch.domain.AlertReconciler
 import com.radami.migrainewatch.domain.PressureAlertUseCase
+import com.radami.migrainewatch.domain.WorkManagerAlertQueue
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -43,4 +46,13 @@ object RepositoryModule {
         pressureRepository: PressureRepository,
         preferences: UserPreferences
     ): PressureAlertUseCase = PressureAlertUseCase(pressureRepository, preferences)
+
+    @Provides
+    @Singleton
+    fun provideAlertReconciler(
+        queue: WorkManagerAlertQueue,
+        alertUseCase: PressureAlertUseCase,
+        notifiedAlertDao: NotifiedAlertDao,
+        preferences: UserPreferences
+    ): AlertReconciler = AlertReconciler(queue, alertUseCase, notifiedAlertDao, preferences)
 }

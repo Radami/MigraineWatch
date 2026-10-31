@@ -23,7 +23,7 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
- * Fires at the lead time worked out by [com.radami.migrainewatch.domain.AlertNotificationScheduler]
+ * Fires at the lead time worked out by [com.radami.migrainewatch.domain.AlertReconciler]
  * and posts the warning for one event.
  */
 @HiltWorker

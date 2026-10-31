@@ -22,7 +22,7 @@ import javax.inject.Singleton
 @Singleton
 class AlertReconcileMonitor @Inject constructor(
     private val pressureRepository: PressureRepository,
-    private val alertScheduler: AlertNotificationScheduler,
+    private val alertReconciler: AlertReconciler,
     @ApplicationScope private val scope: CoroutineScope
 ) {
 
@@ -37,7 +37,7 @@ class AlertReconcileMonitor @Inject constructor(
                 // hasn't changed the series yet.
                 .filter { it == RefreshState.Updated }
                 .collect {
-                    val result = alertScheduler.reconcile()
+                    val result = alertReconciler.reconcile()
                     Log.d(TAG, "Reconciled after a refresh: $result")
                 }
         }

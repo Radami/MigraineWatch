@@ -25,7 +25,7 @@ import org.junit.Test
 class AlertReconcileMonitorTest {
 
     private val repository = mockk<PressureRepository>()
-    private val scheduler = mockk<AlertNotificationScheduler>()
+    private val reconciler = mockk<AlertReconciler>()
 
     private val refreshState = MutableStateFlow(RefreshState.InFlight)
 
@@ -36,10 +36,10 @@ class AlertReconcileMonitorTest {
     @Before
     fun setup() {
         every { repository.refreshState } returns refreshState
-        coEvery { scheduler.reconcile(any()) } returns
+        coEvery { reconciler.reconcile(any()) } returns
             ReconcileResult.Success(pending = 0, cancelled = 0)
 
-        AlertReconcileMonitor(repository, scheduler, scope).start()
+        AlertReconcileMonitor(repository, reconciler, scope).start()
     }
 
     @After
@@ -51,7 +51,7 @@ class AlertReconcileMonitorTest {
     fun `a series that lands rebuilds the pending warnings`() = runTest {
         refreshState.value = RefreshState.Updated
 
-        coVerify(exactly = 1) { scheduler.reconcile(any()) }
+        coVerify(exactly = 1) { reconciler.reconcile(any()) }
     }
 
     /**
@@ -62,14 +62,14 @@ class AlertReconcileMonitorTest {
     fun `a failed fetch leaves the pending warnings alone`() = runTest {
         refreshState.value = RefreshState.Failed
 
-        coVerify(exactly = 0) { scheduler.reconcile(any()) }
+        coVerify(exactly = 0) { reconciler.reconcile(any()) }
     }
 
     @Test
     fun `a fetch still out leaves the pending warnings alone`() = runTest {
         refreshState.value = RefreshState.InFlight
 
-        coVerify(exactly = 0) { scheduler.reconcile(any()) }
+        coVerify(exactly = 0) { reconciler.reconcile(any()) }
     }
 
     /** A location the fetch found nothing for stored nothing, so there is nothing new to warn from. */
@@ -77,7 +77,7 @@ class AlertReconcileMonitorTest {
     fun `a fetch that found no readings leaves the pending warnings alone`() = runTest {
         refreshState.value = RefreshState.NoReadings
 
-        coVerify(exactly = 0) { scheduler.reconcile(any()) }
+        coVerify(exactly = 0) { reconciler.reconcile(any()) }
     }
 
     /** Every landing must reconcile, not just the first — a later fetch has equal claim on the queue. */
@@ -87,6 +87,6 @@ class AlertReconcileMonitorTest {
         refreshState.value = RefreshState.InFlight
         refreshState.value = RefreshState.Updated
 
-        coVerify(exactly = 2) { scheduler.reconcile(any()) }
+        coVerify(exactly = 2) { reconciler.reconcile(any()) }
     }
 }

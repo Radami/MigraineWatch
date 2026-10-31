@@ -29,13 +29,14 @@ import java.time.Duration
 import kotlin.time.Instant
 
 /**
- * Pins what the scheduler hands WorkManager. The work name in particular must never drift:
- * warnings already queued on a device are replaced by name, so a name computed differently
- * after an update would queue a second warning beside the first instead of replacing it.
+ * Pins what a reconcile hands WorkManager through [WorkManagerAlertQueue]. The work name in
+ * particular must never drift: warnings already queued on a device are replaced by name, so a
+ * name computed differently after an update would queue a second warning beside the first
+ * instead of replacing it.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class AlertNotificationSchedulerTest {
+class WorkManagerAlertQueueTest {
 
     private companion object {
         val NOW: Instant = Instant.parse("2026-08-23T12:00:00Z")
@@ -63,7 +64,7 @@ class AlertNotificationSchedulerTest {
     private val userPreferences = mockk<UserPreferences>()
 
     private lateinit var workManager: WorkManager
-    private lateinit var scheduler: AlertNotificationScheduler
+    private lateinit var reconciler: AlertReconciler
 
     @Before
     fun setup() {
@@ -76,10 +77,15 @@ class AlertNotificationSchedulerTest {
         coEvery { alertUseCase.currentAlerts(any()) } returns listOf(alert)
         coEvery { notifiedAlertDao.getNotifiedSince(any()) } returns emptyList()
 
-        scheduler = AlertNotificationScheduler(workManager, alertUseCase, notifiedAlertDao, userPreferences)
+        reconciler = AlertReconciler(
+            WorkManagerAlertQueue(workManager),
+            alertUseCase,
+            notifiedAlertDao,
+            userPreferences
+        )
     }
 
-    private fun reconcile(): ReconcileResult = runBlocking { scheduler.reconcile(NOW) }
+    private fun reconcile(): ReconcileResult = runBlocking { reconciler.reconcile(NOW) }
 
     private fun queued(name: String): List<WorkInfo> =
         workManager.getWorkInfosForUniqueWork(name).get()

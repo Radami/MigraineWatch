@@ -8,7 +8,7 @@ import androidx.work.WorkManager
 import com.radami.migrainewatch.data.local.dao.NotifiedAlertDao
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.SymptomRepository
-import com.radami.migrainewatch.domain.AlertNotificationScheduler
+import com.radami.migrainewatch.domain.AlertReconciler
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.ReconcileResult
@@ -60,7 +60,7 @@ data class SettingsUiState(
 class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val symptomRepository: SymptomRepository,
-    private val alertScheduler: AlertNotificationScheduler,
+    private val alertReconciler: AlertReconciler,
     private val permissionMonitor: NotificationPermissionMonitor,
     private val workManager: WorkManager,
     // Debug section only.
@@ -107,7 +107,7 @@ class SettingsViewModel @Inject constructor(
             userPreferences.setAlertSensitivity(sensitivity)
             // Events that no longer clear the new threshold lose their pending warning, and
             // events that now clear it gain one.
-            alertScheduler.reconcile()
+            alertReconciler.reconcile()
         }
     }
 
@@ -119,7 +119,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setNotificationsEnabled(enabled)
             // Switching off cancels everything pending; switching on rebuilds it.
-            alertScheduler.reconcile()
+            alertReconciler.reconcile()
         }
     }
 
@@ -153,7 +153,7 @@ class SettingsViewModel @Inject constructor(
     /** One line per action for the debug snackbar; includes reconciles triggered elsewhere too. */
     val debugMessages: Flow<String> = merge(
         _debugMessages,
-        alertScheduler.results.map { it.describe() }
+        alertReconciler.results.map { it.describe() }
     )
 
     /** Runs the production fetch-and-reconcile path now; result arrives on [debugMessages]. */
@@ -192,7 +192,7 @@ class SettingsViewModel @Inject constructor(
             _debugMessages.emit("Alert history cleared")
 
             // Events the history was hiding qualify again, so put them back in the queue.
-            alertScheduler.reconcile()
+            alertReconciler.reconcile()
         }
     }
 
