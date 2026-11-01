@@ -22,12 +22,18 @@ actual object Logger {
         write(Level.Error, tag, message, error)
     }
 
-    /** Passed as an argument, never as the format, so a `%` in a message can't be read as one. */
+    /**
+     * Passed as the format itself, escaped so a `%` in a message can't be read as a specifier.
+     * Not as a `%@` argument: NSLog's variadic arguments crash when called from Kotlin/Native.
+     */
     private fun write(level: Level, tag: String, message: String, error: Throwable?) {
         val line = buildString {
             append("${level.letter}/$tag: $message")
             error?.let { append('\n').append(it.stackTraceToString()) }
         }
-        NSLog("%@", line)
+        NSLog(line.replace(FORMAT_SPECIFIER, ESCAPED_SPECIFIER))
     }
 }
+
+private const val FORMAT_SPECIFIER = "%"
+private const val ESCAPED_SPECIFIER = "%%"
