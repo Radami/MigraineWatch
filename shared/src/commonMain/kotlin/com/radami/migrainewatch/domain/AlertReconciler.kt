@@ -37,10 +37,16 @@ interface AlertWarningQueue {
     suspend fun schedule(name: String, notification: PendingAlertNotification, now: Instant)
 }
 
+/** The event a warning name stands for: its direction and the hour it starts in. */
+data class WarningEvent(val direction: PressureDirection, val hourStart: Instant)
+
 /** How a queued warning is named, so a refreshed forecast replaces it instead of adding a second. */
 object AlertWarningName {
 
     const val PREFIX = "alert_notification_"
+
+    private const val SEPARATOR = '_'
+    private const val SECONDS_PER_HOUR = 3600
 
     /**
      * Identifies a warning by the event it describes. Hours, not seconds, so the small drift
@@ -48,10 +54,22 @@ object AlertWarningName {
      */
     fun of(notification: PendingAlertNotification): String {
         val alert = notification.alert
-        return "$PREFIX${alert.direction.wireName}_${alert.start.epochSeconds / SECONDS_PER_HOUR}"
+        return "$PREFIX${alert.direction.wireName}$SEPARATOR${alert.start.epochSeconds / SECONDS_PER_HOUR}"
     }
 
-    private const val SECONDS_PER_HOUR = 3600
+    /**
+     * The event [name] was made for, so a queue that only knows a warning by name can find
+     * the history behind it. Null for a name this build can't read.
+     */
+    fun parse(name: String): WarningEvent? {
+        if (!name.startsWith(PREFIX)) return null
+
+        val rest = name.removePrefix(PREFIX)
+        val direction = PressureDirection.ofWireName(rest.substringBeforeLast(SEPARATOR)) ?: return null
+        val hour = rest.substringAfterLast(SEPARATOR, missingDelimiterValue = "").toLongOrNull() ?: return null
+
+        return WarningEvent(direction, Instant.fromEpochSeconds(hour * SECONDS_PER_HOUR))
+    }
 }
 
 /**
