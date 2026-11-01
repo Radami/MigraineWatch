@@ -1,6 +1,7 @@
 package com.radami.migrainewatch.domain
 
 import com.radami.migrainewatch.data.local.dao.NotifiedAlertDao
+import com.radami.migrainewatch.data.model.NotifiedAlert
 import com.radami.migrainewatch.data.preferences.AppSettings
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import io.mockk.coEvery
@@ -170,9 +171,45 @@ class AlertReconcilerTest {
     }
 
     @Test
+    fun `an event already delivered is not queued again`() {
+        coEvery { notifiedAlertDao.getNotifiedSince(any()) } returns
+            listOf(notifiedAt(Instant.parse("2026-08-23T11:00:00Z")))
+
+        assertEquals(ReconcileResult.Success(pending = 0, cancelled = 0), reconcile())
+
+        assertTrue(queue.pending.isEmpty())
+    }
+
+    @Test
+    fun `a warning recorded ahead of its time still counts as pending, not delivered`() {
+        coEvery { notifiedAlertDao.getNotifiedSince(any()) } returns
+            listOf(notifiedAt(Instant.parse("2026-08-24T12:00:00Z")))
+
+        assertEquals(ReconcileResult.Success(pending = 1, cancelled = 0), reconcile())
+
+        assertEquals(listOf(EVENT_NAME), queue.pending.keys.toList())
+    }
+
+    @Test
+    fun `a warning recorded for exactly now counts as delivered`() {
+        coEvery { notifiedAlertDao.getNotifiedSince(any()) } returns listOf(notifiedAt(NOW))
+
+        assertEquals(ReconcileResult.Success(pending = 0, cancelled = 0), reconcile())
+    }
+
+    @Test
     fun `old delivered warnings are pruned after a successful reconcile`() {
         reconcile()
 
         coVerify(exactly = 1) { notifiedAlertDao.deleteOlderThan(Instant.parse("2026-07-24T12:00:00Z")) }
     }
+
+    /** A history row for the test's event, recorded at [time]. */
+    private fun notifiedAt(time: Instant) = NotifiedAlert(
+        startDateTime = EVENT_START,
+        endDateTime = EVENT_END,
+        direction = PressureDirection.DROP.wireName,
+        thresholdHpa = 6f,
+        notifiedDateTime = time
+    )
 }

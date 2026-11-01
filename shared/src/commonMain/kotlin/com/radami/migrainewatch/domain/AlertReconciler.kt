@@ -85,8 +85,11 @@ class AlertReconciler(
         val result = runCatching {
             val settings = userPreferences.settings.first()
             val alerts = alertUseCase.currentAlerts(now)
+            // A row dated later than now is a warning queued ahead, as iOS records them, not
+            // one delivered: counting it would cancel the very warning it stands for.
             val alreadyNotified = notifiedAlertDao
                 .getNotifiedSince(now - AlertNotificationDecider.NOTIFICATION_LOOKBACK)
+                .filter { it.notifiedDateTime <= now }
                 .mapNotNull { it.toDeliveredWarning() }
 
             val pending = AlertNotificationDecider.decide(
