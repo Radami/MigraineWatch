@@ -13,10 +13,16 @@ import com.radami.migrainewatch.data.remote.KtorOpenMeteoApi
 import com.radami.migrainewatch.data.remote.KtorOpenMeteoArchiveApi
 import com.radami.migrainewatch.data.remote.openMeteoHttpClient
 import com.radami.migrainewatch.data.repository.PressureRepository
+import com.radami.migrainewatch.data.repository.RefreshState
 import com.radami.migrainewatch.data.repository.SymptomRepository
+import com.radami.migrainewatch.domain.AlertReconciler
 import com.radami.migrainewatch.domain.PressureAlertUseCase
+import com.radami.migrainewatch.logging.Logger
+import com.radami.migrainewatch.notifications.IosNotificationCenter
+import com.radami.migrainewatch.notifications.LocalNotificationAlertQueue
 import io.ktor.client.engine.darwin.Darwin
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -29,6 +35,8 @@ import platform.Foundation.NSUserDomainMask
 
 /** The settings file, named as Android's DataStore delegate names it. */
 private const val PREFERENCES_FILE_NAME = "user_prefs.preferences_pb"
+
+private const val TAG = "IosAppGraph"
 
 /**
  * The shared data layer wired up for iOS, standing in for the Hilt modules that do this on
@@ -74,6 +82,37 @@ class IosAppGraph(private val directory: String = documentsDirectory()) {
 
     val alertUseCase: PressureAlertUseCase by lazy {
         PressureAlertUseCase(pressureRepository, userPreferences)
+    }
+
+    val alertReconciler: AlertReconciler by lazy {
+        val notifiedAlertDao = database.notifiedAlertDao()
+        val queue = LocalNotificationAlertQueue(IosNotificationCenter(), notifiedAlertDao, userPreferences)
+        AlertReconciler(queue, alertUseCase, notifiedAlertDao, userPreferences)
+    }
+
+    /**
+     * One background refresh, run the way Android's fetch worker runs it: fetch, then reconcile
+     * even when the fetch failed, since the clock has moved regardless.
+     *
+     * @return whether the app is now up to date, for the background task to report.
+     */
+    suspend fun refreshAndReconcile(): Boolean {
+        val outcome = try {
+            pressureRepository.refresh()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Swift sees only cancellation from a suspend call; anything else would crash the app.
+            Logger.e(TAG, "Background refresh failed", e)
+            RefreshState.Failed
+        }
+
+        alertReconciler.reconcile()
+
+        return when (outcome) {
+            RefreshState.Updated, RefreshState.NoReadings, RefreshState.NoLocation -> true
+            RefreshState.Failed, RefreshState.InFlight -> false
+        }
     }
 
     /** Stops background work and releases the database and network client. */
