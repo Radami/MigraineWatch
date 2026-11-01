@@ -170,6 +170,12 @@ android {
             // Plain JVM tests exercise code that calls android.util.Log; without this
             // the stubbed android.jar throws instead of returning a default value.
             isReturnDefaultValues = true
+            all { test ->
+                test.doFirst {
+                    val agent = test.classpath.files.first { it.name.startsWith("byte-buddy-agent-") }
+                    test.jvmArgs("-javaagent:${agent.absolutePath}")
+                }
+            }
         }
     }
 }
