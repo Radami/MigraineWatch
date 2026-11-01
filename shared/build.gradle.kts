@@ -17,7 +17,9 @@ kotlin {
         compileSdk = libs.versions.compileSdk.get().toInt()
         minSdk = libs.versions.minSdk.get().toInt()
 
-        withHostTest {}
+        withHostTest {
+            isReturnDefaultValues = true
+        }
 
         compilerOptions {
             jvmTarget = JvmTarget.JVM_11
@@ -49,6 +51,7 @@ kotlin {
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }
