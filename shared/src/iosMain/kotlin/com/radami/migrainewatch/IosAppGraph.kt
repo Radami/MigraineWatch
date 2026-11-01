@@ -43,9 +43,12 @@ private const val TAG = "IosAppGraph"
  * Android. Create one for the app's lifetime: it owns the database and the settings file, and
  * DataStore allows only one instance per file in a process.
  *
- * @param directory where the database and settings live; the app's Documents by default.
+ * @param directory where the database and settings live.
  */
-class IosAppGraph(private val directory: String = documentsDirectory()) {
+class IosAppGraph(private val directory: String) {
+
+    /** Keeps everything in the app's Documents. Swift can't see a default argument, hence this. */
+    constructor() : this(documentsDirectory())
 
     /** Outlives every screen, like Android's application scope; see [PressureRepository]. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
