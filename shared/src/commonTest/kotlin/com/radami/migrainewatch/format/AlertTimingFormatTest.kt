@@ -3,17 +3,17 @@ package com.radami.migrainewatch.format
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.PressureDirection
-import org.junit.Assert.assertEquals
-import org.junit.Test
-import java.time.ZoneId
+import kotlinx.datetime.TimeZone
+import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.time.Instant
 
 class AlertTimingFormatTest {
 
     private companion object {
         /** +05:45, so a zone mix-up can't hide behind a whole-hour offset. */
-        val KATHMANDU: ZoneId = ZoneId.of("Asia/Kathmandu")
-        val UTC: ZoneId = ZoneId.of("UTC")
+        val KATHMANDU: TimeZone = TimeZone.of("Asia/Kathmandu")
+        val UTC: TimeZone = TimeZone.UTC
     }
 
     /** Monday 12:00 to Tuesday 03:30 in Kathmandu. */
@@ -41,7 +41,7 @@ class AlertTimingFormatTest {
     }
 
     @Test
-    fun `an event under way names when it eases, across midnight in the given zone`() {
+    fun `an event under way names when it eases across midnight in the given zone`() {
         assertEquals(
             "Underway since Monday 12:00 · eases Tuesday 03:30",
             formatAlertTiming(alert, AlertPhase.UNDERWAY, AlertTimingDetail.WithEnd, KATHMANDU)

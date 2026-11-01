@@ -90,6 +90,7 @@ import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
 import com.radami.migrainewatch.ui.theme.SUBDUED_ALPHA
 import com.radami.migrainewatch.ui.theme.SUPPORTING_ALPHA
 import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.toKotlinTimeZone
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -183,7 +184,7 @@ private fun AlertBanner(
     // Only direction and timing here; magnitude belongs on the detail screen. Wording matches
     // the notification's own so the two never describe the same event differently.
     val timing = remember(first, phase, zone) {
-        formatAlertTiming(first, phase, AlertTimingDetail.Brief, zone)
+        formatAlertTiming(first, phase, AlertTimingDetail.Brief, zone.toKotlinTimeZone())
     }
     val headline = if (alerts.size == 1) "Elevated risk" else "Elevated risk · Multiple events"
     val message = "$headline\n$timing"

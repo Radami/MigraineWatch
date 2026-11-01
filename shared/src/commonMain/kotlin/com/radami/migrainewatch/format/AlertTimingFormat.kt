@@ -2,8 +2,13 @@ package com.radami.migrainewatch.format
 
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
-import java.time.ZoneId
-import kotlin.time.toJavaInstant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.format
+import kotlinx.datetime.format.DateTimeComponents
+import kotlinx.datetime.format.DayOfWeekNames
+import kotlinx.datetime.format.char
+import kotlinx.datetime.offsetAt
+import kotlin.time.Instant
 
 /** How much of an event's timing there is room to spell out. */
 enum class AlertTimingDetail {
@@ -21,6 +26,15 @@ enum class AlertTimingDetail {
     WithEnd
 }
 
+/** "Saturday 14:00" — notification and banner text, where the day is worth spelling out. */
+private val WEEKDAY_AND_TIME = DateTimeComponents.Format {
+    dayOfWeek(DayOfWeekNames.ENGLISH_FULL)
+    char(' ')
+    hour()
+    char(':')
+    minute()
+}
+
 /**
  * When an event happens, for the notification body and the Today banner's second line, in
  * [zone]: the location's, like every other time the app shows.
@@ -31,16 +45,15 @@ fun formatAlertTiming(
     alert: AlertWindow,
     phase: AlertPhase,
     detail: AlertTimingDetail,
-    zone: ZoneId
+    zone: TimeZone
 ): String {
-    val formatter = AppDateFormats.WEEKDAY_AND_TIME
-    val startLabel = formatter.format(alert.start.toJavaInstant().atZone(zone))
+    val startLabel = alert.start.weekdayAndTimeIn(zone)
 
     // Only an event already running has an end worth naming: one still ahead is bounded by a
     // start the user can act on, and naming both would bury it.
     val easesSuffix = when (detail) {
         AlertTimingDetail.Brief -> ""
-        AlertTimingDetail.WithEnd -> " · eases ${formatter.format(alert.end.toJavaInstant().atZone(zone))}"
+        AlertTimingDetail.WithEnd -> " · eases ${alert.end.weekdayAndTimeIn(zone)}"
     }
 
     return when (phase) {
@@ -48,3 +61,6 @@ fun formatAlertTiming(
         AlertPhase.UNDERWAY -> "Underway since $startLabel$easesSuffix"
     }
 }
+
+private fun Instant.weekdayAndTimeIn(zone: TimeZone): String =
+    format(WEEKDAY_AND_TIME, zone.offsetAt(this))

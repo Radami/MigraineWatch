@@ -23,6 +23,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.datetime.toKotlinTimeZone
 
 /** Posts pressure alerts to the system tray and opens the Pressure screen on tap. */
 @Singleton
@@ -68,7 +69,9 @@ class AlertNotifier @Inject constructor(
             // so this is the one place the notification can carry the app's own colour.
             .setColor(BrandTerracottaLight.toArgb())
             .setContentTitle(formatAlertHeadline(alert.delta, alert.direction))
-            .setContentText(formatAlertTiming(alert, phase, AlertTimingDetail.WithEnd, zone))
+            .setContentText(
+                formatAlertTiming(alert, phase, AlertTimingDetail.WithEnd, zone.toKotlinTimeZone())
+            )
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
