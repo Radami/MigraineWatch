@@ -88,11 +88,23 @@ private struct PendingWarningRow: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(request.content.title).font(.headline)
             Text(request.content.body)
-            if let fireDate = (request.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate() {
+            if let fireDate {
                 Text("Shows \(fireDate.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// Warnings ahead use a calendar date; one due now goes out on a short timer.
+    private var fireDate: Date? {
+        switch request.trigger {
+        case let calendar as UNCalendarNotificationTrigger:
+            return calendar.nextTriggerDate()
+        case let timer as UNTimeIntervalNotificationTrigger:
+            return timer.nextTriggerDate()
+        default:
+            return nil
         }
     }
 }
