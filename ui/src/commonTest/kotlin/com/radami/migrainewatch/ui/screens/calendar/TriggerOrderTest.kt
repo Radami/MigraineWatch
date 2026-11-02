@@ -1,26 +1,26 @@
 package com.radami.migrainewatch.ui.screens.calendar
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class TriggerOrderTest {
 
     @Test
-    fun `triggers come back in the order the picker offers them`() {
+    fun triggersComeBackInTheOrderThePickerOffersThem() {
         val tapped = TRIGGER_OPTIONS.reversed()
 
         assertEquals(TRIGGER_OPTIONS, tapped.inTriggerOrder())
     }
 
     @Test
-    fun `other is last whatever else is selected`() {
+    fun otherIsLastWhateverElseIsSelected() {
         val selected = listOf(OTHER_TRIGGER, "Stress", "Poor sleep")
 
         assertEquals(OTHER_TRIGGER, selected.inTriggerOrder().last())
     }
 
     @Test
-    fun `other stays last even when it is not last in the options`() {
+    fun otherStaysLastEvenWhenItIsNotLastInTheOptions() {
         // Guards the ordering against someone reshuffling TRIGGER_OPTIONS: the comparator
         // pins "Other" itself rather than relying on its position in the list.
         val optionsWithOtherFirst = listOf(OTHER_TRIGGER) + TRIGGER_OPTIONS.filterNot { it == OTHER_TRIGGER }
@@ -29,7 +29,7 @@ class TriggerOrderTest {
     }
 
     @Test
-    fun `values no longer offered sort after the known ones, before other`() {
+    fun valuesNoLongerOfferedSortAfterTheKnownOnesBeforeOther() {
         val stored = listOf(OTHER_TRIGGER, "Weather", "Stress", "Alcohol")
 
         assertEquals(
@@ -39,7 +39,7 @@ class TriggerOrderTest {
     }
 
     @Test
-    fun `ordering does not depend on input order`() {
+    fun orderingDoesNotDependOnInputOrder() {
         val stored = listOf("Weather", "Alcohol", "Screen time", OTHER_TRIGGER, "Hormonal")
 
         assertEquals(stored.inTriggerOrder(), stored.shuffled().inTriggerOrder())

@@ -49,7 +49,6 @@ import com.radami.migrainewatch.domain.Severity
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.description
 import com.radami.migrainewatch.format.label
-import kotlinx.datetime.toKotlinLocalDate
 import com.radami.migrainewatch.ui.theme.color
 import com.radami.migrainewatch.ui.theme.FAINT_ALPHA
 import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
@@ -80,15 +79,15 @@ fun LogEntryScreen(
                 title = {
                     Column {
                         Text(
-                            AppDateFormats.FULL_DATE.format(state.date.toKotlinLocalDate()),
+                            AppDateFormats.FULL_DATE.format(state.date),
                             style = MaterialTheme.typography.titleMedium
                         )
-                        StepIndicator(currentStep = state.step, totalSteps = 3)
+                        StepIndicator(currentStep = state.step, totalSteps = DETAILS_STEP)
                     }
                 },
                 navigationIcon = {
                     IconButton(
-                        onClick = if (state.step > 1) viewModel::goBack else onBack,
+                        onClick = if (state.step > SEVERITY_STEP) viewModel::goBack else onBack,
                         modifier = Modifier.semantics { contentDescription = "Back" }
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
@@ -106,17 +105,17 @@ fun LogEntryScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             when (state.step) {
-                1 -> Step1Severity(
+                SEVERITY_STEP -> Step1Severity(
                     selectedSeverity = state.severity,
                     onSelect = viewModel::selectSeverity,
                     onContinue = viewModel::continueToStep2
                 )
-                2 -> Step2Triggers(
+                TRIGGERS_STEP -> Step2Triggers(
                     selectedTriggers = state.triggers,
                     onToggle = viewModel::toggleTrigger,
                     onContinue = viewModel::continueToStep3
                 )
-                3 -> Step3Details(
+                DETAILS_STEP -> Step3Details(
                     durationBucket = state.durationBucket,
                     reliefPercent = state.reliefPercent,
                     medication = state.medication,
