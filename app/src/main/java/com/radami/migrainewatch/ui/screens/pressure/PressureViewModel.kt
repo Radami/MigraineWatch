@@ -115,30 +115,35 @@ class PressureViewModel @Inject constructor(
                     // Re-evaluated per emission so nothing goes stale while the screen stays open.
                     val now = Clock.System.now()
 
-                    // Shared use case, so this matches exactly what the Today banner and notifications describe.
-                    val alerts = withContext(Dispatchers.Default) {
-                        alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now)
-                    }
-
-                    // Last measured reading, or the earliest forecast one if opened before any measurement lands.
-                    val current = readings.lastOrNull { it.dateTime < now }
-                        ?: readings.firstOrNull()
-
-                    _uiState.update { state ->
-                        state.copy(
-                            currentPressure = current?.pressureMsl,
+                    // Event detection walks every reading, so it runs off the main thread.
+                    val state = withContext(Dispatchers.Default) {
+                        pressureState(
                             readings = readings,
-                            alertWindows = alerts,
-                            alertThresholdHpa = settings.alertThresholdHpa,
-                            locationName = settings.location.name,
-                            zone = settings.location.zone.toJavaZoneId(),
-                            lastUpdated = readings.maxOfOrNull { it.fetchedDateTime }?.toJavaInstant(),
+                            settings = settings,
                             refreshState = refreshState,
-                            isLoading = false
+                            alerts = alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now),
+                            now = now
                         )
                     }
+
+                    // The selected chip is the screen's own, so it survives every data emission.
+                    _uiState.update { state.toUiState(selectedRange = it.selectedRange) }
                 }
         }
     }
 
 }
+
+/** The screen still reads `java.time` types until it moves to the shared UI. */
+private fun PressureState.toUiState(selectedRange: TimeRange) = PressureUiState(
+    currentPressure = currentPressure,
+    readings = readings,
+    alertWindows = alertWindows,
+    alertThresholdHpa = alertThresholdHpa,
+    selectedRange = selectedRange,
+    locationName = locationName,
+    zone = zone.toJavaZoneId(),
+    lastUpdated = lastUpdated?.toJavaInstant(),
+    refreshState = refreshState,
+    isLoading = false
+)
