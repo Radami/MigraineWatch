@@ -188,6 +188,7 @@ kotlin {
 
 dependencies {
     implementation(project(":shared"))
+    implementation(project(":ui"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
