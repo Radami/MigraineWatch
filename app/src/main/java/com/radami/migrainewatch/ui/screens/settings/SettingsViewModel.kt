@@ -3,16 +3,15 @@ package com.radami.migrainewatch.ui.screens.settings
 import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import androidx.work.WorkManager
 import com.radami.migrainewatch.data.local.dao.NotifiedAlertDao
+import com.radami.migrainewatch.data.preferences.AlertSensitivity
 import com.radami.migrainewatch.data.preferences.UserPreferences
 import com.radami.migrainewatch.data.repository.SymptomRepository
 import com.radami.migrainewatch.domain.AlertReconciler
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.ReconcileResult
-import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.notifications.AlertNotifier
 import com.radami.migrainewatch.notifications.NotificationPermissionMonitor
@@ -24,36 +23,16 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.toJavaZoneId
-import java.time.LocalDate
 import javax.inject.Inject
 import kotlin.time.Clock
-
-data class SettingsUiState(
-    val alertSensitivity: AlertSensitivity = AlertSensitivity.Default,
-    /** What the user asked for, which is not the same as what the system will deliver. */
-    val notificationsEnabled: Boolean = true,
-    // Assumed granted until the first check answers, so the warning row does not flash on
-    // every entry to the screen.
-    val permission: NotificationPermissionState = NotificationPermissionState.GRANTED,
-    val totalEntries: Int = 0,
-    val trackingSince: String = ""
-) {
-    /** The switch tracks delivery: on means an alert would actually arrive. */
-    val alertsDelivering: Boolean
-        get() = notificationsEnabled && permission == NotificationPermissionState.GRANTED
-
-    /** Wanted but undeliverable — the silent failure the warning row exists to explain. */
-    val alertsBlocked: Boolean
-        get() = notificationsEnabled && permission != NotificationPermissionState.GRANTED
-}
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -75,31 +54,28 @@ class SettingsViewModel @Inject constructor(
 
     private val _permission = MutableStateFlow(NotificationPermissionState.GRANTED)
 
-    val uiState: StateFlow<SettingsUiState> = combine(
+    private val _trackingSince = MutableStateFlow<LocalDate?>(null)
+
+    val uiState: StateFlow<SettingsState> = combine(
         userPreferences.settings,
         symptomRepository.getTotalCount(),
-        _permission
-    ) { settings, count, permission ->
-        SettingsUiState(
+        _permission,
+        _trackingSince
+    ) { settings, count, permission, trackingSince ->
+        SettingsState(
             alertSensitivity = settings.alertSensitivity,
             notificationsEnabled = settings.notificationsEnabled,
             permission = permission,
-            totalEntries = count
+            totalEntries = count,
+            trackingSince = trackingSince
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
-
-    private val _trackingSince = MutableStateFlow("")
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsState())
 
     init {
         viewModelScope.launch {
-            val earliest = symptomRepository.getEarliestDate()
-            if (earliest != null) {
-                _trackingSince.value = AppDateFormats.MONTH_AND_YEAR.format(earliest)
-            }
+            _trackingSince.value = symptomRepository.getEarliestDate()
         }
     }
-
-    val trackingSince: StateFlow<String> = _trackingSince.asStateFlow()
 
     fun setAlertSensitivity(sensitivity: AlertSensitivity) {
         viewModelScope.launch {

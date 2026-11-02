@@ -99,7 +99,6 @@ fun SettingsScreen(
 @Composable
 private fun SettingsList(viewModel: SettingsViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val trackingSince by viewModel.trackingSince.collectAsStateWithLifecycle()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -122,14 +121,8 @@ private fun SettingsList(viewModel: SettingsViewModel) {
                         fontWeight = FontWeight.Bold
                     )
                 )
-                val subtitle = when {
-                    trackingSince.isNotEmpty() && state.totalEntries > 0 ->
-                        "Tracking since $trackingSince · ${state.totalEntries} entries"
-                    state.totalEntries > 0 -> "${state.totalEntries} entries"
-                    else -> "No entries yet"
-                }
                 Text(
-                    subtitle,
+                    state.historySummary,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = SUPPORTING_ALPHA)
                 )
