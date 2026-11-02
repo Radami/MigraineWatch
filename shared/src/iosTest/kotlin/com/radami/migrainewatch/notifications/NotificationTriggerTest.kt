@@ -7,6 +7,8 @@ import platform.UserNotifications.UNTimeIntervalNotificationTrigger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
@@ -20,9 +22,13 @@ class NotificationTriggerTest {
 
     @Test
     fun aWarningAheadFiresOnItsExactDate() {
-        val trigger = assertIs<UNCalendarNotificationTrigger>(triggerFor(FIRE_AT, NOW))
+        // The center reads the date against the real clock, so it has to stay ahead of today.
+        val now = Clock.System.now()
+        val fireAt = Instant.fromEpochSeconds(now.epochSeconds) + 1.days
 
-        assertEquals(FIRE_AT.epochSeconds.toDouble(), trigger.nextTriggerDate()?.timeIntervalSince1970)
+        val trigger = assertIs<UNCalendarNotificationTrigger>(triggerFor(fireAt, now))
+
+        assertEquals(fireAt.epochSeconds.toDouble(), trigger.nextTriggerDate()?.timeIntervalSince1970)
     }
 
     @Test
