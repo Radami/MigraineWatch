@@ -14,7 +14,6 @@ import com.radami.migrainewatch.data.repository.SymptomRepository
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.DayOutlook
-import com.radami.migrainewatch.domain.OutlookRisk
 import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.SymptomFreeStreak
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -27,37 +26,12 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.toJavaZoneId
-import kotlinx.datetime.todayIn
 import java.time.Instant
 import java.time.ZoneId
 import javax.inject.Inject
-import com.radami.migrainewatch.data.model.toSymptomDay
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.toJavaInstant
-
-/**
- * Why the outlook has nothing to say about the week. Distinguished by asking the repository how
- * the fetch went, not by the shape of the data, so a stale forecast isn't wrongly blamed on the
- * network. Distinct from [TodayUiState.isLoading], which tracks screen state, not data state.
- */
-enum class OutlookGap {
-
-    /** Fetch under way, nothing arrived yet — usually the first load. */
-    Loading,
-
-    /** Readings arrived but don't reach far enough to say anything about any day. */
-    ForecastBehind,
-
-    /** Nothing arrived; the fetch that would have brought it failed. */
-    FetchFailed,
-
-    /** Nothing arrived; no location is set yet. */
-    NoLocation,
-
-    /** Nothing arrived, though the fetch reported success. */
-    NoReadings
-}
 
 /** Everything the screen is built from, as one emission. */
 private data class TodayInputs(
@@ -129,67 +103,41 @@ class TodayViewModel @Inject constructor(
             ) { readings, entries, settings, refreshState ->
                 TodayInputs(readings, entries, settings, refreshState)
             }.collectLatest { (readings, entries, settings, refreshState) ->
-                // Re-evaluated per emission so relevance doesn't go stale while the screen stays open.
+                // Re-evaluated per emission so relevance doesn't go stale while the screen stays
+                // open, and so today can't go stale across midnight while nothing else emits.
                 val now = Clock.System.now()
-                val timeZone = settings.location.zone
-                val zone = timeZone.toJavaZoneId()
 
-                // Shared use case keeps the banner and scheduled notifications in sync. Streak
-                // walks the full history, so both run off the main thread.
-                val (alerts, streak, outlook) = withContext(Dispatchers.Default) {
-                    val detected = alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now)
-
-                    // Re-read per emission so it can't go stale across midnight while nothing else emits.
-                    val today = Clock.System.todayIn(timeZone)
-
-                    // Outlook can only call a day clear as far as readings reach, not the last
-                    // reading itself — the use case knows actual coverage.
-                    val days = DayOutlook.forecast(
-                        alerts = detected,
+                // The shared use case detects events, keeping the banner and scheduled
+                // notifications in sync. The streak walks the full history, so it all runs off
+                // the main thread.
+                val state = withContext(Dispatchers.Default) {
+                    todayState(
+                        readings = readings,
+                        entries = entries,
+                        settings = settings,
+                        refreshState = refreshState,
+                        alerts = alertUseCase.alertsIn(readings, settings.alertThresholdHpa, now),
                         coveredThrough = alertUseCase.coverageEnd(readings),
-                        today = today,
-                        zone = timeZone
+                        now = now
                     )
-
-                    val streak = SymptomFreeStreak.from(entries.map { it.toSymptomDay() }, today)
-                    Triple(detected, streak, days)
                 }
 
-                // Banner leads with the earliest still-live event, i.e. whichever one the user is in.
-                val pending = alerts.filter { it.end > now }
-
-                val gap = when {
-                    // Partial-week coverage is normal, not a gap; the strip fades its tail instead.
-                    outlook.any { it.risk != OutlookRisk.Unknown } -> null
-
-                    // Arrived once, since fallen behind — lastUpdated is non-null here so it can be dated.
-                    readings.isNotEmpty() -> OutlookGap.ForecastBehind
-
-                    // Nothing arrived; ask the fetch state why.
-                    else -> when (refreshState) {
-                        // Room delivers a committed write a few hops after the fetch returns, so
-                        // "succeeded but table empty" still means first load in progress.
-                        RefreshState.InFlight, RefreshState.Updated -> OutlookGap.Loading
-
-                        RefreshState.NoReadings -> OutlookGap.NoReadings
-                        RefreshState.Failed -> OutlookGap.FetchFailed
-                        RefreshState.NoLocation -> OutlookGap.NoLocation
-                    }
-                }
-
-                _uiState.value = TodayUiState(
-                    outlook = outlook,
-                    pendingAlerts = pending,
-                    leadAlertPhase = pending.firstOrNull()?.let { AlertPhase.of(it, now) },
-                    alertThresholdHpa = settings.alertThresholdHpa,
-                    symptomFreeStreak = streak,
-                    locationName = settings.location.name,
-                    zone = zone,
-                    lastUpdated = readings.maxOfOrNull { it.fetchedDateTime }?.toJavaInstant(),
-                    outlookGap = gap,
-                    isLoading = false
-                )
+                _uiState.value = state.toUiState()
             }
         }
     }
 }
+
+/** The screen still reads `java.time` types until it moves to the shared UI. */
+private fun TodayState.toUiState() = TodayUiState(
+    outlook = outlook,
+    pendingAlerts = pendingAlerts,
+    leadAlertPhase = leadAlertPhase,
+    alertThresholdHpa = alertThresholdHpa,
+    symptomFreeStreak = symptomFreeStreak,
+    locationName = locationName,
+    zone = zone.toJavaZoneId(),
+    lastUpdated = lastUpdated?.toJavaInstant(),
+    outlookGap = outlookGap,
+    isLoading = false
+)
