@@ -72,6 +72,7 @@ import com.radami.migrainewatch.domain.OutlookRisk
 import com.radami.migrainewatch.domain.SymptomFreeStreak
 import com.radami.migrainewatch.format.AlertTimingDetail
 import com.radami.migrainewatch.format.AppDateFormats
+import com.radami.migrainewatch.format.format
 import com.radami.migrainewatch.format.formatAlertTiming
 import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.ui.components.DayEmphasis
@@ -89,12 +90,12 @@ import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
 import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
 import com.radami.migrainewatch.ui.theme.SUBDUED_ALPHA
 import com.radami.migrainewatch.ui.theme.SUPPORTING_ALPHA
-import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.format.DateTimeFormat
 import kotlinx.datetime.toKotlinTimeZone
+import kotlin.time.toKotlinInstant
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 @Composable
 fun TodayScreen(
@@ -103,9 +104,7 @@ fun TodayScreen(
     viewModel: TodayViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val timeFormatter = remember(state.zone) {
-        AppDateFormats.FULL_DATE_TIME.withZone(state.zone)
-    }
+    val timeZone = remember(state.zone) { state.zone.toKotlinTimeZone() }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -135,7 +134,7 @@ fun TodayScreen(
                     )
                 }
                 SettlingText(
-                    text = "Updated ${state.lastUpdated?.let { timeFormatter.format(it) } ?: "—"}",
+                    text = "Updated ${state.lastUpdated?.let { AppDateFormats.FULL_DATE_TIME.format(it.toKotlinInstant(), timeZone) } ?: "—"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA),
                     label = "updatedAt"
@@ -320,8 +319,6 @@ private fun TodayHeadline(today: DayOutlook, outlook: List<DayOutlook>) {
 
 @Composable
 private fun OutlookStrip(outlook: List<DayOutlook>, onDayClick: () -> Unit) {
-    val weekdayFormatter = remember { AppDateFormats.WEEKDAY }
-
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
@@ -332,7 +329,7 @@ private fun OutlookStrip(outlook: List<DayOutlook>, onDayClick: () -> Unit) {
                 // Today is the first column by construction, not by date comparison, so it
                 // can't disagree with the list it came from even if the whole strip goes stale.
                 isToday = index == 0,
-                weekday = weekdayFormatter.format(day.date.toJavaLocalDate()),
+                weekday = AppDateFormats.WEEKDAY.format(day.date),
                 onClick = onDayClick
             )
         }
@@ -421,13 +418,11 @@ private fun LegendItem(swatch: @Composable () -> Unit, label: String) {
  */
 @Composable
 private fun OutlookPlaceholder(gap: OutlookGap?, lastUpdated: Instant?, zone: ZoneId) {
-    val timeFormatter = remember(zone) {
-        AppDateFormats.FULL_DATE_TIME.withZone(zone)
-    }
+    val timeZone = remember(zone) { zone.toKotlinTimeZone() }
 
     val message = when (gap) {
         OutlookGap.ForecastBehind -> lastUpdated
-            ?.let { "Forecast is out of date — last updated ${timeFormatter.format(it)}" }
+            ?.let { "Forecast is out of date — last updated ${AppDateFormats.FULL_DATE_TIME.format(it.toKotlinInstant(), timeZone)}" }
             ?: "Forecast is out of date" // fallback; ViewModel doesn't actually produce this case
 
         OutlookGap.FetchFailed -> COULD_NOT_REACH_FORECAST
@@ -488,8 +483,8 @@ private fun SymptomFreeCard(streak: SymptomFreeStreak?, zone: ZoneId) {
 @Composable
 private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
     val lastEventLabel = remember(streak.lastEvent, currentYear) {
-        val lastEventDate = streak.lastEvent.date.toJavaLocalDate()
-        val date = lastEventDate.format(dateFormatterFor(lastEventDate, currentYear))
+        val lastEventDate = streak.lastEvent.date
+        val date = dateFormatterFor(lastEventDate, currentYear).format(lastEventDate)
         "Last: ${streak.lastEvent.severity.label} on $date"
     }
 
@@ -534,7 +529,7 @@ private fun CurrentStreak(streak: SymptomFreeStreak, currentYear: Int) {
 }
 
 /** Spells out the year only when it isn't this year, so an old date doesn't read as recent. */
-private fun dateFormatterFor(date: LocalDate, currentYear: Int): DateTimeFormatter =
+private fun dateFormatterFor(date: kotlinx.datetime.LocalDate, currentYear: Int): DateTimeFormat<kotlinx.datetime.LocalDate> =
     if (date.year == currentYear) AppDateFormats.DAY_AND_MONTH else AppDateFormats.DAY_MONTH_AND_YEAR
 
 @Composable
@@ -574,7 +569,7 @@ private fun SymptomFreeStreak.Run.rangeLabel(currentYear: Int): String {
     } else {
         AppDateFormats.SHORT_DATE_AND_YEAR
     }
-    return "${from.toJavaLocalDate().format(formatter)} – ${to.toJavaLocalDate().format(formatter)}"
+    return "${formatter.format(from)} – ${formatter.format(to)}"
 }
 
 @Composable

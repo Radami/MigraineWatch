@@ -3,6 +3,7 @@ package com.radami.migrainewatch.format
 import com.radami.migrainewatch.domain.AlertPhase
 import com.radami.migrainewatch.domain.AlertWindow
 import com.radami.migrainewatch.domain.PressureDirection
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import java.util.Locale
 import kotlin.test.AfterTest
@@ -47,5 +48,14 @@ class DeviceLocaleTest {
             "Starts Monday 06:15",
             formatAlertTiming(alert, AlertPhase.AHEAD, AlertTimingDetail.Brief, TimeZone.UTC)
         )
+    }
+
+    @Test
+    fun `dates keep English month and day names and a twelve hour marker`() {
+        val afternoon = LocalDateTime(2026, 9, 23, 14, 0)
+
+        assertEquals("Wednesday, 23 September 2026, 14:00", AppDateFormats.FULL_DATE_TIME.format(afternoon))
+        assertEquals("Wed 23 Sep, 14:00", AppDateFormats.DAY_AND_TIME.format(afternoon))
+        assertEquals("2PM", AppDateFormats.HOUR.format(afternoon))
     }
 }

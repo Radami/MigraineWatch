@@ -87,6 +87,7 @@ import com.radami.migrainewatch.ui.theme.Motion
 import com.radami.migrainewatch.ui.theme.MUTED_ALPHA
 import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
 import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.toKotlinLocalDate
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -174,7 +175,6 @@ private fun MonthCalendar(
     onNextMonth: () -> Unit,
     onDayTap: (LocalDate, SymptomEntry?) -> Unit
 ) {
-    val monthYearFormatter = AppDateFormats.MONTH_AND_YEAR
     val dayHeaders = listOf("S", "M", "T", "W", "T", "F", "S")
 
     Column {
@@ -195,7 +195,7 @@ private fun MonthCalendar(
                 label = "monthLabel"
             ) { shown ->
                 Text(
-                    shown.format(monthYearFormatter),
+                    AppDateFormats.MONTH_AND_YEAR.format(shown.atDay(1).toKotlinLocalDate()),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -456,7 +456,6 @@ private fun DayDetailSheet(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val dateFormatter = AppDateFormats.DAY_AND_MONTH
     val severityColor = entry.severity.color
 
     Column(
@@ -471,7 +470,7 @@ private fun DayDetailSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                entry.date.toJavaLocalDate().format(dateFormatter),
+                AppDateFormats.DAY_AND_MONTH.format(entry.date),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold
             )

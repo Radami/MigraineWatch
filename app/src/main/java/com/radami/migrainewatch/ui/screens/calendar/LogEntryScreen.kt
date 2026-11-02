@@ -49,6 +49,7 @@ import com.radami.migrainewatch.domain.Severity
 import com.radami.migrainewatch.format.AppDateFormats
 import com.radami.migrainewatch.format.description
 import com.radami.migrainewatch.format.label
+import kotlinx.datetime.toKotlinLocalDate
 import com.radami.migrainewatch.ui.theme.color
 import com.radami.migrainewatch.ui.theme.FAINT_ALPHA
 import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
@@ -68,7 +69,6 @@ fun LogEntryScreen(
     viewModel: LogEntryViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val dateFormatter = AppDateFormats.FULL_DATE
 
     LaunchedEffect(state.savedSuccessfully) {
         if (state.savedSuccessfully) onSaved()
@@ -80,7 +80,7 @@ fun LogEntryScreen(
                 title = {
                     Column {
                         Text(
-                            state.date.format(dateFormatter),
+                            AppDateFormats.FULL_DATE.format(state.date.toKotlinLocalDate()),
                             style = MaterialTheme.typography.titleMedium
                         )
                         StepIndicator(currentStep = state.step, totalSteps = 3)

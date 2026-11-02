@@ -61,11 +61,13 @@ import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.common.vicoTheme
-import java.time.Instant
 import java.time.ZoneId
+import kotlinx.datetime.toKotlinTimeZone
+import kotlinx.datetime.toLocalDateTime
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.time.Clock
+import kotlin.time.Instant
 
 /** Headroom above and below the data so the line doesn't run along the frame: a fraction of
  * the spread, with a floor in hPa for flat stretches that barely moved. */
@@ -195,29 +197,23 @@ fun PressureChart(
     val isDaily = window.step == ChartStep.OneDay
 
     // Mon/Tue/… for the 7-day chip, "3PM"/"9AM" for the hourly steps
-    val labelFormatter = remember(window.step, zone) {
-        val base = if (isDaily) AppDateFormats.WEEKDAY else AppDateFormats.HOUR
-        base.withZone(zone)
-    }
-    val dayFormatter = remember(zone) {
-        AppDateFormats.WEEKDAY.withZone(zone)
-    }
-    val xFormatter = remember(window, zone, labelFormatter, dayFormatter) {
+    val xFormatter = remember(window, zone) {
+        val timeZone = zone.toKotlinTimeZone()
         val stepSeconds = window.step.seconds
         CartesianValueFormatter { _, value, _ ->
             val index = value.roundToInt()
             val anchorEpoch = window.epochSecondAt(index)
-            val label = labelFormatter.format(Instant.ofEpochSecond(anchorEpoch))
+            val local = Instant.fromEpochSeconds(anchorEpoch).toLocalDateTime(timeZone)
             if (isDaily) {
-                label
+                AppDateFormats.WEEKDAY.format(local.date)
             } else {
                 // Hourly windows can cross midnight; add the day name on a second line at
                 // the first label and any day transition, to disambiguate.
-                val day = Instant.ofEpochSecond(anchorEpoch).atZone(zone).toLocalDate()
+                val label = AppDateFormats.HOUR.format(local)
                 val previousDay =
-                    Instant.ofEpochSecond(anchorEpoch - stepSeconds).atZone(zone).toLocalDate()
-                if (index == ChartWindow.POINT_INDICES.first || day != previousDay) {
-                    "$label\n${dayFormatter.format(Instant.ofEpochSecond(anchorEpoch))}"
+                    Instant.fromEpochSeconds(anchorEpoch - stepSeconds).toLocalDateTime(timeZone).date
+                if (index == ChartWindow.POINT_INDICES.first || local.date != previousDay) {
+                    "$label\n${AppDateFormats.WEEKDAY.format(local.date)}"
                 } else {
                     label
                 }

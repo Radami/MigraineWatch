@@ -31,7 +31,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.datetime.toJavaLocalDate
 import kotlinx.datetime.toJavaZoneId
 import java.time.LocalDate
 import javax.inject.Inject
@@ -95,7 +94,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val earliest = symptomRepository.getEarliestDate()
             if (earliest != null) {
-                _trackingSince.value = earliest.toJavaLocalDate().format(AppDateFormats.MONTH_AND_YEAR)
+                _trackingSince.value = AppDateFormats.MONTH_AND_YEAR.format(earliest)
             }
         }
     }

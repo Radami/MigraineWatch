@@ -58,6 +58,7 @@ import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.PressureDirection
 import com.radami.migrainewatch.format.formatAlertHeadline
 import com.radami.migrainewatch.format.AppDateFormats
+import com.radami.migrainewatch.format.format
 import com.radami.migrainewatch.format.formatHpa
 import com.radami.migrainewatch.format.label
 import com.radami.migrainewatch.ui.components.SectionHeading
@@ -68,8 +69,8 @@ import com.radami.migrainewatch.ui.theme.SECONDARY_ALPHA
 import kotlinx.datetime.toKotlinTimeZone
 import java.time.ZoneId
 import kotlin.math.roundToInt
+import kotlin.time.toKotlinInstant
 import kotlin.time.Clock
-import kotlin.time.toJavaInstant
 
 /** Whether the chart's selected range reaches the event a row describes. */
 private enum class ChartVisibility { InView, OutOfView }
@@ -83,7 +84,7 @@ fun PressureScreen(
     viewModel: PressureViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val timeFormatter = remember(state.zone) { AppDateFormats.FULL_DATE_TIME.withZone(state.zone) }
+    val timeZone = remember(state.zone) { state.zone.toKotlinTimeZone() }
 
     // Chart and alert list share one window so what the chart shades is what the list doesn't
     // have to explain. Snapping keeps it stable across recompositions in the same step.
@@ -123,7 +124,7 @@ fun PressureScreen(
                     )
                 }
                 Text(
-                    "Updated ${state.lastUpdated?.let { timeFormatter.format(it) } ?: "—"}",
+                    "Updated ${state.lastUpdated?.let { AppDateFormats.FULL_DATE_TIME.format(it.toKotlinInstant(), timeZone) } ?: "—"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = SECONDARY_ALPHA)
                 )
@@ -338,7 +339,7 @@ private fun AlertRow(
     zone: ZoneId,
     visibility: ChartVisibility
 ) {
-    val formatter = remember(zone) { AppDateFormats.DAY_AND_TIME.withZone(zone) }
+    val timeZone = remember(zone) { zone.toKotlinTimeZone() }
     val isDrop = alert.direction == PressureDirection.DROP
     val directionLabel = alert.direction.label
 
@@ -369,7 +370,7 @@ private fun AlertRow(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
             )
             Text(
-                "${formatter.format(alert.start.toJavaInstant())} → ${formatter.format(alert.end.toJavaInstant())}",
+                "${AppDateFormats.DAY_AND_TIME.format(alert.start, timeZone)} → ${AppDateFormats.DAY_AND_TIME.format(alert.end, timeZone)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface
                     .copy(alpha = SECONDARY_ALPHA * contentAlpha)
