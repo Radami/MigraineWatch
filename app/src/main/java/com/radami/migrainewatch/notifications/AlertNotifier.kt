@@ -23,12 +23,13 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.datetime.toKotlinTimeZone
 
 /** Posts pressure alerts to the system tray and opens the Pressure screen on tap. */
 @Singleton
 class AlertNotifier @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val permissionMonitor: NotificationPermissionMonitor
+    private val permissions: AndroidNotificationPermissions
 ) {
     private companion object {
         const val TAG = "AlertNotifier"
@@ -55,7 +56,7 @@ class AlertNotifier @Inject constructor(
      * marked as sent.
      */
     fun notify(alert: AlertWindow, phase: AlertPhase, zone: ZoneId): Boolean {
-        if (!permissionMonitor.canPost()) {
+        if (!permissions.canPost()) {
             Log.w(TAG, "Notifications not permitted; skipping alert at ${alert.start}")
             return false
         }
@@ -68,7 +69,9 @@ class AlertNotifier @Inject constructor(
             // so this is the one place the notification can carry the app's own colour.
             .setColor(BrandTerracottaLight.toArgb())
             .setContentTitle(formatAlertHeadline(alert.delta, alert.direction))
-            .setContentText(formatAlertTiming(alert, phase, AlertTimingDetail.WithEnd, zone))
+            .setContentText(
+                formatAlertTiming(alert, phase, AlertTimingDetail.WithEnd, zone.toKotlinTimeZone())
+            )
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
@@ -108,5 +111,5 @@ class AlertNotifier @Inject constructor(
      * between processes and would strand the old notification in the tray.
      */
     private fun notificationId(alert: AlertWindow): Int =
-        (alert.start.epochSecond / 60).toInt() * 31 + alert.direction.wireName.hashCode()
+        (alert.start.epochSeconds / 60).toInt() * 31 + alert.direction.wireName.hashCode()
 }

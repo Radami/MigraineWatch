@@ -14,15 +14,18 @@ import com.radami.migrainewatch.domain.PressureAlertUseCase
 import com.radami.migrainewatch.domain.PressureDirection
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.datetime.toJavaLocalDate
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,6 +38,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import kotlin.time.Duration.Companion.days
+import kotlin.time.toKotlinInstant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TodayViewModelTest {
@@ -70,6 +75,9 @@ class TodayViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
+    /** The view model's clock: one tick at the real now, so readings built around now line up. */
+    private val ticks = MutableStateFlow(Instant.now().toKotlinInstant())
+
     /** Mutable so tests can drive the outlook-gap state; defaults to a completed fetch. */
     private val refreshState = MutableStateFlow(RefreshState.Updated)
 
@@ -98,7 +106,7 @@ class TodayViewModelTest {
 
     @Test
     fun `initial state is loading`() = runTest {
-        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
         assertEquals(true, viewModel.uiState.value.isLoading)
     }
 
@@ -106,17 +114,17 @@ class TodayViewModelTest {
     fun `uiState updates when data is loaded`() = runTest {
         val now = Instant.now()
         val readings = listOf(
-            PressureReading(now, 1013f, 1013f, now)
+            PressureReading(now.toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         
-        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
 
         val state = viewModel.loadedState()
 
         assertFalse(state.isLoading)
         assertEquals(DayOutlook.DAYS, state.outlook.size)
-        assertEquals(LocalDate.now(), state.outlook.first().date)
+        assertEquals(LocalDate.now(), state.outlook.first().date.toJavaLocalDate())
     }
 
     @Test
@@ -126,13 +134,13 @@ class TodayViewModelTest {
         // banner has nothing left to warn about.
         val end = now.minus(2, ChronoUnit.HOURS)
         val readings = listOf(
-            PressureReading(end.minus(24, ChronoUnit.HOURS), 1020f, 1020f, now),
-            PressureReading(end, 1010f, 1010f, now)
+            PressureReading(end.minus(24, ChronoUnit.HOURS).toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+            PressureReading(end.toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
 
-        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
 
         // Waited for, not advanced: an unloaded state also holds an empty list.
         assertTrue(viewModel.loadedState().pendingAlerts.isEmpty())
@@ -143,13 +151,13 @@ class TodayViewModelTest {
         val now = Instant.now()
         // Create a 10hPa drop over 12 hours
         val readings = listOf(
-            PressureReading(now, 1020f, 1020f, now),
-            PressureReading(now.plusSeconds(12 * 3600), 1010f, 1010f, now)
+            PressureReading(now.toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+            PressureReading(now.plusSeconds(12 * 3600).toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
         
-        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
 
         val state = viewModel.loadedState()
 
@@ -168,13 +176,13 @@ class TodayViewModelTest {
         val now = Instant.now()
         // Started 6h ago, 6h left: still pending, but "starts" would misdescribe it.
         val readings = listOf(
-            PressureReading(now.minus(6, ChronoUnit.HOURS), 1020f, 1020f, now),
-            PressureReading(now.plus(6, ChronoUnit.HOURS), 1010f, 1010f, now)
+            PressureReading(now.minus(6, ChronoUnit.HOURS).toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+            PressureReading(now.plus(6, ChronoUnit.HOURS).toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
 
-        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
 
         val state = viewModel.loadedState()
 
@@ -186,13 +194,13 @@ class TodayViewModelTest {
     fun `an event still ahead is reported as ahead`() = runTest {
         val now = Instant.now()
         val readings = listOf(
-            PressureReading(now.plus(6, ChronoUnit.HOURS), 1020f, 1020f, now),
-            PressureReading(now.plus(18, ChronoUnit.HOURS), 1010f, 1010f, now)
+            PressureReading(now.plus(6, ChronoUnit.HOURS).toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+            PressureReading(now.plus(18, ChronoUnit.HOURS).toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         every { userPreferences.settings } returns flowOf(AppSettings(alertThresholdHpa = 5f))
 
-        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
 
         assertEquals(AlertPhase.AHEAD, viewModel.loadedState().leadAlertPhase)
     }
@@ -201,10 +209,10 @@ class TodayViewModelTest {
     fun `no pending event leaves the banner nothing to word`() = runTest {
         val now = Instant.now()
         every { pressureRepository.getReadingsInRange(any(), any()) } returns
-            flowOf(listOf(PressureReading(now, 1013f, 1013f, now)))
+            flowOf(listOf(PressureReading(now.toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())))
 
         assertNull(
-            TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+            TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
                 .loadedState().leadAlertPhase
         )
     }
@@ -214,11 +222,11 @@ class TodayViewModelTest {
         val now = Instant.now()
         // Stale cache, history only. Card dates what it has instead of blaming the connection.
         val readings = (1..12).map { hoursAgo ->
-            PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS), 1013f, 1013f, now)
+            PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS).toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())
         }
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
 
-        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
             .loadedState()
 
         assertEquals(DayOutlook.DAYS, state.outlook.count { it.risk == OutlookRisk.Unknown })
@@ -233,7 +241,7 @@ class TodayViewModelTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
         refreshState.value = RefreshState.NoReadings
 
-        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
             .loadedState()
 
         assertEquals(DayOutlook.DAYS, state.outlook.count { it.risk == OutlookRisk.Unknown })
@@ -252,7 +260,7 @@ class TodayViewModelTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
         refreshState.value = RefreshState.Failed
 
-        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
             .loadedState()
 
         assertEquals(OutlookGap.FetchFailed, state.outlookGap)
@@ -268,7 +276,7 @@ class TodayViewModelTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
         refreshState.value = RefreshState.Updated
 
-        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
             .loadedState()
 
         assertEquals(OutlookGap.Loading, state.outlookGap)
@@ -280,7 +288,7 @@ class TodayViewModelTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
         refreshState.value = RefreshState.InFlight
 
-        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
             .loadedState()
 
         assertEquals(OutlookGap.Loading, state.outlookGap)
@@ -292,7 +300,7 @@ class TodayViewModelTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
         refreshState.value = RefreshState.NoLocation
 
-        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
             .loadedState()
 
         assertEquals(OutlookGap.NoLocation, state.outlookGap)
@@ -303,12 +311,12 @@ class TodayViewModelTest {
     fun `readings that fell behind are dated even when the last fetch failed`() = runTest {
         val now = Instant.now()
         val readings = (1..12).map { hoursAgo ->
-            PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS), 1013f, 1013f, now)
+            PressureReading(now.minus(hoursAgo.toLong(), ChronoUnit.HOURS).toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())
         }
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
         refreshState.value = RefreshState.Failed
 
-        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
             .loadedState()
 
         assertEquals(OutlookGap.ForecastBehind, state.outlookGap)
@@ -324,11 +332,11 @@ class TodayViewModelTest {
 
         // Through to the last hour of today, and no further.
         val readings = (0 until HOURS_PER_DAY).map { hour ->
-            PressureReading(today.atTime(hour, 0).atZone(zone).toInstant(), 1013f, 1013f, now)
+            PressureReading(today.atTime(hour, 0).atZone(zone).toInstant().toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())
         }
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
 
-        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
             .loadedState()
 
         assertNull(state.outlookGap)
@@ -351,17 +359,17 @@ class TodayViewModelTest {
         val readings = (0 until DayOutlook.DAYS).flatMap { day ->
             (0 until HOURS_PER_DAY).map { hour ->
                 val at = today.plusDays(day.toLong()).atTime(hour, 0).atZone(zone).toInstant()
-                PressureReading(at, 1013f, 1013f, now)
+                PressureReading(at.toKotlinInstant(), 1013f, 1013f, now.toKotlinInstant())
             }
         }
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
 
-        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
 
         val state = viewModel.loadedState()
         val outlook = state.outlook
 
-        assertEquals(today.plusDays(DayOutlook.DAYS - 1L), outlook.last().date)
+        assertEquals(today.plusDays(DayOutlook.DAYS - 1L), outlook.last().date.toJavaLocalDate())
         assertEquals(OutlookRisk.Clear, outlook.last().risk)
         assertTrue(outlook.none { it.risk == OutlookRisk.Unknown })
         assertNull(state.outlookGap)
@@ -403,7 +411,7 @@ class TodayViewModelTest {
                 else ->
                     PEAK_HPA - (PEAK_HPA - TROUGH_HPA) * ChronoUnit.HOURS.between(dropStart, at) / DROP_HOURS
             }
-            PressureReading(at, pressure, pressure, now)
+            PressureReading(at.toKotlinInstant(), pressure, pressure, now.toKotlinInstant())
         }
     }
 
@@ -415,10 +423,10 @@ class TodayViewModelTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns
             flowOf(weekWithDrop(zone, dropStart = farFuture))
 
-        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val state = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
             .loadedState()
 
-        assertEquals(LocalDate.now(zone), state.outlook.first().date)
+        assertEquals(LocalDate.now(zone), state.outlook.first().date.toJavaLocalDate())
     }
 
     @Test
@@ -432,12 +440,26 @@ class TodayViewModelTest {
         every { pressureRepository.getReadingsInRange(any(), any()) } returns
             flowOf(weekWithDrop(zone, dropStart))
 
-        val outlook = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase)
+        val outlook = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
             .loadedState()
             .outlook
 
         assertEquals(OutlookRisk.Clear, outlook[0].risk)
         assertEquals(OutlookRisk.Elevated, outlook[1].risk)
         assertEquals(OutlookRisk.Clear, outlook[2].risk)
+    }
+
+    /** A screen left open for days keeps drawing the week ahead of now, not the week it opened on. */
+    @Test
+    fun `the readings window moves on with the clock`() = runTest {
+        every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(emptyList())
+        val viewModel = TodayViewModel(pressureRepository, symptomRepository, userPreferences, alertUseCase, ticks)
+        viewModel.loadedState()
+
+        val dayLater = ticks.value + 1.days
+        ticks.value = dayLater
+        advanceUntilIdle()
+
+        verify { pressureRepository.getReadingsInRange(any(), dayLater + PressureAlertUseCase.FORECAST_DAYS.days) }
     }
 }
