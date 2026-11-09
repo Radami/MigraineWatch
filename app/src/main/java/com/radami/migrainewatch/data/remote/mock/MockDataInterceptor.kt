@@ -5,10 +5,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
-import java.time.LocalDateTime
+import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import java.time.temporal.ChronoUnit
 
 /**
  * Intercepts calls to Open-Meteo and returns a generated realistic dataset.
@@ -129,13 +128,12 @@ class MockDataInterceptor : Interceptor {
     }
 
     private fun generateMockJson(lat: Double, lon: Double): String {
-        val now = LocalDateTime.now()
+        // On the hour, as Open-Meteo's own series are, and in seconds since the epoch, as the
+        // app asks the real API for them.
+        val now = Instant.now().truncatedTo(ChronoUnit.HOURS)
         val systemTimezone = ZoneId.systemDefault().id
-        val times = mutableListOf<String>()
+        val times = mutableListOf<Long>()
         val pressures = mutableListOf<Float>()
-        // ROOT for the same reason as the real request it stands in for: this JSON is parsed
-        // back by PressureRepository, so the digits have to stay Latin whatever the device is.
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:00", Locale.ROOT)
 
         // Use lat/lon to seed the base pressure so different locations have different values
         // This ensures Scenario A (Nervous Traveler) can verify data changes.
@@ -147,8 +145,7 @@ class MockDataInterceptor : Interceptor {
         val curve = curveFor(currentScenario)
 
         for (hour in FIRST_HOUR..LAST_HOUR) {
-            val time = now.plusHours(hour.toLong())
-            times.add(time.format(formatter))
+            times.add(now.plus(hour.toLong(), ChronoUnit.HOURS).epochSecond)
 
             pressures.add(basePressure + curve.offsetAt(hour))
         }
@@ -159,7 +156,7 @@ class MockDataInterceptor : Interceptor {
                 "longitude": $lon,
                 "timezone": "$systemTimezone",
                 "hourly": {
-                    "time": ${times.joinToString(prefix = "[\"", postfix = "\"]", separator = "\",\"")},
+                    "time": ${times.joinToString(prefix = "[", postfix = "]", separator = ",")},
                     "pressure_msl": ${pressures.joinToString(prefix = "[", postfix = "]", separator = ",")},
                     "surface_pressure": ${pressures.joinToString(prefix = "[", postfix = "]", separator = ",")}
                 }

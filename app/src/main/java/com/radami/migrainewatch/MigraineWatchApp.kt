@@ -31,8 +31,8 @@ class MigraineWatchApp : Application(), Configuration.Provider {
             // Already initialized
         }
 
-        // Rebuilds the queued warnings whenever a new series lands, including a location
-        // change's refetch, which nothing else watches for.
+        // Rebuilds the queued warnings whenever a new series lands or the alert settings
+        // change, including a location change's refetch, which nothing else watches for.
         alertReconcileMonitor.start()
     }
 }

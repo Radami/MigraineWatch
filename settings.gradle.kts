@@ -24,3 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "MigraineWatch"
 include(":app")
+include(":shared")
+include(":ui")

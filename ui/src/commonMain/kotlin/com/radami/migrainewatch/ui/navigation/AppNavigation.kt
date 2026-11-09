@@ -1,0 +1,162 @@
+package com.radami.migrainewatch.ui.navigation
+
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Modifier
+import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.savedstate.read
+import com.radami.migrainewatch.ui.screens.calendar.CalendarScreen
+import com.radami.migrainewatch.ui.screens.calendar.LogEntryScreen
+import com.radami.migrainewatch.ui.screens.onboarding.OnboardingScreen
+import com.radami.migrainewatch.ui.screens.pressure.PressureScreen
+import com.radami.migrainewatch.ui.screens.settings.SettingsScreen
+import com.radami.migrainewatch.ui.screens.today.TodayScreen
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
+import kotlin.time.Clock
+
+/**
+ * @param locationZone the location's zone, so "today" for a new log entry means today there.
+ * @param openTab a tab to show on top of [startDestination] once, for a notification that
+ *   opens the app on a different screen than usual.
+ * @param onTabOpened called once [openTab] is shown, so a caller can clear the request and make
+ *   the same tab openable again.
+ */
+@Composable
+fun AppNavigation(
+    startDestination: String,
+    locationZone: TimeZone,
+    openTab: Screen? = null,
+    onTabOpened: () -> Unit = {}
+) {
+    val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+
+    val showBottomBar = currentDestination?.route in bottomNavItems.map { it.screen.route }
+
+    // Navigating rather than starting there keeps Today underneath, so back out of an alert
+    // leaves the user where the app would have opened anyway.
+    val tabOpened by rememberUpdatedState(onTabOpened)
+    LaunchedEffect(openTab) {
+        val tab = openTab ?: return@LaunchedEffect
+        navController.navigateToTab(tab)
+        tabOpened()
+    }
+
+    Scaffold(
+        floatingActionButton = {
+            // One shared log-symptoms FAB for the three main tabs. The Scaffold slot keeps
+            // it pinned to the bottom-right corner, floating above scrolling content.
+            if (showBottomBar) {
+                FloatingActionButton(
+                    onClick = {
+                        navController.navigate(
+                            Screen.LogEntry.withDate(Clock.System.todayIn(locationZone).toString())
+                        )
+                    }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Log today's symptoms")
+                }
+            }
+        },
+        bottomBar = {
+            if (showBottomBar) {
+                NavigationBar {
+                    bottomNavItems.forEach { item ->
+                        NavigationBarItem(
+                            selected = currentDestination?.hierarchy?.any { it.route == item.screen.route } == true,
+                            onClick = { navController.navigateToTab(item.screen) },
+                            icon = {
+                                Icon(
+                                    imageVector = item.icon,
+                                    contentDescription = item.contentDescription
+                                )
+                            },
+                            label = { Text(item.label) }
+                        )
+                    }
+                }
+            }
+        }
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = startDestination,
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable(Screen.Onboarding.route) {
+                OnboardingScreen(
+                    onComplete = {
+                        navController.navigate(Screen.Today.route) {
+                            popUpTo(Screen.Onboarding.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
+            composable(Screen.Today.route) {
+                TodayScreen(
+                    // The banner and outlook days both lead here: Pressure lists and shades
+                    // every event and day on the chart.
+                    onViewPressure = { navController.navigateToTab(Screen.Pressure) },
+                    onChangeLocation = { navController.navigate(Screen.Onboarding.route) }
+                )
+            }
+            composable(Screen.Pressure.route) {
+                PressureScreen(
+                    onChangeLocation = { navController.navigate(Screen.Onboarding.route) }
+                )
+            }
+            composable(Screen.Calendar.route) {
+                CalendarScreen(
+                    onLogEntry = { date ->
+                        navController.navigate(Screen.LogEntry.withDate(date.toString()))
+                    }
+                )
+            }
+            composable(Screen.Settings.route) {
+                SettingsScreen()
+            }
+            composable(Screen.LogEntry.route) { backStackEntry ->
+                val dateStr = backStackEntry.arguments?.read { getStringOrNull(LOG_ENTRY_DATE) } ?: return@composable
+                LogEntryScreen(
+                    date = LocalDate.parse(dateStr),
+                    onSaved = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Switches to a bottom-bar tab: one entry per tab on the back stack, each remembering where it
+ * was left, and back always returning to the start destination rather than retracing the tabs.
+ */
+private fun NavController.navigateToTab(screen: Screen) {
+    navigate(screen.route) {
+        popUpTo(graph.findStartDestination().id) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
+    }
+}

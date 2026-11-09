@@ -5,7 +5,7 @@ import com.radami.migrainewatch.domain.PressureDirection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
-import java.time.Instant
+import kotlin.time.Instant
 
 class NotifiedAlertTest {
 
@@ -25,7 +25,11 @@ class NotifiedAlertTest {
     @Test
     fun `a stored warning becomes the window and direction it announced`() {
         assertEquals(
-            DeliveredWarning(start = START, end = END, direction = PressureDirection.RISE),
+            DeliveredWarning(
+                start = START,
+                end = END,
+                direction = PressureDirection.RISE
+            ),
             row(PressureDirection.RISE.wireName).toDeliveredWarning()
         )
     }

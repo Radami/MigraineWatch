@@ -1,16 +1,12 @@
 package com.radami.migrainewatch.di
 
 import com.radami.migrainewatch.data.remote.GeocodingApi
+import com.radami.migrainewatch.data.remote.KtorGeocodingApi
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.serialization.json.Json
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import retrofit2.Retrofit
-import retrofit2.converter.kotlinx.serialization.asConverterFactory
-import javax.inject.Named
+import io.ktor.client.HttpClient
 import javax.inject.Singleton
 
 /**
@@ -24,16 +20,5 @@ object GeocodingModule {
 
     @Provides
     @Singleton
-    @Named("geocoding")
-    fun provideGeocodingRetrofit(client: OkHttpClient, json: Json): Retrofit =
-        Retrofit.Builder()
-            .baseUrl("https://geocoding-api.open-meteo.com/")
-            .client(client)
-            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
-            .build()
-
-    @Provides
-    @Singleton
-    fun provideGeocodingApi(@Named("geocoding") retrofit: Retrofit): GeocodingApi =
-        retrofit.create(GeocodingApi::class.java)
+    fun provideGeocodingApi(client: HttpClient): GeocodingApi = KtorGeocodingApi(client)
 }
