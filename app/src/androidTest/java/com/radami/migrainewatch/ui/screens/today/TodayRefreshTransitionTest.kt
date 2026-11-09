@@ -27,6 +27,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
 import javax.inject.Inject
 
 /**
@@ -69,13 +71,43 @@ class TodayRefreshTransitionTest {
         const val ELEVATED_HEADLINE = "Elevated risk today"
         const val CLEAR_HEADLINE = "Clear today"
 
-        val HOME_LOCATION = LocationData(
-            source = "manual",
-            lat = 52.52,
-            lon = 13.41,
-            name = "Berlin, Germany",
-            timezone = "Europe/Berlin"
-        )
+        /**
+         * The local hour it is when a test starts. The scenario's drop begins 3 hours out, so in
+         * the morning it falls on today and "Elevated risk today" shows. Pinned rather than taken
+         * from a real city, whose today could end before the drop (in Berlin after 21:00).
+         */
+        const val LOCAL_HOUR_AT_START = 6
+
+        /** The widest offsets in use; fixed-offset zones exist for every whole hour between them. */
+        const val MOST_BEHIND_UTC = -12
+        const val MOST_AHEAD_OF_UTC = 14
+
+        const val HOURS_PER_DAY = 24
+
+        /**
+         * A place where it is [LOCAL_HOUR_AT_START] now, whenever the test runs. The mock serves
+         * the same weather for any coordinates, so only the zone matters.
+         */
+        fun homeLocation(): LocationData {
+            var offsetHours = LOCAL_HOUR_AT_START - ZonedDateTime.now(ZoneOffset.UTC).hour
+            if (offsetHours < MOST_BEHIND_UTC) offsetHours += HOURS_PER_DAY
+            if (offsetHours > MOST_AHEAD_OF_UTC) offsetHours -= HOURS_PER_DAY
+
+            return LocationData(
+                source = "manual",
+                lat = 52.52,
+                lon = 13.41,
+                name = "Test town",
+                timezone = fixedOffsetZone(offsetHours)
+            )
+        }
+
+        /** The IANA zone [offsetHours] from UTC. Their signs run backwards: Etc/GMT-5 is UTC+5. */
+        private fun fixedOffsetZone(offsetHours: Int): String = when {
+            offsetHours == 0 -> "Etc/UTC"
+            offsetHours > 0 -> "Etc/GMT-$offsetHours"
+            else -> "Etc/GMT+${-offsetHours}"
+        }
     }
 
     @get:Rule(order = 0)
@@ -107,7 +139,7 @@ class TodayRefreshTransitionTest {
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
 
         runBlocking {
-            userPreferences.saveLocation(HOME_LOCATION)
+            userPreferences.saveLocation(homeLocation())
             userPreferences.setOnboardingComplete(true)
             userPreferences.setAlertSensitivity(ALERT_SENSITIVITY)
         }

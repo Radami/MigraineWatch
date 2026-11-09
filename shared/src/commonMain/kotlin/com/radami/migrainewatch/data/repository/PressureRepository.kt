@@ -1,0 +1,326 @@
+package com.radami.migrainewatch.data.repository
+
+import com.radami.migrainewatch.coroutines.catchingFailures
+import com.radami.migrainewatch.data.local.dao.PressureReadingDao
+import com.radami.migrainewatch.data.model.PressureReading
+import com.radami.migrainewatch.data.preferences.LocationData
+import com.radami.migrainewatch.data.preferences.UserPreferences
+import com.radami.migrainewatch.data.remote.OpenMeteoApi
+import com.radami.migrainewatch.data.remote.OpenMeteoArchiveApi
+import com.radami.migrainewatch.data.remote.dto.OpenMeteoResponse
+import com.radami.migrainewatch.logging.Logger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
+
+/** What a fetch does with the readings already stored. */
+private enum class RefreshMode {
+
+    /** Keeps the stored history and replaces the forecast. Every ordinary refresh. */
+    KeepHistory,
+
+    /** Discards the lot first: what is stored describes a place the user has left. */
+    ReplaceEverything
+}
+
+/**
+ * How the last fetch ended, or that one is still running.
+ * Lets a screen with no readings explain why, instead of guessing.
+ */
+enum class RefreshState {
+
+    /**
+     * A fetch is running, or none has finished yet. Also returned when the joined
+     * fetch was superseded by one for a new location that is still running.
+     */
+    InFlight,
+
+    /** The series was fetched and stored. */
+    Updated,
+
+    /**
+     * The fetch worked but carried no readings, so nothing was stored.
+     * Distinct from [Updated] because Room delivers stored rows later, so an
+     * empty table right after [Updated] can still just be a load in progress.
+     */
+    NoReadings,
+
+    /** No location is set, so there was nothing to fetch for. */
+    NoLocation,
+
+    /** The fetch failed. Whatever was stored before it is untouched. */
+    Failed
+}
+
+/**
+ * What the stored series depends on. The location name is just a display label,
+ * so renaming it alone shouldn't trigger a refetch; lat/lon/timezone should.
+ */
+private data class SeriesLocation(val lat: Double, val lon: Double, val timezone: String)
+
+private const val TAG = "PressureRepo"
+
+/**
+ * How far back the forecast endpoint returns history on its own (`past_days=30`).
+ * Anything older has to come from the archive API instead.
+ */
+private const val FORECAST_HISTORY_DAYS = 30L
+
+/** How far back to reach the first time, when there is no stored history to fill a gap in. */
+private const val INITIAL_BACKFILL_DAYS = 60L
+
+/** A forecast older than this is worth refetching. Open-Meteo publishes hourly. */
+private const val FORECAST_FRESHNESS_HOURS = 1L
+
+/** Asks Open-Meteo to resolve the zone from the coordinates; the response names the result. */
+private const val AUTO_TIMEZONE = "auto"
+
+class PressureRepository(
+    private val dao: PressureReadingDao,
+    private val forecastApi: OpenMeteoApi,
+    private val archiveApi: OpenMeteoArchiveApi,
+    private val prefs: UserPreferences,
+    private val scope: CoroutineScope
+) {
+    // Guards [inFlight] only. The fetch itself runs outside the lock, so joining an existing
+    // refresh never waits on the network — it waits on the Deferred.
+    private val refreshMutex = Mutex()
+
+    /** The refresh in progress, or null when none is. Read and replaced under [refreshMutex]. */
+    private var inFlight: Deferred<RefreshState>? = null
+
+    private val _refreshState = MutableStateFlow(RefreshState.InFlight)
+
+    /**
+     * How the fetching is going, for screens that need to explain an empty series.
+     * Published as a flow since refreshes are often triggered by something other
+     * than the screen observing them (the hourly worker, a location change).
+     */
+    val refreshState: StateFlow<RefreshState> = _refreshState.asStateFlow()
+
+    init {
+        observeLocationChanges()
+    }
+
+    fun getReadingsInRange(from: Instant, to: Instant): Flow<List<PressureReading>> =
+        dao.getReadingsInRange(from, to)
+
+    /**
+     * Fetches the current series and stores it, or joins the fetch already running.
+     * Callers overlap by design, so joining avoids races between concurrent fetches.
+     * Runs in [scope], not the caller's, so a closed screen can't cancel others waiting on it.
+     */
+    suspend fun refresh(): RefreshState = fetch(RefreshMode.KeepHistory)
+
+    private suspend fun fetch(mode: RefreshMode): RefreshState {
+        val running = refreshMutex.withLock {
+            // On a location change, wait for the old fetch to fully cancel rather than just
+            // signal it, so it can't sneak in a write with stale readings afterwards.
+            if (mode == RefreshMode.ReplaceEverything) {
+                inFlight?.cancelAndJoin()
+                inFlight = null
+            }
+            inFlight?.takeIf { it.isActive } ?: startFetch(mode).also { inFlight = it }
+        }
+
+        return try {
+            running.await()
+        } catch (e: CancellationException) {
+            // The shared fetch was superseded by a new one; only rethrow if this
+            // caller itself was cancelled, not because the fetch it joined was.
+            currentCoroutineContext().ensureActive()
+            RefreshState.InFlight
+        }
+    }
+
+    /**
+     * Starts a fetch and publishes what becomes of it; caller records it as the one in flight.
+     * Publishes [RefreshState.InFlight] before dispatching so a state read right after can't
+     * see a previous fetch's stale result. A cancelled fetch publishes nothing.
+     */
+    private fun startFetch(mode: RefreshMode): Deferred<RefreshState> {
+        _refreshState.value = RefreshState.InFlight
+        return scope.async { fetchAndStore(mode).also { _refreshState.value = it } }
+    }
+
+    /**
+     * Refetches whenever the stored location changes, including the first one at onboarding.
+     * Lives here rather than in whoever writes the location, since owning the stored
+     * series means owning the reaction to it changing.
+     */
+    private fun observeLocationChanges() {
+        scope.launch {
+            prefs.settings
+                .map { SeriesLocation(it.location.lat, it.location.lon, it.location.timezone) }
+                .distinctUntilChanged()
+                // The location active at startup is where the stored data already is.
+                .drop(1)
+                // Filters out the zero/zero default (a failed settings read, not a real move).
+                // Placed after drop(1) so onboarding's first real location still counts.
+                .filter { it.lat != 0.0 || it.lon != 0.0 }
+                .collect { fetch(RefreshMode.ReplaceEverything) }
+        }
+    }
+
+    /**
+     * Runs in [scope] with no dispatcher of its own; wrapping would only hide the thread.
+     * Reports failure instead of throwing: a throw here would kill the location collector,
+     * silently breaking future refreshes. Cancellation still propagates; see [catchingFailures].
+     */
+    private suspend fun fetchAndStore(mode: RefreshMode): RefreshState {
+        val loc = catchingFailures { prefs.settings.first().location }
+            .onFailure { Logger.e(TAG, "Could not read the stored location", it) }
+            .getOrElse { return RefreshState.Failed }
+
+        if (loc.lat == 0.0 && loc.lon == 0.0) {
+            Logger.w(TAG, "Refresh skipped: No location set")
+            return RefreshState.NoLocation
+        }
+
+        // An unknown zone is requested as "auto"; storeForecast keeps the one that comes back.
+        val requestZone = loc.knownZone?.id ?: AUTO_TIMEZONE
+        val now = Clock.System.now()
+        Logger.d(TAG, "Refreshing data for ${loc.name} at ${loc.lat},${loc.lon} in $requestZone")
+
+        // Own catch, not part of the outcome: the forecast endpoint already covers 30 days,
+        // so failing to backfill further just thins the chart, it isn't a refresh failure.
+        if (mode == RefreshMode.KeepHistory) {
+            catchingFailures { gapFillIfNeeded(loc, requestZone, now) }
+                .onFailure { Logger.e(TAG, "Archive fetch failed", it) }
+        }
+
+        return catchingFailures { storeForecast(mode, loc, requestZone, now) }
+            .onFailure { Logger.e(TAG, "Forecast fetch failed", it) }
+            .getOrElse { RefreshState.Failed }
+    }
+
+    /**
+     * Fetches history older than the forecast endpoint covers, when a gap exists.
+     * Never called on a location move: old history belongs to the old place and
+     * gets replaced anyway, so the new location just keeps its 30 forecast days.
+     */
+    private suspend fun gapFillIfNeeded(loc: LocationData, requestZone: String, now: Instant) {
+        val lastHistorical = dao.getLatestHistorical(now)
+        val historyStart = now - FORECAST_HISTORY_DAYS.days
+        if (lastHistorical != null && lastHistorical.dateTime >= historyStart) return
+
+        val gapStart = lastHistorical?.dateTime ?: (now - INITIAL_BACKFILL_DAYS.days)
+        // Dates only bound the request, so the fallback zone is close enough while it's unknown.
+        val zone = loc.zone
+        val startDate = formatDate(gapStart, zone)
+        val endDate = formatDate(historyStart, zone)
+        Logger.d(TAG, "Fetching archive from $startDate to $endDate")
+
+        val response = archiveApi.getArchive(
+            latitude = loc.lat,
+            longitude = loc.lon,
+            startDate = startDate,
+            endDate = endDate,
+            timezone = requestZone
+        )
+        val fetchedAt = Clock.System.now()
+        val historical = parseResponse(response, fetchedAt).filter { it.dateTime < now }
+
+        Logger.d(TAG, "Inserting ${historical.size} historical readings from archive")
+        dao.insertHistorical(historical)
+    }
+
+    /** The regular fetch: past_days=30 plus the 7-day forecast, stored as one write. */
+    private suspend fun storeForecast(
+        mode: RefreshMode,
+        loc: LocationData,
+        requestZone: String,
+        now: Instant
+    ): RefreshState {
+        Logger.d(TAG, "Fetching forecast for timezone $requestZone")
+        val response = forecastApi.getForecast(
+            latitude = loc.lat,
+            longitude = loc.lon,
+            timezone = requestZone
+        )
+        val fetchedAt = Clock.System.now()
+        val readings = parseResponse(response, fetchedAt)
+
+        // Not written: both write paths clear what they replace first, so an empty response
+        // would wipe the forecast (or the whole table on a move) instead of just updating it.
+        if (readings.isEmpty()) {
+            Logger.w(TAG, "Forecast response carried no readings; leaving the stored series alone")
+            return RefreshState.NoReadings
+        }
+
+        val historical = readings.filter { it.dateTime < now }
+        val forecast = readings.filter { it.dateTime >= now }
+
+        Logger.d(TAG, "Inserting ${historical.size} historical and ${forecast.size} forecast readings")
+
+        // Last chance to drop a superseded fetch before it writes; the DB writes below
+        // don't suspend, so they wouldn't otherwise notice a cancellation in time.
+        currentCoroutineContext().ensureActive()
+
+        // One transaction either way: the screens observe this table, and a series briefly
+        // emptied and not yet rewritten reads to them as one that never arrived.
+        when (mode) {
+            RefreshMode.KeepHistory ->
+                dao.replaceSeries(historical = historical, forecastFrom = now, forecast = forecast)
+
+            RefreshMode.ReplaceEverything ->
+                dao.replaceAllReadings(historical = historical, forecast = forecast)
+        }
+
+        // A location saved without a zone takes the one Open-Meteo resolved for it. That
+        // changes the stored location, so the move-watcher refetches once from scratch: rows
+        // fetched under the old "UTC" request sit on another hour grid wherever the offset
+        // isn't whole hours, and would otherwise interleave with these for good. Own catch, as
+        // for the archive: the series is stored either way, and the next refresh tries again.
+        if (loc.knownZone == null && response.timezone.isNotBlank()) {
+            catchingFailures { prefs.adoptTimezone(loc, response.timezone) }
+                .onFailure { Logger.e(TAG, "Could not store the resolved timezone", it) }
+        }
+
+        return RefreshState.Updated
+    }
+
+    /** No dispatcher of its own: Room already runs suspending queries on its own executor. */
+    suspend fun isForecastStale(): Boolean {
+        val now = Clock.System.now()
+        val fetchedAt = dao.getLatestForecastFetchTime(now) ?: return true
+        return fetchedAt < now - FORECAST_FRESHNESS_HOURS.hours
+    }
+
+    /**
+     * The hours [response] holds a reading for. Times arrive as instants, so no zone is needed
+     * to read them and none can be applied wrongly; hours missing either pressure are dropped.
+     */
+    private fun parseResponse(response: OpenMeteoResponse, fetchedAt: Instant): List<PressureReading> =
+        response.hourly.time.mapIndexedNotNull { i, epochSeconds ->
+            val pressureMsl = response.hourly.pressureMsl.getOrNull(i) ?: return@mapIndexedNotNull null
+            val surfacePressure = response.hourly.surfacePressure.getOrNull(i) ?: return@mapIndexedNotNull null
+            PressureReading(Instant.fromEpochSeconds(epochSeconds), pressureMsl, surfacePressure, fetchedAt)
+        }
+
+    /** ISO `yyyy-MM-dd` in ASCII digits whatever the device locale: it goes into a query string. */
+    private fun formatDate(instant: Instant, zone: TimeZone): String =
+        instant.toLocalDateTime(zone).date.toString()
+}

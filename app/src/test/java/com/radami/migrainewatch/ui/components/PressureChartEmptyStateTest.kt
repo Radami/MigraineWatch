@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import com.radami.migrainewatch.data.model.PressureReading
 import com.radami.migrainewatch.domain.ChartStep
 import com.radami.migrainewatch.domain.ChartWindow
+import kotlinx.datetime.toKotlinTimeZone
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,6 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.time.toKotlinInstant
 
 /**
  * Checks the empty-state stand-in is actually composed and laid out in the chart's place.
@@ -48,7 +50,7 @@ class PressureChartEmptyStateTest {
     /** Hourly readings that stop a full day before the window opens. */
     private fun staleReadings(): List<PressureReading> = (24..48).map { hoursAgo ->
         val at = Instant.ofEpochSecond(NOW.epochSecond - hoursAgo * HOUR)
-        PressureReading(at, 1013f, 1003f, NOW)
+        PressureReading(at.toKotlinInstant(), 1013f, 1003f, NOW.toKotlinInstant())
     }.reversed()
 
     private fun setChart(readings: List<PressureReading>) {
@@ -56,8 +58,8 @@ class PressureChartEmptyStateTest {
             Box(Modifier.width(CARD_WIDTH)) {
                 PressureChart(
                     readings = readings,
-                    window = ChartWindow.around(NOW, ChartStep.ThreeHours, ZONE),
-                    zone = ZONE,
+                    window = ChartWindow.around(NOW.toKotlinInstant(), ChartStep.ThreeHours, ZONE.toKotlinTimeZone()),
+                    zone = ZONE.toKotlinTimeZone(),
                     modifier = Modifier.width(CHART_WIDTH)
                 ) {
                     // Fills its container, so measured width reveals which one it landed in.
@@ -87,7 +89,7 @@ class PressureChartEmptyStateTest {
     fun `readings that reach the window draw the chart instead`() {
         val covering = (-12..12).map { hours ->
             val at = Instant.ofEpochSecond(NOW.epochSecond + hours * HOUR)
-            PressureReading(at, 1013f + hours, 1003f + hours, NOW)
+            PressureReading(at.toKotlinInstant(), 1013f + hours, 1003f + hours, NOW.toKotlinInstant())
         }
 
         setChart(covering)

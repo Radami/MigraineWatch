@@ -6,9 +6,9 @@ import com.radami.migrainewatch.data.model.SymptomEntry
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDate
 import org.junit.Test
-import java.time.Instant
-import java.time.LocalDate
+import kotlin.time.Clock
 
 class SymptomRepositoryTest {
 
@@ -26,7 +26,7 @@ class SymptomRepositoryTest {
 
     @Test
     fun `save upserts so editing a day replaces its entry`() = runTest {
-        val now = Instant.now()
+        val now = Clock.System.now()
         val entry = SymptomEntry(
             date = date,
             severity = Severity.MILD,

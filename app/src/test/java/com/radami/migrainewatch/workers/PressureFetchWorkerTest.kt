@@ -8,7 +8,7 @@ import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
 import com.radami.migrainewatch.data.repository.PressureRepository
 import com.radami.migrainewatch.data.repository.RefreshState
-import com.radami.migrainewatch.domain.AlertNotificationScheduler
+import com.radami.migrainewatch.domain.AlertReconciler
 import com.radami.migrainewatch.domain.ReconcileResult
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -30,7 +30,7 @@ import org.robolectric.annotation.Config
 class PressureFetchWorkerTest {
 
     private val repository = mockk<PressureRepository>()
-    private val scheduler = mockk<AlertNotificationScheduler>()
+    private val reconciler = mockk<AlertReconciler>()
 
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
@@ -41,7 +41,7 @@ class PressureFetchWorkerTest {
                     appContext: Context,
                     workerClassName: String,
                     workerParameters: WorkerParameters
-                ) = PressureFetchWorker(appContext, workerParameters, repository, scheduler)
+                ) = PressureFetchWorker(appContext, workerParameters, repository, reconciler)
             })
             .build()
 
@@ -50,7 +50,7 @@ class PressureFetchWorkerTest {
 
     /** Matches any instant: `reconcile` defaults its clock arg, so a bare stub would never match. */
     private fun reconcileSucceeds() {
-        coEvery { scheduler.reconcile(any()) } returns ReconcileResult.Success(pending = 0, cancelled = 0)
+        coEvery { reconciler.reconcile(any()) } returns ReconcileResult.Success(pending = 0, cancelled = 0)
     }
 
     @Test
@@ -59,7 +59,7 @@ class PressureFetchWorkerTest {
         reconcileSucceeds()
 
         assertEquals(ListenableWorker.Result.success(), runWorker())
-        coVerify(exactly = 1) { scheduler.reconcile(any()) }
+        coVerify(exactly = 1) { reconciler.reconcile(any()) }
     }
 
     @Test
@@ -81,7 +81,7 @@ class PressureFetchWorkerTest {
 
         runWorker()
 
-        coVerify(exactly = 1) { scheduler.reconcile(any()) }
+        coVerify(exactly = 1) { reconciler.reconcile(any()) }
     }
 
     /**

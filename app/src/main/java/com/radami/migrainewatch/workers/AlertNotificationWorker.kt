@@ -17,11 +17,13 @@ import com.radami.migrainewatch.notifications.AlertNotifier
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
-import java.time.Instant
 import com.radami.migrainewatch.data.model.toDeliveredWarning
+import kotlinx.datetime.toJavaZoneId
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /**
- * Fires at the lead time worked out by [com.radami.migrainewatch.domain.AlertNotificationScheduler]
+ * Fires at the lead time worked out by [com.radami.migrainewatch.domain.AlertReconciler]
  * and posts the warning for one event.
  */
 @HiltWorker
@@ -43,7 +45,7 @@ class AlertNotificationWorker @AssistedInject constructor(
 
         // The scheduler cancels events that leave the forecast, but up to an hour can pass
         // between reconciles, so confirm the event is still there before waking the user.
-        val now = Instant.now()
+        val now = Clock.System.now()
         val stillForecast = alertUseCase.currentAlerts(now)
             .any { AlertNotificationDecider.isSameEvent(it, alert) }
         if (!stillForecast) return Result.success()
@@ -51,7 +53,7 @@ class AlertNotificationWorker @AssistedInject constructor(
         // Matched on the event, not merely on direction: an unrelated drop announced this
         // morning must not silence a genuinely new one this evening.
         val alreadySent = notifiedAlertDao
-            .getNotifiedSince(now.minus(AlertNotificationDecider.NOTIFICATION_LOOKBACK))
+            .getNotifiedSince(now - AlertNotificationDecider.NOTIFICATION_LOOKBACK)
             .mapNotNull { it.toDeliveredWarning() }
             .any { AlertNotificationDecider.covers(it, alert) }
         if (alreadySent) return Result.success()
@@ -59,7 +61,7 @@ class AlertNotificationWorker @AssistedInject constructor(
         // Read now rather than carried from the scheduler: work can run hours after its delay
         // expires, by which time an event that was still ahead has started.
         val phase = AlertPhase.of(alert, now)
-        if (!notifier.notify(alert, phase, settings.location.zone)) return Result.retry()
+        if (!notifier.notify(alert, phase, settings.location.zone.toJavaZoneId())) return Result.retry()
 
         notifiedAlertDao.insert(
             NotifiedAlert(
@@ -80,8 +82,8 @@ class AlertNotificationWorker @AssistedInject constructor(
         private const val KEY_DIRECTION = "direction"
 
         fun inputDataFor(alert: AlertWindow) = workDataOf(
-            KEY_START_EPOCH to alert.start.epochSecond,
-            KEY_END_EPOCH to alert.end.epochSecond,
+            KEY_START_EPOCH to alert.start.epochSeconds,
+            KEY_END_EPOCH to alert.end.epochSeconds,
             KEY_DELTA to alert.delta,
             KEY_DIRECTION to alert.direction.wireName
         )
@@ -95,8 +97,8 @@ class AlertNotificationWorker @AssistedInject constructor(
             if (start < 0 || end < 0 || direction == null) return null
 
             return AlertWindow(
-                start = Instant.ofEpochSecond(start),
-                end = Instant.ofEpochSecond(end),
+                start = Instant.fromEpochSeconds(start),
+                end = Instant.fromEpochSeconds(end),
                 delta = getFloat(KEY_DELTA, 0f),
                 direction = direction
             )

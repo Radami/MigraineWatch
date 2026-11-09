@@ -4,15 +4,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
-import androidx.compose.runtime.getValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.radami.migrainewatch.ui.navigation.AppNavigation
+import com.radami.migrainewatch.ui.MigraineWatchApp
+import com.radami.migrainewatch.ui.UiDependencies
 import com.radami.migrainewatch.ui.navigation.Screen
-import com.radami.migrainewatch.ui.theme.MigraineWatchTheme
 import com.radami.migrainewatch.workers.PressureFetchWorker
 import androidx.work.WorkManager
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -33,7 +31,8 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_OPEN_TAB = "openTab"
     }
 
-    private val viewModel: MainViewModel by viewModels()
+    @Inject
+    lateinit var uiDependencies: UiDependencies
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,19 +48,7 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            val onboardingComplete by viewModel.onboardingComplete.collectAsStateWithLifecycle()
-            val locationZone by viewModel.locationZone.collectAsStateWithLifecycle()
-            onboardingComplete ?: return@setContent
-            val startDestination = if (onboardingComplete == true) Screen.Today.route else Screen.Onboarding.route
-            MigraineWatchTheme {
-                AppNavigation(
-                    startDestination = startDestination,
-                    locationZone = locationZone,
-                    // A tab asked for mid-onboarding would land on a screen with no location
-                    // to draw, so it waits until there is an app to open.
-                    openTab = requestedTab.takeIf { onboardingComplete == true }
-                )
-            }
+            MigraineWatchApp(dependencies = uiDependencies, openTab = requestedTab)
         }
     }
 

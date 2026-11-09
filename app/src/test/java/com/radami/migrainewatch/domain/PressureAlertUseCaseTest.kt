@@ -9,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import kotlin.time.toKotlinInstant
 
 /**
  * Tests the relevance window: how long a finished event still counts as current. This is a
@@ -29,24 +30,24 @@ class PressureAlertUseCaseTest {
         val end = now.minus(endedHoursAgo, ChronoUnit.HOURS)
         val start = end.minus(24, ChronoUnit.HOURS)
         return listOf(
-            PressureReading(start, 1020f, 1020f, now),
-            PressureReading(end, 1010f, 1010f, now)
+            PressureReading(start.toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+            PressureReading(end.toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
         )
     }
 
     @Test
     fun `an event that finished within the day is still current`() {
-        val alerts = useCase.alertsIn(dropEnding(endedHoursAgo = 7), THRESHOLD_HPA, now)
+        val alerts = useCase.alertsIn(dropEnding(endedHoursAgo = 7), THRESHOLD_HPA, now.toKotlinInstant())
 
         assertEquals(1, alerts.size)
-        assertTrue(alerts.first().end.isBefore(now))
+        assertTrue(alerts.first().end < now.toKotlinInstant())
     }
 
     @Test
     fun `an event that finished longer ago than the window is history`() {
         // Still well inside the 72 h detection reads over, so it is the relevance window and
         // not the absence of readings that drops it.
-        val alerts = useCase.alertsIn(dropEnding(endedHoursAgo = 30), THRESHOLD_HPA, now)
+        val alerts = useCase.alertsIn(dropEnding(endedHoursAgo = 30), THRESHOLD_HPA, now.toKotlinInstant())
 
         assertTrue(alerts.isEmpty())
     }
@@ -54,13 +55,13 @@ class PressureAlertUseCaseTest {
     @Test
     fun `an event still under way is current`() {
         val readings = listOf(
-            PressureReading(now.minus(12, ChronoUnit.HOURS), 1020f, 1020f, now),
-            PressureReading(now.plus(12, ChronoUnit.HOURS), 1010f, 1010f, now)
+            PressureReading(now.minus(12, ChronoUnit.HOURS).toKotlinInstant(), 1020f, 1020f, now.toKotlinInstant()),
+            PressureReading(now.plus(12, ChronoUnit.HOURS).toKotlinInstant(), 1010f, 1010f, now.toKotlinInstant())
         )
 
-        val alerts = useCase.alertsIn(readings, THRESHOLD_HPA, now)
+        val alerts = useCase.alertsIn(readings, THRESHOLD_HPA, now.toKotlinInstant())
 
         assertEquals(1, alerts.size)
-        assertTrue(alerts.first().end.isAfter(now))
+        assertTrue(alerts.first().end > now.toKotlinInstant())
     }
 }

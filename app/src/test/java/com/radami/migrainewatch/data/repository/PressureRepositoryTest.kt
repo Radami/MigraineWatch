@@ -15,6 +15,7 @@ import io.mockk.coVerify
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
+import io.mockk.slot
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +37,7 @@ import java.io.IOException
 import java.time.Instant
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.time.toKotlinInstant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PressureRepositoryTest {
@@ -112,7 +114,7 @@ class PressureRepositoryTest {
         longitude = BERLIN_LON,
         timezone = "UTC",
         hourly = HourlyData(
-            time = listOf("2023-10-01T12:00"),
+            time = listOf(Instant.parse("2023-10-01T12:00:00Z").epochSecond),
             pressureMsl = listOf(1013.0f),
             surfacePressure = listOf(1000.0f)
         )
@@ -126,7 +128,7 @@ class PressureRepositoryTest {
     /** Skips the archive gap fill (triggered when stored history is over 30 days old). */
     private fun stubRecentHistory() {
         val now = Instant.now()
-        coEvery { dao.getLatestHistorical(any()) } returns PressureReading(now, 1013f, 1000f, now)
+        coEvery { dao.getLatestHistorical(any()) } returns PressureReading(now.toKotlinInstant(), 1013f, 1000f, now.toKotlinInstant())
     }
 
     @Test
@@ -138,6 +140,35 @@ class PressureRepositoryTest {
 
         coVerify { forecastApi.getForecast(BERLIN_LAT, BERLIN_LON, timezone = BERLIN.timezone) }
         coVerify { dao.replaceSeries(any(), any(), any()) }
+    }
+
+    /**
+     * Berlin's clocks go back at 03:00 on 25 October 2026, so 02:00 local comes twice: once in
+     * summer time (00:00 UTC), once in winter time (01:00 UTC). Read as instants, the two hours
+     * stay two readings; read as local times they were one, and one overwrote the other.
+     */
+    @Test
+    fun `the hour repeated when clocks go back is kept as two readings`() = runTest {
+        val summerTwoAm = Instant.parse("2026-10-25T00:00:00Z")
+        val winterTwoAm = Instant.parse("2026-10-25T01:00:00Z")
+        coEvery { forecastApi.getForecast(any(), any(), timezone = any()) } returns response().copy(
+            timezone = BERLIN.timezone,
+            hourly = HourlyData(
+                time = listOf(summerTwoAm.epochSecond, winterTwoAm.epochSecond),
+                pressureMsl = listOf(1013f, 1012f),
+                surfacePressure = listOf(1000f, 999f)
+            )
+        )
+        stubRecentHistory()
+        val stored = slot<List<PressureReading>>()
+        coEvery { dao.replaceSeries(capture(stored), any(), any()) } just Runs
+
+        repository.refresh()
+
+        assertEquals(
+            listOf(summerTwoAm.toKotlinInstant(), winterTwoAm.toKotlinInstant()),
+            stored.captured.map { it.dateTime }
+        )
     }
 
     /** A location whose zone is already known keeps it; nothing is looked up or rewritten. */

@@ -1,6 +1,5 @@
 package com.radami.migrainewatch.ui.screens.calendar
 
-import androidx.lifecycle.SavedStateHandle
 import com.radami.migrainewatch.domain.Severity
 import com.radami.migrainewatch.data.model.SymptomEntry
 import com.radami.migrainewatch.data.repository.SymptomRepository
@@ -15,13 +14,15 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.datetime.LocalDate
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
-import java.time.Instant
-import java.time.LocalDate
+import java.io.IOException
+import kotlin.time.Clock
 
 /**
  * Relief is recorded as chips, not a slider, so 0% and "unanswered" must stay distinguishable.
@@ -31,7 +32,7 @@ import java.time.LocalDate
 class LogEntryViewModelTest {
 
     private companion object {
-        val DATE: LocalDate = LocalDate.of(2026, 8, 23)
+        val DATE: LocalDate = LocalDate(2026, 8, 23)
     }
 
     private val symptomRepository = mockk<SymptomRepository>(relaxed = true)
@@ -48,10 +49,7 @@ class LogEntryViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun viewModel() = LogEntryViewModel(
-        SavedStateHandle(mapOf("date" to DATE.toString())),
-        symptomRepository
-    )
+    private fun viewModel() = LogEntryViewModel(DATE, symptomRepository)
 
     @Test
     fun `relief is unanswered until a chip is tapped`() {
@@ -129,13 +127,36 @@ class LogEntryViewModelTest {
             reliefPercent = 25,
             medication = null,
             notes = null,
-            createdAt = Instant.now(),
-            updatedAt = Instant.now()
+            createdAt = Clock.System.now(),
+            updatedAt = Clock.System.now()
         )
 
         val viewModel = viewModel()
         advanceUntilIdle()
 
         assertEquals(25, viewModel.uiState.value.reliefPercent)
+    }
+
+    @Test
+    fun `a failed read of the day's entry opens an empty form`() = runTest {
+        coEvery { symptomRepository.getByDate(DATE) } throws IOException("disk unavailable")
+
+        val viewModel = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(LogEntryState(date = DATE), viewModel.uiState.value)
+    }
+
+    @Test
+    fun `a failed save leaves the form ready to save again`() = runTest {
+        coEvery { symptomRepository.save(any()) } throws IOException("disk full")
+        val viewModel = viewModel()
+        viewModel.selectSeverity(Severity.MILD)
+
+        viewModel.save()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isSaving)
+        assertFalse(viewModel.uiState.value.savedSuccessfully)
     }
 }

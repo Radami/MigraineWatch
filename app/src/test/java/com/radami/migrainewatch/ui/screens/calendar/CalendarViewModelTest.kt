@@ -10,18 +10,20 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.datetime.LocalDate
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import java.time.Instant
-import java.time.LocalDate
+import kotlin.time.toKotlinInstant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CalendarViewModelTest {
@@ -46,6 +48,9 @@ class CalendarViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
+    /** The view model's clock: one tick at the real now, so readings built around now line up. */
+    private val ticks = MutableStateFlow(Instant.now().toKotlinInstant())
+
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
@@ -59,8 +64,8 @@ class CalendarViewModelTest {
 
         // A 12 hPa drop inside half an hour, well over the threshold.
         val readings = listOf(
-            PressureReading(DROP_START, 1020f, 1020f, DROP_END),
-            PressureReading(DROP_END, 1008f, 1008f, DROP_END)
+            PressureReading(DROP_START.toKotlinInstant(), 1020f, 1020f, DROP_END.toKotlinInstant()),
+            PressureReading(DROP_END.toKotlinInstant(), 1008f, 1008f, DROP_END.toKotlinInstant())
         )
         every { pressureRepository.getReadingsInRange(any(), any()) } returns flowOf(readings)
     }
@@ -72,11 +77,24 @@ class CalendarViewModelTest {
 
     @Test
     fun `an event is marked on the day it falls on at the location`() = runTest {
-        val viewModel = CalendarViewModel(symptomRepository, pressureRepository, userPreferences)
+        val viewModel = CalendarViewModel(symptomRepository, pressureRepository, userPreferences, ticks)
 
         // Detection runs on Dispatchers.Default, so wait on the state rather than the scheduler.
         val state = viewModel.uiState.first { it.highRiskDays.isNotEmpty() }
 
-        assertEquals(setOf(LocalDate.of(2026, 8, 11)), state.highRiskDays)
+        assertEquals(setOf(LocalDate(2026, 8, 11)), state.highRiskDays)
+    }
+
+    /** Left open across midnight, the calendar marks the new day without anything else changing. */
+    @Test
+    fun `today moves on at the location's midnight`() = runTest {
+        // One minute before midnight on the 10th in Kiritimati (UTC+14), then midnight itself.
+        ticks.value = Instant.parse("2026-08-10T09:59:00Z").toKotlinInstant()
+        val viewModel = CalendarViewModel(symptomRepository, pressureRepository, userPreferences, ticks)
+        viewModel.uiState.first { it.today == LocalDate(2026, 8, 10) }
+
+        ticks.value = Instant.parse("2026-08-10T10:00:00Z").toKotlinInstant()
+
+        assertEquals(LocalDate(2026, 8, 11), viewModel.uiState.first { it.today != LocalDate(2026, 8, 10) }.today)
     }
 }

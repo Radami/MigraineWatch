@@ -54,12 +54,12 @@ plugins {
 android {
     namespace = "com.radami.migrainewatch"
     compileSdk {
-        version = release(37)
+        version = release(libs.versions.compileSdk.get().toInt())
     }
 
     defaultConfig {
         applicationId = "com.radami.migrainewatch"
-        minSdk = 26
+        minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = 36
         versionCode = 4
         versionName = "1.3"
@@ -152,7 +152,7 @@ android {
     sourceSets {
         // MigrationTestHelper reads the exported schemas off the device as assets, so the
         // directory Room writes them to has to be packaged into the instrumented test APK.
-        getByName("androidTest").assets.directories.add("$projectDir/schemas")
+        getByName("androidTest").assets.directories.add("$rootDir/shared/schemas")
 
         // initWith copies build type *properties*, not source directories, so without this the
         // sandbox build would silently lack src/debug — and with it DebugAlertReceiver, leaving
@@ -170,6 +170,12 @@ android {
             // Plain JVM tests exercise code that calls android.util.Log; without this
             // the stubbed android.jar throws instead of returning a default value.
             isReturnDefaultValues = true
+            all { test ->
+                test.doFirst {
+                    val agent = test.classpath.files.first { it.name.startsWith("byte-buddy-agent-") }
+                    test.jvmArgs("-javaagent:${agent.absolutePath}")
+                }
+            }
         }
     }
 }
@@ -180,14 +186,10 @@ kotlin {
     }
 }
 
-ksp {
-    // Room writes one JSON file per schema version here, and they are committed. Without the
-    // previous version's file there is nothing for a migration to start from and nothing for
-    // a migration test to verify against, so dropping these is what forces a destructive wipe.
-    arg("room.schemaLocation", "$projectDir/schemas")
-}
-
 dependencies {
+    implementation(project(":shared"))
+    implementation(project(":ui"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
@@ -204,14 +206,12 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.navigation.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    implementation(libs.hilt.navigation.compose)
     implementation(libs.hilt.work)
     ksp(libs.hilt.work.compiler)
     androidTestImplementation(libs.hilt.android.testing)
@@ -220,9 +220,8 @@ dependencies {
     kspTest(libs.hilt.compiler)
 
     // Room
-    implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
+    implementation(libs.sqlite.framework)
 
     // DataStore
     implementation(libs.datastore.preferences)
@@ -233,26 +232,17 @@ dependencies {
     androidTestImplementation(libs.workmanager.testing)
 
     // Networking
-    implementation(libs.retrofit.core)
-    implementation(libs.retrofit.kotlinx.serialization)
+    implementation(libs.ktor.client.okhttp)
     implementation(libs.okhttp.logging)
     implementation(libs.kotlinx.serialization.json)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.coroutines.play.services)
-
-    // Location
-    implementation(libs.play.services.location)
-
-    // Charts
-    implementation(libs.vico.compose)
 
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.androidx.arch.core.testing)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.compose.ui.test)
