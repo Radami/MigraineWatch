@@ -31,6 +31,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.radami.migrainewatch
+        DEVELOPMENT_TEAM: WJ627Y4WJH
+        CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: "1.3"
         CURRENT_PROJECT_VERSION: "4"
