@@ -18,6 +18,36 @@ for fixes alone, the minor number for anything users would notice.
 
 ## [Unreleased]
 
+## [1.4] — 2026-11-23 · versionCode 5
+
+### Changed
+- Dates, times, "today" and the times in alert notifications follow your chosen location's time
+  zone, not the phone's, so travelling or picking a faraway city no longer shifts them.
+- A location found with "Allow location" gets its own time zone instead of UTC.
+- "Allow location" finds where you are even when the phone has no recent location, and the
+  button says it is looking while it does.
+- City search waits until you pause typing, and always shows the results for what you typed
+  last.
+- Screens left open keep up with the clock: the week ahead, "today" and the calendar move on
+  without having to reopen them.
+- On Android 8 to 11 the app uses its own terracotta colours instead of a generic purple theme;
+  Android 12 and later keep matching your wallpaper.
+- Changing alert sensitivity or turning alerts off updates the alerts waiting to be sent even
+  if you leave Settings straight away.
+
+### Fixed
+- On the night the clocks go back, one hour of pressure readings could be lost.
+- Opening a day to log could close the app if that day's entry couldn't be read; it now opens
+  an empty form.
+
+### Play "What's new"
+
+```
+Dates, times and alerts now follow your chosen location's time zone, wherever your phone is. Allow location finds you even without a recent fix, and city search shows results for what you typed last. Screens left open keep up with the clock, and on Android 8 to 11 the app has its own colours.
+
+Fixed: an hour of readings could be lost when the clocks go back, and opening a day to log could close the app.
+```
+
 ## [1.3] — 2026-09-27 · versionCode 4
 
 ### Added
@@ -149,7 +179,8 @@ First public release.
 - Notifications ahead of a pressure alert, at one of three sensitivity settings.
 - Onboarding that asks for a location and notification permission on first run.
 
-[Unreleased]: https://github.com/Radami/MigraineWatch/compare/v1.3...HEAD
+[Unreleased]: https://github.com/Radami/MigraineWatch/compare/v1.4...HEAD
+[1.4]: https://github.com/Radami/MigraineWatch/compare/v1.3...v1.4
 [1.3]: https://github.com/Radami/MigraineWatch/compare/v1.2...v1.3
 [1.2]: https://github.com/Radami/MigraineWatch/compare/v1.1...v1.2
 [1.1]: https://github.com/Radami/MigraineWatch/compare/v1.0...v1.1
