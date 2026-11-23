@@ -80,8 +80,8 @@ scripts/ios-remote.sh logs sim      # the app's log lines, until Ctrl+C
 
 It expects key-based SSH to the Mac under the alias `mac`, and Xcode and XcodeGen on the Mac.
 `MAC_HOST`, `MAC_DIR`, `IOS_SIMULATOR` and `IOS_DEVICE` override the defaults; running it with
-no command lists them. To launch on the iPhone, unlock it first. If signing fails because the
-Mac's keychain is locked, unlock it with `ssh -t mac security unlock-keychain`.
+no command lists them. To launch on the iPhone, unlock it first. If the Mac's keychain is
+locked, `device` asks for the Mac password to unlock it for signing, so run it from a terminal.
 
 ### Mock data
 

@@ -192,15 +192,20 @@ print(max(matches)[2])
 }
 
 # Signing reads the certificate from the login keychain, which an SSH session can find locked.
-# Unlocking it takes the Mac password, so that stays with the user.
-require_unlocked_keychain() {
+# An unlock lasts only for the SSH session that made it, so it has to happen here, in the
+# session that builds. It takes the Mac password, which only the user at a terminal can type.
+unlock_keychain_if_needed() {
     if security show-keychain-info "$LOGIN_KEYCHAIN" >/dev/null 2>&1; then
         return
     fi
 
-    fail "the Mac's login keychain is locked, so the app can't be signed. Unlock it with
-  ssh -t $MAC_HOST security unlock-keychain
-and run this again."
+    if [[ ! -t 0 ]]; then
+        fail "the Mac's login keychain is locked, so the app can't be signed. Run this from a
+terminal, so it can ask for the Mac password and unlock it."
+    fi
+
+    echo "ios-remote: the Mac's login keychain is locked; unlocking it to sign the app." >&2
+    security unlock-keychain "$LOGIN_KEYCHAIN"
 }
 
 mac_test() {
@@ -244,7 +249,7 @@ mac_simulator() {
 mac_device() {
     local udid
     udid="$(device_udid)"
-    require_unlocked_keychain
+    unlock_keychain_if_needed
 
     # Provisioning updates renew the Personal Team profile, which lasts a week.
     generate_project
