@@ -1,8 +1,12 @@
 # MigraineWatch
 
-An Android app for people whose migraines track the weather. It charts barometric
-pressure for your location, flags the pressure swings large enough to be worth
+An Android and iPhone app for people whose migraines track the weather. It charts
+barometric pressure for your location, flags the pressure swings large enough to be worth
 knowing about, and lets you log symptoms day by day so the two can be compared.
+
+Both platforms run one [Compose Multiplatform](https://www.jetbrains.com/compose-multiplatform/)
+app built with Kotlin Multiplatform; only platform services (notifications, background refresh,
+location, system settings links) are written per platform. See [Architecture](#architecture).
 
 Pressure data comes from [Open-Meteo](https://open-meteo.com/) (forecast, archive and
 geocoding endpoints — no API key required).
@@ -12,8 +16,9 @@ geocoding endpoints — no API key required).
 | | |
 |---|---|
 | JDK | 17 or newer |
-| Android SDK | compileSdk 36.1, minSdk 26 |
+| Android SDK | compileSdk 37, minSdk 26 |
 | Emulator / device | API 26+ |
+| iOS (optional) | Xcode 27, [XcodeGen](https://github.com/yonaskolb/XcodeGen), iOS 17+ |
 
 The Gradle wrapper pins the Gradle version, so `./gradlew` is all you need — no local
 Gradle install. Point the build at your SDK with `local.properties`:
@@ -41,6 +46,23 @@ adb shell am start -n com.radami.migrainewatch/.MainActivity
 On first launch the app asks for a location — either from GPS or by searching for a
 city. After that it opens on the Today screen. A `PressureFetchWorker` refreshes the
 data hourly in the background.
+
+### iOS
+
+The Xcode project is generated from `iosApp/project.yml` and is not checked in:
+
+```bash
+cd iosApp && xcodegen
+open MigraineWatch.xcodeproj
+```
+
+Pick a simulator or a connected iPhone and run (⌘R). The build's first step compiles the
+shared Kotlin into the `MigraineWatchKit` framework with Gradle, so the first build takes a few
+minutes. Running on a phone needs your own signing team in `project.yml` (`DEVELOPMENT_TEAM`)
+and Developer Mode on the phone.
+
+The app icon is rendered from the Android launcher icon's vectors; after changing them, run
+`swift iosApp/make_app_icon.swift` from the repository root.
 
 ### Mock data
 
@@ -87,9 +109,10 @@ mocked. Release builds use the live API regardless of these values.
 
 ## Running the tests
 
-Both suites run against the `sandbox` build type rather than `debug` — see
+The app's two suites run against the `sandbox` build type rather than `debug` — see
 [The sandbox build type](#the-sandbox-build-type) for why, and why the task names read the way
-they do.
+they do. The shared modules have suites of their own, run on the JVM and on the iOS simulator —
+see [Shared modules](#shared-modules).
 
 ### Unit tests (JVM, no device needed)
 
@@ -135,10 +158,22 @@ Covers the Room DAO and the schema migrations against a real in-memory database,
 navigation into the Pressure screen — from the alert banner, from the notification's intent
 and from the bottom bar.
 
+### Shared modules
+
+`shared` (domain, data, wording) and `ui` (screens, ViewModels, theme, chart, navigation) test
+their common code twice: on the JVM, and compiled for iOS on the simulator.
+
+```bash
+./gradlew :shared:testAndroidHostTest :ui:testAndroidHostTest           # JVM
+./gradlew :shared:iosSimulatorArm64Test :ui:iosSimulatorArm64Test       # iOS simulator, macOS only
+```
+
 ### Everything
 
 ```bash
-./gradlew testSandboxUnitTest connectedSandboxAndroidTest
+./gradlew testSandboxUnitTest connectedSandboxAndroidTest \
+    :shared:testAndroidHostTest :ui:testAndroidHostTest \
+    :shared:iosSimulatorArm64Test :ui:iosSimulatorArm64Test
 ```
 
 ### The sandbox build type
@@ -326,16 +361,27 @@ Both need `numpy` and `Pillow`. The screenshots alongside them are captured from
 ## Architecture
 
 ```
-ui/             Compose screens (today, pressure, calendar, settings, onboarding)
-                and navigation, one ViewModel per screen
-domain/         AlertDetector — finds qualifying pressure events in a series of readings,
-                and the value types the screens read them through
-format/         How dates, pressure events and severities are spelled for the user
-data/           Room database, DataStore preferences, Retrofit APIs, repositories
-notifications/  Alert notifications and the permission they need
-workers/        PressureFetchWorker — hourly background refresh
-di/             Hilt modules
+shared/   Kotlin Multiplatform, Android and iOS
+          domain/          alert detection, the warning decider and reconcile, outlook, streaks
+          data/            Room (SQLite driver), DataStore preferences, Ktor clients for
+                           Open-Meteo, repositories
+          format/          how dates, pressure events and severities are spelled for the user
+          notifications/   the iOS warning queue: local notifications scheduled ahead
+ui/       Compose Multiplatform, Android and iOS
+          screens/         Today, Pressure, Calendar and Log entry, Settings, Onboarding,
+                           one ViewModel each, built from UiDependencies
+          navigation/      the bottom bar and routes; MigraineWatchApp is the app root
+          theme/ components/   Material 3 theme, the pressure chart and shared pieces
+          platform/        what the screens ask of the platform, per platform
+app/      the Android app: Hilt wiring, WorkManager workers, alert notifications
+iosApp/   the iOS app: SwiftUI host, background refresh, notification delegate
 ```
 
-Built with Jetpack Compose, Hilt, Room, DataStore, WorkManager, Retrofit + kotlinx
-serialization, and [Vico](https://github.com/patrykandpatrick/vico) for the charts.
+Android fills `UiDependencies` from Hilt; iOS fills it from `IosAppGraph`. Warnings are
+scheduled differently because the platforms differ: Android re-checks the forecast in a
+WorkManager job when one is due, while iOS can't run code then, so it schedules local
+notifications ahead of time.
+
+Built with Kotlin Multiplatform, Compose Multiplatform, Room, DataStore, Ktor + kotlinx
+serialization, Hilt and WorkManager on Android, and [Vico](https://github.com/patrykandpatrick/vico)
+for the charts.
