@@ -18,7 +18,6 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.savedstate.read
@@ -80,7 +79,7 @@ fun AppNavigation(
         },
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
+                NavigationBar(windowInsets = bottomBarInsets()) {
                     bottomNavItems.forEach { item ->
                         NavigationBarItem(
                             selected = currentDestination?.hierarchy?.any { it.route == item.screen.route } == true,
@@ -103,7 +102,7 @@ fun AppNavigation(
             startDestination = startDestination,
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Onboarding.route) {
+            screen(Screen.Onboarding.route) {
                 OnboardingScreen(
                     onComplete = {
                         navController.navigate(Screen.Today.route) {
@@ -112,7 +111,7 @@ fun AppNavigation(
                     }
                 )
             }
-            composable(Screen.Today.route) {
+            screen(Screen.Today.route) {
                 TodayScreen(
                     // The banner and outlook days both lead here: Pressure lists and shades
                     // every event and day on the chart.
@@ -120,23 +119,23 @@ fun AppNavigation(
                     onChangeLocation = { navController.navigate(Screen.Onboarding.route) }
                 )
             }
-            composable(Screen.Pressure.route) {
+            screen(Screen.Pressure.route) {
                 PressureScreen(
                     onChangeLocation = { navController.navigate(Screen.Onboarding.route) }
                 )
             }
-            composable(Screen.Calendar.route) {
+            screen(Screen.Calendar.route) {
                 CalendarScreen(
                     onLogEntry = { date ->
                         navController.navigate(Screen.LogEntry.withDate(date.toString()))
                     }
                 )
             }
-            composable(Screen.Settings.route) {
+            screen(Screen.Settings.route) {
                 SettingsScreen()
             }
-            composable(Screen.LogEntry.route) { backStackEntry ->
-                val dateStr = backStackEntry.arguments?.read { getStringOrNull(LOG_ENTRY_DATE) } ?: return@composable
+            screen(Screen.LogEntry.route) { backStackEntry ->
+                val dateStr = backStackEntry.arguments?.read { getStringOrNull(LOG_ENTRY_DATE) } ?: return@screen
                 LogEntryScreen(
                     date = LocalDate.parse(dateStr),
                     onSaved = { navController.popBackStack() },
