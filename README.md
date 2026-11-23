@@ -64,6 +64,25 @@ and Developer Mode on the phone.
 The app icon is rendered from the Android launcher icon's vectors; after changing them, run
 `swift iosApp/make_app_icon.swift` from the repository root.
 
+#### From Linux, with a Mac over SSH
+
+`scripts/ios-remote.sh` runs the iOS steps on a Mac from another machine. Each command mirrors
+the working tree, uncommitted changes included, to a folder of its own on the Mac, then runs
+there. Build output, `.git` and signing files are never copied.
+
+```bash
+scripts/ios-remote.sh test          # the shared suites on the iOS simulator
+scripts/ios-remote.sh sim           # build, install and launch on the simulator
+scripts/ios-remote.sh device        # the same on the iPhone plugged into the Mac
+scripts/ios-remote.sh shot device   # a screenshot, copied to build/ios-remote/screenshots
+scripts/ios-remote.sh logs sim      # the app's log lines, until Ctrl+C
+```
+
+It expects key-based SSH to the Mac under the alias `mac`, and Xcode and XcodeGen on the Mac.
+`MAC_HOST`, `MAC_DIR`, `IOS_SIMULATOR` and `IOS_DEVICE` override the defaults; running it with
+no command lists them. To launch on the iPhone, unlock it first. If signing fails because the
+Mac's keychain is locked, unlock it with `ssh -t mac security unlock-keychain`.
+
 ### Mock data
 
 `MockDataInterceptor` can serve the pressure endpoints instead of the network, so the app
